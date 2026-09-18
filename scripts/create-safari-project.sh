@@ -11,7 +11,10 @@ EXTENSION_DIR="$ROOT_DIR/extension"
 PROJECT_DIR="$ROOT_DIR/SafariApp"
 APP_NAME="Netflix Dual Subtitles"
 BUNDLE_ID="${BUNDLE_ID:-com.chinnsenn.netflix-dual-subtitles-safari}"
+DEBUG_BUNDLE_ID="${DEBUG_BUNDLE_ID:-$BUNDLE_ID.dev}"
 PBXPROJ="$PROJECT_DIR/$APP_NAME/$APP_NAME.xcodeproj/project.pbxproj"
+VIEW_CONTROLLER="$PROJECT_DIR/$APP_NAME/$APP_NAME/ViewController.swift"
+APP_INFO_PLIST="$PROJECT_DIR/$APP_NAME/$APP_NAME/Info.plist"
 
 if ! xcrun --find safari-web-extension-converter >/dev/null 2>&1; then
   for candidate in /Applications/Xcode.app /Applications/Xcode-*.app; do
@@ -39,8 +42,39 @@ xcrun safari-web-extension-converter "$EXTENSION_DIR" \
   --force
 
 if [[ -f "$PBXPROJ" ]]; then
+  export BUNDLE_ID DEBUG_BUNDLE_ID
+  /usr/bin/perl -0pi -e '
+    sub fallback { defined $_[0] ? $_[0] : $_[1] }
+    my @bundle_ids = (
+      "$ENV{DEBUG_BUNDLE_ID}.Extension",
+      "$ENV{BUNDLE_ID}.Extension",
+      $ENV{DEBUG_BUNDLE_ID},
+      $ENV{BUNDLE_ID},
+    );
+    my $bundle_id_index = 0;
+    s/PRODUCT_BUNDLE_IDENTIFIER = "[^"]+";/"PRODUCT_BUNDLE_IDENTIFIER = \"" . fallback($bundle_ids[$bundle_id_index++], $ENV{BUNDLE_ID}) . "\";"/ge;
+  ' "$PBXPROJ"
+  /usr/bin/perl -0pi -e '
+    sub fallback { defined $_[0] ? $_[0] : $_[1] }
+    s/\n\s+SAFARI_EXTENSION_BUNDLE_IDENTIFIER = "[^"]+";//g;
+    my @extension_ids = (
+      "$ENV{DEBUG_BUNDLE_ID}.Extension",
+      "$ENV{BUNDLE_ID}.Extension",
+    );
+    my $extension_id_index = 0;
+    s/(PRODUCT_NAME = "\$\(TARGET_NAME\)";\n\s+REGISTER_APP_GROUPS = YES;\n)/$1 . "\t\t\t\tSAFARI_EXTENSION_BUNDLE_IDENTIFIER = \"" . fallback($extension_ids[$extension_id_index++], "$ENV{BUNDLE_ID}.Extension") . "\";\n"/ge;
+  ' "$PBXPROJ"
+fi
+
+if [[ -f "$APP_INFO_PLIST" ]] && ! /usr/libexec/PlistBuddy -c "Print :SafariExtensionBundleIdentifier" "$APP_INFO_PLIST" >/dev/null 2>&1; then
+  /usr/libexec/PlistBuddy -c "Add :SafariExtensionBundleIdentifier string \$(SAFARI_EXTENSION_BUNDLE_IDENTIFIER)" "$APP_INFO_PLIST"
+fi
+
+if [[ -f "$VIEW_CONTROLLER" ]]; then
   export BUNDLE_ID
-  /usr/bin/perl -0pi -e 's/PRODUCT_BUNDLE_IDENTIFIER = "com\.chinnsenn\.Netflix-Dual-Subtitles";/PRODUCT_BUNDLE_IDENTIFIER = "$ENV{BUNDLE_ID}";/g' "$PBXPROJ"
+  /usr/bin/perl -0pi -e '
+    s|let extensionBundleIdentifier = "[^"]+"|let extensionBundleIdentifier =\n    Bundle.main.object(forInfoDictionaryKey: "SafariExtensionBundleIdentifier") as? String ??\n    "$ENV{BUNDLE_ID}.Extension"|g
+  ' "$VIEW_CONTROLLER"
 fi
 
 echo "Safari project generated at $PROJECT_DIR"

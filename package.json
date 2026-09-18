@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "check": "node scripts/check.mjs",
-    "safari:project": "bash scripts/create-safari-project.sh"
+    "safari:project": "bash scripts/create-safari-project.sh",
+    "package:dmg": "bash scripts/package-dmg.sh"
   }
 }
-
