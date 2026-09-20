@@ -1,49 +1,18 @@
 /**
  * [INPUT]: 依赖 window.NetflixDualSubtitles 的轨道归一化、字幕加载、overlay 渲染与 page bridge 播放器查询
- * [OUTPUT]: 对外提供 Netflix 页面双字幕同步、按剧集配置恢复、轨道查询与手动重载
+ * [OUTPUT]: 对外提供 Netflix 页面双字幕同步、全局字幕偏好恢复、轨道查询与手动重载
  * [POS]: content 模块入口，连接 Safari 隔离世界与 Netflix 页面主世界
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
 const runtime = globalThis.browser ?? globalThis.chrome;
 const modules = window.NetflixDualSubtitles;
-const EPISODE_SETTINGS_STORAGE_KEY = "episodeSettingsById";
-const EPISODE_SETTING_KEYS = new Set([
-  "primaryTrackKey",
-  "primaryLanguage",
-  "secondaryTrackKey",
-  "secondaryLanguage",
-  "primaryFontSize",
-  "secondaryFontSize",
-  "primaryVerticalOffset",
-  "secondaryVerticalOffset",
-  "subtitleLayoutPreset",
-  "primaryFontFamily",
-  "secondaryFontFamily",
-  "primaryFontWeight",
-  "secondaryFontWeight",
-  "primaryTextColor",
-  "secondaryTextColor",
-  "primaryTextOpacity",
-  "secondaryTextOpacity",
-  "primaryStrokeWidth",
-  "secondaryStrokeWidth",
-  "primaryStrokeColor",
-  "secondaryStrokeColor",
-  "primaryBackgroundColor",
-  "secondaryBackgroundColor",
-  "primaryBackgroundOpacity",
-  "secondaryBackgroundOpacity",
-  "primaryLineHeight",
-  "secondaryLineHeight",
-  "primaryMaxWidth",
-  "secondaryMaxWidth",
-  "timingOffsetMs"
-]);
 const SUBTITLE_TRACK_SETTING_KEYS = new Set([
   "primaryTrackKey",
+  "primaryTrackPreference",
   "primaryLanguage",
   "secondaryTrackKey",
+  "secondaryTrackPreference",
   "secondaryLanguage"
 ]);
 
@@ -51,9 +20,11 @@ const DEFAULT_SETTINGS = {
   enabled: true,
   hideNativeSubtitles: true,
   primaryTrackKey: "",
+  primaryTrackPreference: "",
   primaryLanguage: "",
   secondaryLanguage: "en",
   secondaryTrackKey: "",
+  secondaryTrackPreference: "",
   primaryFontSize: 26,
   secondaryFontSize: 28,
   primaryVerticalOffset: 26,
@@ -97,6 +68,7 @@ const state = {
   playerQueryId: 0,
   locationId: 0,
   watchId: "",
+  movieId: "",
   settingsWatchId: "",
   settingsToken: 0
 };
@@ -108,7 +80,7 @@ boot();
 
 async function boot() {
   state.watchId = readWatchId();
-  state.settings = await readSettings(state.watchId);
+  state.settings = await readSettings();
   state.settingsWatchId = state.watchId;
   overlay.applySettings(state.settings);
   updateNativeSubtitleVisibility();
@@ -142,19 +114,7 @@ function bindRuntimeMessages() {
     let shouldRefreshTracks = false;
 
     for (const [key, change] of Object.entries(changes)) {
-      if (key === EPISODE_SETTINGS_STORAGE_KEY) {
-        const episodeSettings = change.newValue?.[state.watchId];
-        if (!episodeSettings) continue;
-
-        for (const episodeKey of EPISODE_SETTING_KEYS) {
-          if (!Object.hasOwn(episodeSettings, episodeKey)) continue;
-          if (state.settings[episodeKey] === episodeSettings[episodeKey]) continue;
-          state.settings[episodeKey] = episodeSettings[episodeKey];
-          shouldRefreshTracks ||= SUBTITLE_TRACK_SETTING_KEYS.has(episodeKey);
-        }
-        continue;
-      }
-
+      if (key === "episodeSettingsById") continue;
       state.settings[key] = change.newValue;
       shouldRefreshTracks ||= SUBTITLE_TRACK_SETTING_KEYS.has(key);
     }
@@ -204,12 +164,26 @@ function bindBridgeMessages() {
     syncWatchState();
     if (state.settingsWatchId !== state.watchId) return;
 
-    const tracks = modules.normalizeTracks(event.data.payload);
+    const payload = event.data.payload;
+    syncMovieState(payload);
+
+    const tracks = modules.normalizeTracks(payload);
     if (tracks.length === 0) return;
 
     state.tracks = mergeTracks(state.tracks, tracks);
     void refreshSelectedSubtitles();
   });
+}
+
+function syncMovieState(payload) {
+  if (!payload?.playerApi || !payload.movieId) return;
+
+  const nextMovieId = String(payload.movieId);
+  if (nextMovieId === state.movieId) return;
+
+  const hadMovie = Boolean(state.movieId);
+  state.movieId = nextMovieId;
+  if (hadMovie) clearSubtitleState();
 }
 
 function watchVideoElement() {
@@ -237,7 +211,7 @@ function syncWatchState() {
 
 async function loadSettingsForWatch(watchId) {
   const token = ++state.settingsToken;
-  const settings = await readSettings(watchId);
+  const settings = await readSettings();
   if (token !== state.settingsToken || watchId !== state.watchId) return;
 
   state.settings = settings;
@@ -314,8 +288,8 @@ async function refreshSelectedSubtitles() {
 
   const token = ++state.refreshToken;
   const [primaryTrack, secondaryTrack] = [
-    pickTrack(state.tracks, state.settings.primaryTrackKey, state.settings.primaryLanguage),
-    pickTrack(state.tracks, state.settings.secondaryTrackKey, state.settings.secondaryLanguage)
+    pickTrack(state.tracks, state.settings.primaryTrackKey, state.settings.primaryTrackPreference, state.settings.primaryLanguage),
+    pickTrack(state.tracks, state.settings.secondaryTrackKey, state.settings.secondaryTrackPreference, state.settings.secondaryLanguage)
   ];
 
   const [primaryCues, secondaryCues] = await Promise.all([
@@ -462,9 +436,18 @@ function readWatchId() {
   return location.pathname.match(/^\/watch\/([^/?#]+)/)?.[1] ?? "";
 }
 
-function pickTrack(tracks, trackKey, language) {
+function trackPreference(track) {
+  return JSON.stringify([track.language, track.label, track.type].map((part) => String(part ?? "").trim().toLowerCase()));
+}
+
+function pickTrack(tracks, trackKey, preference, language) {
   if (trackKey) {
     const selected = tracks.find((track) => track.key === trackKey);
+    if (selected) return selected;
+  }
+
+  if (preference) {
+    const selected = tracks.find((track) => trackPreference(track) === preference);
     if (selected) return selected;
   }
 
@@ -476,26 +459,9 @@ function pickTrack(tracks, trackKey, language) {
     ?? null;
 }
 
-function readSettings(watchId = "") {
+function readSettings() {
   return new Promise((resolve) => {
-    runtime.storage.local.get({
-      ...DEFAULT_SETTINGS,
-      [EPISODE_SETTINGS_STORAGE_KEY]: {}
-    }, (stored) => {
-      const episodeSettingsById = stored[EPISODE_SETTINGS_STORAGE_KEY] ?? {};
-      const storedSettings = { ...stored };
-      delete storedSettings[EPISODE_SETTINGS_STORAGE_KEY];
-      const settings = normalizeSettings(storedSettings);
-      const episodeSettings = episodeSettingsById[watchId];
-
-      if (watchId && episodeSettings) {
-        for (const key of EPISODE_SETTING_KEYS) {
-          if (Object.hasOwn(episodeSettings, key)) settings[key] = episodeSettings[key];
-        }
-      }
-
-      resolve(settings);
-    });
+    runtime.storage.local.get(DEFAULT_SETTINGS, (stored) => resolve(normalizeSettings(stored)));
   });
 }
 

@@ -11,9 +11,11 @@ const DEFAULT_SETTINGS = {
   enabled: true,
   hideNativeSubtitles: true,
   primaryTrackKey: "",
+  primaryTrackPreference: "",
   primaryLanguage: "",
   secondaryLanguage: "en",
   secondaryTrackKey: "",
+  secondaryTrackPreference: "",
   primaryFontSize: 26,
   secondaryFontSize: 28,
   primaryVerticalOffset: 26,
@@ -39,8 +41,7 @@ const DEFAULT_SETTINGS = {
   secondaryLineHeight: 1.28,
   primaryMaxWidth: 86,
   secondaryMaxWidth: 86,
-  timingOffsetMs: 0,
-  episodeSettingsById: {}
+  timingOffsetMs: 0
 };
 
 runtime.runtime.onInstalled.addListener(() => {

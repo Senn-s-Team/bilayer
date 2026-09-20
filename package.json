@@ -1,11 +1,12 @@
 {
   "name": "netflix-dual-subtitles-safari",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "scripts": {
     "check": "node scripts/check.mjs",
     "safari:project": "bash scripts/create-safari-project.sh",
-    "package:dmg": "bash scripts/package-dmg.sh"
+    "package:dmg": "bash scripts/package-dmg.sh",
+    "update:app": "bash scripts/update-app.sh"
   }
 }

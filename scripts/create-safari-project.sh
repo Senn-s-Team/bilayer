@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # [INPUT]: 依赖完整 Xcode 提供的 xcrun safari-web-extension-converter
-# [OUTPUT]: 对外生成 SafariApp Xcode 工程包装 extension/ WebExtension 源码
+# [OUTPUT]: 对外生成 SafariApp Xcode 工程，并同步 WebExtension 的应用版本
 # [POS]: scripts 的 Safari 打包入口，被 npm run safari:project 调用
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
@@ -15,6 +15,9 @@ DEBUG_BUNDLE_ID="${DEBUG_BUNDLE_ID:-$BUNDLE_ID.dev}"
 PBXPROJ="$PROJECT_DIR/$APP_NAME/$APP_NAME.xcodeproj/project.pbxproj"
 VIEW_CONTROLLER="$PROJECT_DIR/$APP_NAME/$APP_NAME/ViewController.swift"
 APP_INFO_PLIST="$PROJECT_DIR/$APP_NAME/$APP_NAME/Info.plist"
+VERSION="$(/usr/bin/plutil -extract version raw "$EXTENSION_DIR/manifest.json")"
+IFS=. read -r VERSION_MAJOR VERSION_MINOR VERSION_PATCH <<< "$VERSION"
+BUILD_VERSION="$((10#$VERSION_MAJOR * 10000 + 10#$VERSION_MINOR * 100 + 10#$VERSION_PATCH))"
 
 if ! xcrun --find safari-web-extension-converter >/dev/null 2>&1; then
   for candidate in /Applications/Xcode.app /Applications/Xcode-*.app; do
@@ -42,7 +45,11 @@ xcrun safari-web-extension-converter "$EXTENSION_DIR" \
   --force
 
 if [[ -f "$PBXPROJ" ]]; then
-  export BUNDLE_ID DEBUG_BUNDLE_ID
+  export BUNDLE_ID DEBUG_BUNDLE_ID VERSION BUILD_VERSION
+  /usr/bin/perl -0pi -e '
+    s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = $ENV{VERSION};/g;
+    s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = $ENV{BUILD_VERSION};/g;
+  ' "$PBXPROJ"
   /usr/bin/perl -0pi -e '
     sub fallback { defined $_[0] ? $_[0] : $_[1] }
     my @bundle_ids = (

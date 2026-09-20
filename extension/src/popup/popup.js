@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 browser/chrome storage/tabs API 与 popup.html 的字幕、固定预览和当前角色样式控件
- * [OUTPUT]: 对外提供按剧集记忆的双字幕选择、统一角色编辑、自动布局、状态反馈与重新读取交互
+ * [OUTPUT]: 对外提供跨剧集记忆的双字幕偏好、样式编辑与状态反馈
  * [POS]: popup 的交互层，被 Safari 弹窗文档加载
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -11,8 +11,10 @@ const DEFAULT_SETTINGS = {
   enabled: true,
   hideNativeSubtitles: true,
   primaryTrackKey: "",
+  primaryTrackPreference: "",
   primaryLanguage: "",
   secondaryTrackKey: "",
+  secondaryTrackPreference: "",
   secondaryLanguage: "en",
   primaryFontSize: 26,
   secondaryFontSize: 28,
@@ -56,19 +58,6 @@ const STYLE_ROLE_SUFFIXES = [
   "LineHeight",
   "MaxWidth"
 ];
-
-const EPISODE_SETTINGS_STORAGE_KEY = "episodeSettingsById";
-const EPISODE_SETTING_KEYS = new Set([
-  "primaryTrackKey",
-  "primaryLanguage",
-  "secondaryTrackKey",
-  "secondaryLanguage",
-  "subtitleLayoutPreset",
-  "timingOffsetMs",
-  ...["primary", "secondary"].flatMap((role) => (
-    STYLE_ROLE_SUFFIXES.map((suffix) => `${role}${suffix}`)
-  ))
-]);
 
 const STYLE_DEFAULTS = {
   subtitleLayoutPreset: DEFAULT_SETTINGS.subtitleLayoutPreset
@@ -147,16 +136,13 @@ let currentTrackSignature = "";
 let activeStyleRole = "primary";
 let pollTimer = 0;
 let currentWatchId = "";
-let episodeWriteChain = Promise.resolve();
 
 void init();
 
 async function init() {
   const [stored, pageState] = await Promise.all([readStoredSettings(), readPageState()]);
   currentWatchId = readWatchId(pageState);
-  currentSettings = pageState?.settings
-    ? normalizeSettings(pageState.settings)
-    : settingsForWatch(stored, currentWatchId);
+  currentSettings = normalizeSettings(stored);
   applyPageState(pageState, true);
   writeControls();
   bindControls();
@@ -242,8 +228,10 @@ function selectStyleRole(role) {
 async function swapTracks() {
   const update = {
     primaryTrackKey: currentSettings.secondaryTrackKey,
+    primaryTrackPreference: currentSettings.secondaryTrackPreference,
     primaryLanguage: currentSettings.secondaryLanguage,
     secondaryTrackKey: currentSettings.primaryTrackKey,
+    secondaryTrackPreference: currentSettings.primaryTrackPreference,
     secondaryLanguage: currentSettings.primaryLanguage
   };
 
@@ -305,12 +293,12 @@ function applyPageState(pageState, forceTrackUpdate = false) {
 }
 
 function populateTrackSelects() {
-  populateTrackSelect(controls.primaryTrackKey, "不显示", currentSettings.primaryTrackKey, currentSettings.primaryLanguage);
-  populateTrackSelect(controls.secondaryTrackKey, "不显示", currentSettings.secondaryTrackKey, currentSettings.secondaryLanguage);
+  populateTrackSelect(controls.primaryTrackKey, "不显示", currentSettings.primaryTrackKey, currentSettings.primaryTrackPreference, currentSettings.primaryLanguage);
+  populateTrackSelect(controls.secondaryTrackKey, "不显示", currentSettings.secondaryTrackKey, currentSettings.secondaryTrackPreference, currentSettings.secondaryLanguage);
 }
 
-function populateTrackSelect(select, emptyLabel, selectedKey, language) {
-  const selectedValue = findSelectedTrack(selectedKey, language)?.key ?? "";
+function populateTrackSelect(select, emptyLabel, selectedKey, preference, language) {
+  const selectedValue = findSelectedTrack(selectedKey, preference, language)?.key ?? "";
   select.replaceChildren(createOption("", emptyLabel), ...currentTracks.map(trackToOption));
   select.value = selectedValue;
 }
@@ -318,8 +306,8 @@ function populateTrackSelect(select, emptyLabel, selectedKey, language) {
 function writeControls() {
   controls.enabled.checked = currentSettings.enabled;
   controls.hideNativeSubtitles.checked = currentSettings.hideNativeSubtitles;
-  controls.primaryTrackKey.value = findSelectedTrack(currentSettings.primaryTrackKey, currentSettings.primaryLanguage)?.key ?? "";
-  controls.secondaryTrackKey.value = findSelectedTrack(currentSettings.secondaryTrackKey, currentSettings.secondaryLanguage)?.key ?? "";
+  controls.primaryTrackKey.value = findSelectedTrack(currentSettings.primaryTrackKey, currentSettings.primaryTrackPreference, currentSettings.primaryLanguage)?.key ?? "";
+  controls.secondaryTrackKey.value = findSelectedTrack(currentSettings.secondaryTrackKey, currentSettings.secondaryTrackPreference, currentSettings.secondaryLanguage)?.key ?? "";
   controls.timingOffsetMs.value = currentSettings.timingOffsetMs;
   writeLayoutPreset();
   writeAdvancedControls();
@@ -525,6 +513,7 @@ function readUpdate(key, control) {
     const track = currentTracks.find((item) => item.key === control.value);
     return {
       [key]: control.value,
+      [`${prefix}TrackPreference`]: track ? trackPreference(track) : "",
       [`${prefix}Language`]: track?.language ?? ""
     };
   }
@@ -544,9 +533,18 @@ function createOption(value, label) {
   return option;
 }
 
-function findSelectedTrack(trackKey, language) {
+function trackPreference(track) {
+  return JSON.stringify([track.language, track.label, track.type].map((part) => String(part ?? "").trim().toLowerCase()));
+}
+
+function findSelectedTrack(trackKey, preference, language) {
   if (trackKey) {
     const selected = currentTracks.find((track) => track.key === trackKey);
+    if (selected) return selected;
+  }
+
+  if (preference) {
+    const selected = currentTracks.find((track) => trackPreference(track) === preference);
     if (selected) return selected;
   }
 
@@ -582,72 +580,12 @@ function readWatchId(pageState) {
 
 function readStoredSettings() {
   return new Promise((resolve) => {
-    runtime.storage.local.get({
-      ...DEFAULT_SETTINGS,
-      [EPISODE_SETTINGS_STORAGE_KEY]: {}
-    }, resolve);
+    runtime.storage.local.get(DEFAULT_SETTINGS, resolve);
   });
 }
 
 function writeSettings(update) {
-  const globalUpdate = {};
-  const episodeUpdate = {};
-
-  for (const [key, value] of Object.entries(update)) {
-    const destination = currentWatchId && EPISODE_SETTING_KEYS.has(key)
-      ? episodeUpdate
-      : globalUpdate;
-    destination[key] = value;
-  }
-
-  const writes = [];
-  if (Object.keys(globalUpdate).length > 0) writes.push(writeStorage(globalUpdate));
-
-  if (Object.keys(episodeUpdate).length > 0) {
-    const watchId = currentWatchId;
-    const queuedUpdate = { ...episodeUpdate };
-    episodeWriteChain = episodeWriteChain.then(() => writeEpisodeSettings(watchId, queuedUpdate));
-    writes.push(episodeWriteChain);
-  }
-
-  return Promise.all(writes);
-}
-
-function writeEpisodeSettings(watchId, update) {
-  return new Promise((resolve) => {
-    runtime.storage.local.get({ [EPISODE_SETTINGS_STORAGE_KEY]: {} }, (stored) => {
-      const settingsById = stored[EPISODE_SETTINGS_STORAGE_KEY] ?? {};
-      const nextSettingsById = {
-        ...settingsById,
-        [watchId]: {
-          ...(settingsById[watchId] ?? {}),
-          ...update
-        }
-      };
-
-      runtime.storage.local.set({ [EPISODE_SETTINGS_STORAGE_KEY]: nextSettingsById }, resolve);
-    });
-  });
-}
-
-function writeStorage(update) {
   return new Promise((resolve) => runtime.storage.local.set(update, resolve));
-}
-
-function settingsForWatch(stored, watchId) {
-  const settingsById = stored[EPISODE_SETTINGS_STORAGE_KEY] ?? {};
-  const storedSettings = { ...stored };
-  delete storedSettings[EPISODE_SETTINGS_STORAGE_KEY];
-  const settings = normalizeSettings(storedSettings);
-  const episodeSettings = settingsById[watchId];
-
-  if (watchId && episodeSettings) {
-    for (const key of EPISODE_SETTING_KEYS) {
-      if (Object.hasOwn(episodeSettings, key)) settings[key] = episodeSettings[key];
-    }
-  }
-
-  return settings;
 }
 
 function normalizeSettings(stored) {
