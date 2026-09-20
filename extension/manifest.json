@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Netflix Dual Subtitles Safari",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Show a second subtitle track on Netflix Web in Safari.",
   "icons": {
     "48": "icons/icon-48.png",
@@ -25,6 +25,7 @@
         "src/content/subtitleStore.js",
         "src/content/netflixAdapter.js",
         "src/content/overlay.js",
+        "src/content/fullscreenMount.js",
         "src/content/content.js"
       ],
       "run_at": "document_start"

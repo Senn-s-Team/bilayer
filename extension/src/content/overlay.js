@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 DOM/Shadow DOM 渲染能力、字幕样式设置与 subtitleParser 输出的 cue 数组
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供自动双字幕布局与独立视觉样式 overlay
- * [POS]: content 的显示层，被 content.js 按播放时间驱动
+ * [INPUT]: 依赖 DOM/Shadow DOM 渲染能力、字幕样式设置与 subtitleParser 输出的 cue 数组、fullscreenMount 的挂载点选择；host 使用 layout/style/paint containment 抑制 transform 动画期的 30-60ms 拖影
+ * [OUTPUT]: 对 window.NetflixDualSubtitles 提供自动双字幕布局与独立视觉样式 overlay，并通过 mount() 接入全屏挂载
+ * [POS]: content 的显示层，被 content.js 按播放时间驱动；mount() 由 fullscreenMount 接管挂载点
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -155,6 +155,13 @@ window.NetflixDualSubtitles.createSubtitleOverlay = function createSubtitleOverl
       secondaryContainer.replaceChildren(...secondaryCues.map((cue) => createLine(cue.text)));
       primaryContainer.hidden = primaryCues.length === 0;
       secondaryContainer.hidden = secondaryCues.length === 0;
+    },
+
+    mount() {
+      ensureMounted(host);
+      if (host.__fullscreenInstalled) return;
+      const install = window.NetflixDualSubtitles?.installFullscreenHostManagement;
+      if (typeof install === "function") install(host);
     }
   };
 };
@@ -193,7 +200,8 @@ function colorWithOpacity(color, opacity) {
 
 function ensureMounted(host) {
   if (host.isConnected) return;
-  document.documentElement.append(host);
+  const target = window.NetflixDualSubtitles?.pickMountTarget?.() ?? document.documentElement;
+  if (target) target.append(host);
 }
 
 function createLine(text) {

@@ -27,5 +27,6 @@ Safari 工程由 `scripts/create-safari-project.sh` 从 WebExtension 源码生�
 变更日志:
 2026-07-25: 创建 Safari WebExtension 源码项目，加入 Netflix 双字幕 MVP 架构。
 2026-07-25: 发现本机 Xcode 26.5，生成 SafariApp 工程并补充图标管线。
+2026-09-20: 修复 Safari 全屏模式下双字幕不显示，新增 fullscreenMount 模块并接入 overlay.mount()，版本 0.1.3。
 
 法则: 极简·稳定·导航·版本精确

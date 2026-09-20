@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 window.NetflixDualSubtitles 的轨道归一化、字幕加载、overlay 渲染与 page bridge 播放器查询
- * [OUTPUT]: 对外提供 Netflix 页面双字幕同步、全局字幕偏好恢复、轨道查询与手动重载
- * [POS]: content 模块入口，连接 Safari 隔离世界与 Netflix 页面主世界
+ * [INPUT]: 依赖 window.NetflixDualSubtitles 的轨道归一化、字幕加载、overlay 渲染、fullscreenMount 全屏挂载管理与 page bridge 播放器查询
+ * [OUTPUT]: 对外提供 Netflix 页面双字幕同步、全局字幕偏好恢复、轨道查询与手动重载，并在视频/文档全屏时挂载 host
+ * [POS]: content 模块入口，连接 Safari 隔离世界与 Netflix 页面主世界；协调 overlay.mount 与 bindVideoFullscreen
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -70,7 +70,8 @@ const state = {
   watchId: "",
   movieId: "",
   settingsWatchId: "",
-  settingsToken: 0
+  settingsToken: 0,
+  unbindVideoFullscreen: null
 };
 
 const overlay = modules.createSubtitleOverlay();
@@ -90,6 +91,7 @@ async function boot() {
   bindBridgeMessages();
   watchLocation();
   watchVideoElement();
+  overlay.mount?.();
   startPlayerTrackQueries();
 }
 
@@ -206,6 +208,10 @@ function syncWatchState() {
   clearSubtitleState();
   updateNativeSubtitleVisibility();
   postNativeSubtitlePreference();
+  // Remount overlay against the new player DOM after a watchId change so
+  // the host reattaches to the new fullscreen root instead of staying
+  // detached on a stale ancestor.
+  overlay.mount?.();
   void loadSettingsForWatch(nextWatchId);
 }
 
@@ -234,6 +240,14 @@ function clearSubtitleState() {
     secondary: { cueCount: 0, error: "" }
   };
   store.clear();
+  // SPA route changes may detach the subtitle host element; clear the
+  // fullscreen-management flags so overlay.mount() reattaches listeners
+  // and reparent logic runs on the next mount against the new player.
+  const host = document.getElementById("netflix-dual-subtitles-host");
+  if (host) {
+    host.__fullscreenInstalled = false;
+    host.__netflixDualSubtitles_mountedKey = null;
+  }
   overlay.render();
 }
 
@@ -269,6 +283,10 @@ function bindVideo(video) {
     state.video.removeEventListener("ratechange", renderForCurrentTime);
     state.video.removeEventListener("play", startFrameLoop);
     state.video.removeEventListener("pause", stopFrameLoop);
+    if (typeof state.unbindVideoFullscreen === "function") {
+      state.unbindVideoFullscreen();
+      state.unbindVideoFullscreen = null;
+    }
   }
 
   state.video = video;
@@ -277,6 +295,11 @@ function bindVideo(video) {
   video.addEventListener("ratechange", renderForCurrentTime);
   video.addEventListener("play", startFrameLoop);
   video.addEventListener("pause", stopFrameLoop);
+  const bindFs = modules.bindVideoFullscreen;
+  if (typeof bindFs === "function") {
+    state.unbindVideoFullscreen = bindFs(video, () => overlay.mount?.());
+  }
+  overlay.mount?.();
   startFrameLoop();
 }
 
