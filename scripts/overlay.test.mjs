@@ -1,0 +1,66 @@
+/**
+ * [INPUT]: 依赖 Node.js test/vm 与真实 overlay.js，模拟 Shadow DOM 中的字幕节点
+ * [OUTPUT]: 验证相同字幕不重复替换节点、文字变化与字幕消失仍正确更新画面
+ * [POS]: scripts 的字幕呈现回归测试，覆盖播放帧与真实 DOM 更新边界
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import test from "node:test";
+import assert from "node:assert/strict";
+
+const source = readFileSync(new URL("../extension/src/content/overlay.js", import.meta.url), "utf8");
+
+function createOverlay() {
+  const container = () => ({
+    children: [], hidden: true, replacements: 0,
+    replaceChildren(...nodes) {
+      this.children = nodes;
+      this.replacements++;
+    }
+  });
+  const primary = container();
+  const secondary = container();
+  const root = {
+    set innerHTML(_html) {},
+    querySelector(selector) { return selector.includes("primary") ? primary : secondary; }
+  };
+  let host;
+  const document = {
+    createElement() {
+      if (host) return { className: "", textContent: "" };
+      host = { id: "", style: { setProperty() {} }, dataset: {}, isConnected: false,
+        attachShadow() { return root; } };
+      return host;
+    },
+    documentElement: { append(node) { node.isConnected = true; } }
+  };
+  const window = {};
+  runInNewContext(source, { window, document }, { filename: "overlay.js" });
+  return { overlay: window.NetflixDualSubtitles.createSubtitleOverlay(), primary, secondary };
+}
+
+test("unchanged subtitles retain their DOM nodes across playback frames", () => {
+  const { overlay, primary, secondary } = createOverlay();
+  overlay.render({ primaryCues: [{ text: "私はいつも案内の人と" }], secondaryCues: [{ text: "我总是跟着讲解员" }] });
+  const original = [primary.children[0], secondary.children[0]];
+  overlay.render({ primaryCues: [{ text: "私はいつも案内の人と" }], secondaryCues: [{ text: "我总是跟着讲解员" }] });
+  assert.equal(primary.children[0], original[0]);
+  assert.equal(secondary.children[0], original[1]);
+  assert.equal(primary.replacements, 1);
+  assert.equal(secondary.replacements, 1);
+});
+
+test("subtitle text changes and disappearance still update each row independently", () => {
+  const { overlay, primary, secondary } = createOverlay();
+  overlay.render({ primaryCues: [{ text: "原文" }], secondaryCues: [{ text: "旧译文" }] });
+  const original = primary.children[0];
+  overlay.render({ primaryCues: [{ text: "原文" }], secondaryCues: [{ text: "新译文" }] });
+  assert.equal(primary.children[0], original);
+  assert.equal(secondary.children[0].textContent, "新译文");
+  overlay.render({ primaryCues: [], secondaryCues: [{ text: "新译文" }] });
+  assert.equal(primary.hidden, true);
+  assert.equal(primary.children.length, 0);
+  assert.equal(secondary.hidden, false);
+  assert.equal(secondary.replacements, 2);
+});

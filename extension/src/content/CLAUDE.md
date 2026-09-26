@@ -4,7 +4,7 @@
 成员清单
 content.js: 内容脚本入口，连接 page bridge、已知设置白名单、三轨加载与翻译调度；向后台请求脱敏诊断并区分消息传输失败，播放器首句等待限时
 netflixAdapter.js: Netflix 字幕轨道归一化器，把私有响应折叠成稳定 Track
-overlay.js: Shadow DOM 字幕层，负责自动上下布局、独立样式变量与视觉渲染，并通过 mount() 接入 fullscreenMount
+overlay.js: Shadow DOM 字幕层，负责布局与独立样式；只在文本变化时替换节点以维持逐帧视觉稳定，通过 mount() 接入 fullscreenMount
 fullscreenMount.js: 全屏挂载管理，在 document capture 阶段同步 reparent host 到 fullscreen element，仅监听标准 fullscreenchange（SPA 切换剧集通过 clearSubtitleState 复位 host 标记，syncWatchState 调 overlay.mount() 重新挂载）
 subtitleParser.js: 字幕格式解析层，把文本解析为带原始时间轴的 cue
 subtitleStore.js: 字幕轨道与 cue 缓存，合并同轨并发加载并隔离切集后的过期下载
