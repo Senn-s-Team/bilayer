@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API 及 popup.html 的三页签、互斥模式、全局翻译和 provider 控件
- * [OUTPUT]: 提供双原生/AI 模式切换、独立 AI 源轨道、可调预翻译与上下文、provider 授权/模型发现及链路日志
+ * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API 及 popup.html 的三页签、翻译与 provider 控件；跨窗口发现 Netflix Web App 的可响应页面
+ * [OUTPUT]: 提供互斥字幕模式、独立源轨道、provider 与诊断操作；验证播放页响应后再绑定消息目标并提示 Web App 权限问题
  * [POS]: popup 交互层；字幕模式由 aiRole 单一状态表示，翻译设置全局共享，密钥和端点只属于所选 provider
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -156,8 +156,8 @@ const elements = {
   testProvider: document.querySelector("#testProvider"),
   fetchProviderModels: document.querySelector("#fetchProviderModels"),
   providerModelList: document.querySelector("#providerModelList"),
-  providerTestStatus: document.querySelector("#providerTestStatus"),
   translationLog: document.querySelector("#translationLog"),
+  openRawDiagnostics: document.querySelector("#openRawDiagnostics"),
   nativeMode: document.querySelector("#nativeMode"),
   aiMode: document.querySelector("#aiMode"),
   modeDescription: document.querySelector("#modeDescription"),
@@ -187,6 +187,8 @@ let currentTrackSignature = "";
 let activeStyleRole = "primary";
 let pollTimer = 0;
 let currentWatchId = "";
+let connectedTabId = null;
+let connectionHint = "未连接 Netflix 页面；请在影片窗口打开弹窗";
 
 void init();
 
@@ -254,6 +256,11 @@ function bindControls() {
   providerControls.test = elements.testProvider;
   providerControls.test.addEventListener("click", () => void testProviderConnection());
   elements.fetchProviderModels.addEventListener("click", () => void fetchProviderModels());
+  elements.openRawDiagnostics.addEventListener("click", () => {
+    const url = runtime.runtime.getURL("src/diagnostics/diagnostics.html");
+    if (runtime.tabs?.create) void runtime.tabs.create({ url });
+    else window.open(url, "_blank");
+  });
   providerControls.source.addEventListener("change", () => {
     const track = currentTracks.find((item) => item.key === providerControls.source.value);
     const update = {
@@ -736,9 +743,9 @@ function colorWithOpacity(color, opacity) {
 function writeStatus() {
   writeTranslationLog(currentPageState?.translationStatus?.logs ?? []);
   if (!currentPageState) {
-    writePageStatus("未连接 Netflix 页面", "error");
-    writeRoleStatus("primary", "等待 Netflix 页面", "idle");
-    writeRoleStatus("secondary", "等待 Netflix 页面", "idle");
+    writePageStatus(connectionHint, "error");
+    writeRoleStatus("primary", "未连接 Netflix 页面", "error");
+    writeRoleStatus("secondary", "未连接 Netflix 页面", "error");
     return;
   }
 
@@ -865,13 +872,16 @@ function writeAvailability() {
 
 function scheduleStatePoll(attempt = 0) {
   clearTimeout(pollTimer);
-  if ((attempt >= 10 && currentSettings.aiRole === "off") || (currentPageState && !isWatchPage(currentPageState))) return;
+  if (attempt >= 10 && (!isWatchPage(currentPageState) || currentSettings.aiRole === "off")) return;
 
   pollTimer = setTimeout(async () => {
     const pageState = await readPageState();
     applyPageState(pageState);
-
-    if (shouldKeepPolling(pageState)) scheduleStatePoll(Math.min(attempt + 1, 10));
+    if (!isWatchPage(pageState)) {
+      scheduleStatePoll(attempt + 1);
+    } else if (shouldKeepPolling(pageState)) {
+      scheduleStatePoll(Math.min(attempt + 1, 10));
+    }
   }, attempt === 0 ? 350 : attempt < 10 ? 900 : 2000);
 }
 
@@ -1029,23 +1039,83 @@ function readPageState() {
   return sendMessageToActiveTab({ type: "NETFLIX_DUAL_SUBTITLES_GET_STATE" });
 }
 
-function sendMessageToActiveTab(message) {
+async function sendMessageToActiveTab(message) {
+  if (message.type !== "NETFLIX_DUAL_SUBTITLES_GET_STATE") {
+    return connectedTabId === null ? null : sendToTab(connectedTabId, message);
+  }
+
+  const tabs = await new Promise(queryActiveTabs);
+  let fallback = null;
+  let reachable = false;
+  for (const tab of tabs) {
+    if (!Number.isInteger(tab.id) || (tab.url && !isNetflixUrl(tab.url))) continue;
+    reachable = true;
+    const state = await sendToTab(tab.id, message);
+    if (!isNetflixUrl(state?.url)) continue;
+    if (isWatchPage(state)) {
+      connectedTabId = tab.id;
+      connectionHint = "";
+      return state;
+    }
+    fallback ??= state;
+  }
+  connectedTabId = null;
+  connectionHint = reachable
+    ? "Netflix 页面未响应；请刷新影片并检查 Web App 扩展权限"
+    : "未找到 Netflix 播放页；请检查 Web App 扩展权限";
+  return fallback;
+}
+
+function sendToTab(tabId, message) {
   return new Promise((resolve) => {
-    runtime.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const tab = tabs?.[0];
-      if (!tab?.id) {
-        resolve(null);
-        return;
-      }
-
-      runtime.tabs.sendMessage(tab.id, message, (response) => {
-        if (runtime.runtime.lastError) {
-          resolve(null);
-          return;
-        }
-
-        resolve(response ?? null);
+    try {
+      runtime.tabs.sendMessage(tabId, message, (response) => {
+        resolve(runtime.runtime.lastError ? null : response ?? null);
       });
-    });
+    } catch {
+      resolve(null);
+    }
   });
+}
+
+function queryActiveTabs(done) {
+  if (!runtime.tabs?.query) {
+    done([]);
+    return;
+  }
+  const queries = [
+    { active: true, currentWindow: true },
+    { active: true, lastFocusedWindow: true },
+    { active: true },
+    { url: ["https://netflix.com/*", "https://www.netflix.com/*"] }
+  ];
+  const tabs = new Map();
+  const next = () => {
+    const query = queries.shift();
+    if (!query) { done([...tabs.values()]); return; }
+    try {
+      runtime.tabs.query(query, (found) => {
+        void runtime.runtime.lastError;
+        for (const tab of found ?? []) {
+          if (!Number.isInteger(tab.id)) continue;
+          const current = tabs.get(tab.id);
+          if (!current) tabs.set(tab.id, { id: tab.id, url: tab.url });
+          else if (!current.url && tab.url) current.url = tab.url;
+        }
+        next();
+      });
+    } catch {
+      next();
+    }
+  };
+  next();
+}
+
+function isNetflixUrl(url) {
+  try {
+    const parsed = new URL(url ?? "");
+    return parsed.protocol === "https:" && (parsed.hostname === "netflix.com" || parsed.hostname === "www.netflix.com");
+  } catch {
+    return false;
+  }
 }

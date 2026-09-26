@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖已解析的 Netflix cue 时间轴与注入的批量翻译请求
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 createTranslationScheduler，支持当前句优先、预取双上限、可调邻句、预算与链路日志
+ * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 createTranslationScheduler，支持当前句优先、预取双上限、可调邻句、预算与逐请求耗时日志
  * [POS]: content 的纯调度层，不接触密钥、提供商协议或字幕原文日志
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -149,6 +149,7 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
       for (const group of selected) pending.add(group);
       const requestGeneration = generation;
       const batch = { sourceLanguage, targetLanguage, items, contextBefore: before, contextAfter: after };
+      const requestStartedAt = Date.now();
       addLog("request_sent", "正在请求字幕翻译", { request: requestNumber, cueIds: items.map(({ id }) => id), characters: totalCharacters });
       notify();
       void Promise.resolve().then(() => translate(batch)).then((response) => {
@@ -163,17 +164,17 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
         if (valid) {
           for (const { id } of items) translations.set(id, byId.get(id));
           failure = "";
-          addLog("request_succeeded", "字幕翻译完成", { request: requestNumber, cueIds: items.map(({ id }) => id) });
+          addLog("request_succeeded", "字幕翻译完成", { request: requestNumber, cueIds: items.map(({ id }) => id), durationMs: Date.now() - requestStartedAt });
         } else {
           for (const group of selected) failed.add(group);
           failure = response?.errorCode ?? "invalid_response";
-          addLog("request_failed", "字幕翻译失败", { request: requestNumber, cueIds: items.map(({ id }) => id), error: failure });
+          addLog("request_failed", "字幕翻译失败", { request: requestNumber, cueIds: items.map(({ id }) => id), error: failure, durationMs: Date.now() - requestStartedAt });
         }
       }).catch(() => {
         if (requestGeneration !== generation) return;
         for (const group of selected) failed.add(group);
         failure = "unavailable";
-        addLog("request_failed", "字幕翻译请求异常", { request: requestNumber, cueIds: items.map(({ id }) => id), error: failure });
+        addLog("request_failed", "字幕翻译请求异常", { request: requestNumber, cueIds: items.map(({ id }) => id), error: failure, durationMs: Date.now() - requestStartedAt });
       }).finally(() => {
         if (requestGeneration !== generation) return;
         inFlight--;

@@ -88,6 +88,17 @@
   overflow-wrap: anywhere;
 }
 
+.diagnostic-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.diagnostic-actions .ai-credential-status {
+  margin-right: 0;
+}
+
 .provider-model-row {
   display: flex;
   gap: 8px;

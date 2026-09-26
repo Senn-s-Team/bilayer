@@ -1,6 +1,6 @@
 <!--
   [INPUT]: 依赖 popup.css 与 popup-ai.css 的既有 Neumorphism 令牌及 popup.js 的模式、provider、翻译参数和日志交互
-  [OUTPUT]: 提供字幕/AI 翻译/样式三页签；互斥字幕模式、独立全局翻译设置、provider 凭证管理与诊断结构
+  [OUTPUT]: 提供字幕/AI 翻译/样式三页签；互斥字幕模式、独立全局翻译设置、provider 凭证管理、摘要诊断与独立原始报文面板入口
   [POS]: popup 模块的 DOM 壳；翻译提示词和前瞻参数位于 provider 表单之外，由 manifest action.default_popup 加载
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
@@ -189,6 +189,10 @@
           <div class="provider-test-row">
             <button id="testProvider" class="ai-button" type="button">测试连通性</button>
             <span id="providerTestStatus" class="ai-credential-status" role="status" aria-live="polite"></span>
+          </div>
+          <div class="diagnostic-actions">
+            <button id="openRawDiagnostics" class="ai-button" type="button">打开原始报文面板</button>
+            <span class="ai-credential-status">包含字幕原文，请勿分享；API 密钥不会显示</span>
           </div>
           <details class="ai-log-panel">
             <summary>完整翻译日志</summary>

@@ -1,0 +1,73 @@
+<!--
+  [INPUT]: 依赖 diagnostics.css 的诊断页样式与 diagnostics.js 的后台原始报文查询
+  [OUTPUT]: 提供请求导航、JSON 路径与键盘提示、折叠报文树和逐字原文共用的阅读区
+  [POS]: diagnostics 模块的页面壳，由 popup 的“原始报文面板”入口打开
+  [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+-->
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>原始翻译报文 · Netflix Dual Subtitles</title>
+    <link rel="stylesheet" href="./diagnostics.css">
+  </head>
+  <body>
+    <main class="diagnostics-shell">
+      <header class="diagnostics-header">
+        <div>
+          <h1>原始翻译报文</h1>
+          <p class="subtitle">最近 20 次翻译请求 · 仅存扩展内存 · 请勿分享含字幕的报文</p>
+        </div>
+        <div class="header-actions">
+          <span id="liveStatus" class="live-status" role="status">正在连接后台</span>
+          <button id="toggleCapture" type="button">停止采集</button>
+          <button id="refreshRecords" type="button">刷新</button>
+          <button id="clearRecords" class="quiet-button" type="button">清空记录</button>
+        </div>
+      </header>
+
+      <section class="diagnostics-grid" aria-label="原始翻译报文">
+        <aside class="request-list-panel">
+          <div class="panel-heading">
+            <h2>请求</h2>
+            <span id="recordCount">0</span>
+          </div>
+          <nav id="recordList" class="record-list" aria-label="翻译请求记录"></nav>
+          <p id="emptyState" class="empty-state">等待翻译请求。保持此页打开并播放字幕，记录会自动出现在这里。</p>
+        </aside>
+
+        <section class="detail-panel" aria-live="polite">
+          <div id="detailEmpty" class="detail-empty">
+            <strong>尚未选择请求</strong>
+            <span>选择左侧记录，查看端点、耗时及完整报文。</span>
+          </div>
+          <div id="detailContent" hidden>
+            <div class="detail-heading">
+              <div>
+                <p id="detailMeta" class="detail-meta"></p>
+                <h2 id="detailTitle">请求 1</h2>
+              </div>
+              <span id="detailResult" class="result-badge"></span>
+            </div>
+            <dl id="requestMeta" class="request-meta"></dl>
+            <details class="headers-panel">
+              <summary>请求头 / 响应头（Authorization 已移除）</summary>
+              <pre id="headersView" class="headers-view"></pre>
+            </details>
+            <div class="payload-toolbar">
+              <nav class="payload-tabs" aria-label="报文内容">
+                <button class="payload-tab is-active" type="button" data-payload="request">请求体</button>
+                <button class="payload-tab" type="button" data-payload="response">响应体</button>
+              </nav>
+              <button id="toggleRaw" class="payload-format" type="button" aria-pressed="false">查看原文</button>
+            </div>
+            <div id="jsonPath" class="json-path" hidden><span id="jsonPathValue" aria-live="polite">$</span><span class="json-shortcuts">↑↓ 导航 · ←→ 折叠/展开</span></div>
+            <div id="payloadView" class="payload-view" tabindex="0" aria-label="报文内容"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="./diagnostics.js"></script>
+  </body>
+</html>

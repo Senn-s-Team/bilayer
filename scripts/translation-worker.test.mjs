@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node.js test/vm 与真实 service_worker.js，模拟多 provider 扩展存储和 Chat Completions 响应
- * [OUTPUT]: 验证 provider 切换、兼容响应、权限/协议错误、HTTP/JSON/ID 校验阶段诊断与秘密脱敏
+ * [OUTPUT]: 验证 provider 切换、兼容服务单字幕和逗号分隔对象序列、多字幕及 ID 校验、权限/错误和原始报文秘密边界
  * [POS]: scripts 的后台请求行为检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -29,7 +29,7 @@ function createWorker(fetcher, stored = {}, permissionGranted = true) {
     runtime: { id: "extension-id", getURL(path) { return `extension://${path}`; }, onInstalled: { addListener() {} }, onMessage: { addListener(callback) { listener = callback; } } }
   };
   runInNewContext(source, {
-    browser: runtime, fetch: fetcher, URL, TextEncoder, AbortController, setTimeout, clearTimeout
+    browser: runtime, fetch: fetcher, URL, TextEncoder, AbortController, structuredClone, setTimeout, clearTimeout
   }, { filename: "service_worker.js" });
   return (request = message, from = sender) => new Promise((resolve) => listener(request, from, resolve));
 }
@@ -108,6 +108,38 @@ test("a consented compatible provider receives the standard chat request without
   assert.equal(sent.options.headers.Authorization, "Bearer private-key");
 });
 
+test("a compatible provider's single translated subtitle is usable without an items wrapper", async () => {
+  const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ id: "584", text: "可以愉快地面对吧？" })
+  } }] }), { providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "gemini-3.1-flash-lite", credential: "private-key" }], aiProviderId: "custom" });
+  const one = { ...message, items: [{ id: "584", text: "楽しく向き合えるでしょ？" }] };
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(one))), { ok: true, items: [{ id: "584", text: "可以愉快地面对吧？" }] });
+  const two = { ...one, items: [...one.items, { id: "585", text: "そうだよね。" }] };
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(two))), { ok: false, errorCode: "invalid_response" });
+  const wrongId = { ...one, items: [{ id: "585", text: "そうだよね。" }] };
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(wrongId))), { ok: false, errorCode: "invalid_response" });
+});
+
+test("a compatible provider's comma-separated JSON objects translate the complete subtitle batch", async () => {
+  const content = [
+    { id: "585", text: "（男）是的。" },
+    { id: "586", text: "在最近的分行，每人\n最多可兑换100万。" },
+    { id: "587", text: "（濑田）最多100万？" }
+  ].map(JSON.stringify).join(",");
+  const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: { content } }] }), {
+    providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "gemini-3.1-flash-lite", credential: "private-key" }],
+    aiProviderId: "custom"
+  });
+  const batch = { ...message, items: ["585", "586", "587"].map((id) => ({ id, text: `原字幕 ${id}` })) };
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(batch))), {
+    ok: true, items: JSON.parse(`[${content}]`)
+  });
+  const missing = { ...batch, items: [...batch.items, { id: "588", text: "漏译" }] };
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(missing))), { ok: false, errorCode: "invalid_response" });
+  const wrongId = { ...batch, items: [...batch.items.slice(0, 2), { id: "588", text: "错配" }] };
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(wrongId))), { ok: false, errorCode: "invalid_response" });
+});
+
 test("compatible providers may return fenced JSON or text content parts", async () => {
   const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
     content: [{ type: "text", text: "```json\n{\"items\":[{\"id\":\"0\",\"text\":\"你好\"}]}\n```" }]
@@ -184,4 +216,35 @@ test("popup provider connectivity test uses the selected provider and returns on
   assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: true });
   assert.equal(JSON.parse(sent.options.body).model, "c1");
   assert.equal(sent.options.headers.Authorization, "Bearer key2");
+});
+
+test("raw diagnostic page sees exact request and malformed response without leaking to Netflix", async () => {
+  let sent;
+  const rawBody = '{"choices":[{"finish_reason":"stop","message":{"content":"{\\"wrong\\":true}"}}]}';
+  const worker = createWorker(async (url, options) => {
+    sent = { url, options };
+    return new Response(rawBody, { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+  const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" } };
+  const get = () => worker({ type: "NETFLIX_DUAL_SUBTITLES_GET_RAW_DIAGNOSTICS" }, page);
+  assert.equal((await get()).records.length, 0);
+  assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_SET_RAW_DIAGNOSTICS", enabled: true }, page)).ok, true);
+  const result = await worker({ ...message, diagnostic: true });
+  assert.equal(result.errorCode, "invalid_response");
+  assert.equal(JSON.stringify(result).includes("private-key"), false);
+  assert.equal(JSON.stringify(result).includes("wrong"), false);
+  const { records } = await get();
+  assert.equal(records.length, 1);
+  assert.equal(records[0].request.body, sent.options.body);
+  assert.equal(records[0].request.headers.Authorization, undefined);
+  assert.equal(records[0].response.body, rawBody);
+  assert.equal(records[0].response.status, 200);
+  assert.equal(records[0].failure.reason, "items_mismatch");
+  assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_GET_RAW_DIAGNOSTICS" }, sender)).ok, false);
+  assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_GET_RAW_DIAGNOSTICS" },
+    { id: "extension-id", url: "extension://src/popup/popup.html" })).ok, false);
+  assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_CLEAR_RAW_DIAGNOSTICS" }, sender)).ok, false);
+  assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_CLEAR_RAW_DIAGNOSTICS" }, page)).ok, true);
+  assert.equal((await get()).records.length, 0);
 });

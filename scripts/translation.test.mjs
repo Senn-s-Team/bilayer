@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node.js test/vm 与 translationScheduler.js，注入可控翻译请求
- * [OUTPUT]: 验证首句优先、预取条数/时间双上限、邻句数量、seek、预算、译文对齐及链路日志保留
+ * [OUTPUT]: 验证首句优先、预取条数/时间双上限、邻句数量、seek、预算、译文对齐及请求成功/失败的端到端耗时
  * [POS]: scripts 的翻译调度行为回归检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -223,6 +223,37 @@ test("translation status exposes complete request lifecycle logs", async () => {
   assert.ok(logs.some((entry) => entry.event === "request_sent"));
   assert.ok(logs.some((entry) => entry.event === "request_succeeded"));
   assert.ok(updates.at(-1)?.logs.length >= 2);
+});
+
+test("request logs measure end-to-end time for successes and failures", async () => {
+  let now = 1000;
+  const pending = [];
+  const window = {};
+  runInNewContext(source, { window, Date: class extends Date { static now() { return now; } } }, { filename: "translationScheduler.js" });
+  const scheduler = window.NetflixDualSubtitles.createTranslationScheduler({
+    translate: () => {
+      const request = deferred();
+      pending.push(request);
+      return request.promise;
+    },
+    onUpdate() {}
+  });
+  scheduler.setSource({ ...sourceFor("timed-requests", cues.slice(0, 2)), prefetchCount: 0 });
+  scheduler.observe(1100);
+  await flush();
+  now = 1125;
+  pending[0].resolve({ ok: true, items: [{ id: "0", text: "你好" }] });
+  await flush();
+  scheduler.observe(5100);
+  await flush();
+  now = 1375;
+  pending[1].resolve({ ok: false, errorCode: "rate_limit" });
+  await flush();
+  const completed = scheduler.status().logs.filter(({ event }) => event === "request_succeeded" || event === "request_failed");
+  assert.deepEqual(JSON.parse(JSON.stringify(completed.map(({ request, durationMs, error }) => ({ request, durationMs, error })))), [
+    { request: 1, durationMs: 125 },
+    { request: 2, durationMs: 250, error: "rate_limit" }
+  ]);
 });
 
 test("scheduler preserves sanitized worker stages with the originating request", async () => {
