@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 window.NetflixDualSubtitles 的轨道归一化、字幕加载、overlay 渲染、fullscreenMount 全屏挂载管理与 page bridge 播放器查询
- * [OUTPUT]: 对外提供 Netflix 页面双字幕同步、全局字幕偏好恢复、轨道查询与手动重载，并在视频/文档全屏时挂载 host
- * [POS]: content 模块入口，连接 Safari 隔离世界与 Netflix 页面主世界；协调 overlay.mount 与 bindVideoFullscreen
+ * [OUTPUT]: 对外提供只含已知偏好的页面状态、双轨各自就绪即渲染及切换剧集/轨道后的过期结果隔离
+ * [POS]: content 模块入口，连接 Safari 隔离世界与 Netflix 页面主世界；协调字幕加载、overlay.mount 与 bindVideoFullscreen
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -59,6 +59,7 @@ const state = {
   tracks: [],
   primaryCues: [],
   secondaryCues: [],
+  selectedTrackKeys: { primary: "", secondary: "" },
   loadStatus: {
     primary: { cueCount: 0, error: "" },
     secondary: { cueCount: 0, error: "" }
@@ -114,13 +115,16 @@ function bindRuntimeMessages() {
     if (areaName !== "local") return;
 
     let shouldRefreshTracks = false;
+    let settingsChanged = false;
 
     for (const [key, change] of Object.entries(changes)) {
-      if (key === "episodeSettingsById") continue;
-      state.settings[key] = change.newValue;
+      if (!Object.hasOwn(DEFAULT_SETTINGS, key)) continue;
+      state.settings[key] = change.newValue === undefined ? DEFAULT_SETTINGS[key] : change.newValue;
+      settingsChanged = true;
       shouldRefreshTracks ||= SUBTITLE_TRACK_SETTING_KEYS.has(key);
     }
 
+    if (!settingsChanged) return;
     overlay.applySettings(state.settings);
     updateNativeSubtitleVisibility();
     if (shouldRefreshTracks) void refreshSelectedSubtitles();
@@ -145,7 +149,7 @@ function bindPopupMessages() {
     if (message?.type !== "NETFLIX_DUAL_SUBTITLES_GET_STATE") return false;
 
     sendResponse({
-      settings: state.settings,
+      settings: normalizeSettings(state.settings),
       tracks: state.tracks,
       loadStatus: state.loadStatus,
       watchId: state.watchId,
@@ -233,6 +237,7 @@ async function loadSettingsForWatch(watchId) {
 function clearSubtitleState() {
   state.refreshToken += 1;
   state.tracks = [];
+  state.selectedTrackKeys = { primary: "", secondary: "" };
   state.primaryCues = [];
   state.secondaryCues = [];
   state.loadStatus = {
@@ -303,44 +308,43 @@ function bindVideo(video) {
   startFrameLoop();
 }
 
-async function refreshSelectedSubtitles() {
+function refreshSelectedSubtitles() {
   if (!isWatchPage()) {
     clearSubtitleState();
     return;
   }
 
   const token = ++state.refreshToken;
-  const [primaryTrack, secondaryTrack] = [
-    pickTrack(state.tracks, state.settings.primaryTrackKey, state.settings.primaryTrackPreference, state.settings.primaryLanguage),
-    pickTrack(state.tracks, state.settings.secondaryTrackKey, state.settings.secondaryTrackPreference, state.settings.secondaryLanguage)
+  const selected = [
+    ["primary", pickTrack(state.tracks, state.settings.primaryTrackKey, state.settings.primaryTrackPreference, state.settings.primaryLanguage)],
+    ["secondary", pickTrack(state.tracks, state.settings.secondaryTrackKey, state.settings.secondaryTrackPreference, state.settings.secondaryLanguage)]
   ];
 
-  const [primaryCues, secondaryCues] = await Promise.all([
-    loadTrackCues("primary", primaryTrack),
-    loadTrackCues("secondary", secondaryTrack)
-  ]);
-
-  if (token !== state.refreshToken) return;
-
-  state.primaryCues = primaryCues;
-  state.secondaryCues = secondaryCues;
+  for (const [role, track] of selected) {
+    const key = track?.key ?? "";
+    if (state.selectedTrackKeys[role] !== key) {
+      state.selectedTrackKeys[role] = key;
+      state[`${role}Cues`] = [];
+      state.loadStatus[role] = { cueCount: 0, error: "" };
+    }
+    if (track) void loadTrackCues(role, track, token);
+  }
   renderForCurrentTime();
 }
 
-async function loadTrackCues(role, track) {
-  if (!track) {
-    state.loadStatus[role] = { cueCount: 0, error: "" };
-    return [];
+async function loadTrackCues(role, track, token) {
+  let cues = [];
+  let error = "";
+  try {
+    cues = await store.load(track);
+  } catch (cause) {
+    error = cause?.message ?? String(cause);
   }
 
-  try {
-    const cues = await store.load(track);
-    state.loadStatus[role] = { cueCount: cues.length, error: "" };
-    return cues;
-  } catch (error) {
-    state.loadStatus[role] = { cueCount: 0, error: error?.message ?? String(error) };
-    return [];
-  }
+  if (token !== state.refreshToken) return;
+  state[`${role}Cues`] = cues;
+  state.loadStatus[role] = { cueCount: cues.length, error };
+  renderForCurrentTime();
 }
 
 function renderForCurrentTime() {
@@ -489,8 +493,10 @@ function readSettings() {
 }
 
 function normalizeSettings(stored) {
-  const settings = { ...DEFAULT_SETTINGS, ...stored };
-
+  const settings = { ...DEFAULT_SETTINGS };
+  for (const key of Object.keys(DEFAULT_SETTINGS)) {
+    if (stored[key] !== undefined) settings[key] = stored[key];
+  }
   if (stored.fontSize !== undefined && stored.secondaryFontSize === undefined) {
     settings.secondaryFontSize = stored.fontSize;
   }
