@@ -1,20 +1,26 @@
 /**
- * [INPUT]: 依赖 window.NetflixDualSubtitles 的轨道归一化、字幕加载、overlay 渲染、fullscreenMount 全屏挂载管理与 page bridge 播放器查询
- * [OUTPUT]: 对外提供只含已知偏好的页面状态、双轨各自就绪即渲染及切换剧集/轨道后的过期结果隔离
- * [POS]: content 模块入口，连接 Safari 隔离世界与 Netflix 页面主世界；协调字幕加载、overlay.mount 与 bindVideoFullscreen
+ * [INPUT]: 依赖轨道归一化、subtitleStore 与 translationScheduler、overlay、fullscreenMount 及 page bridge 播放器查询
+ * [OUTPUT]: 提供逐行原生/AI 来源组合、独立 AI 源轨道、首句等待、切集隔离、不含凭证的页面状态及消息传输失败诊断
+ * [POS]: content 入口；只协调播放与视图，AI provider 配置和密钥由 background 从扩展存储读取
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
 const runtime = globalThis.browser ?? globalThis.chrome;
 const modules = window.NetflixDualSubtitles;
+const DEFAULT_TRANSLATION_PROMPT = "你是一位专业的影视字幕翻译员，也是目标语言的母语使用者。只翻译 items[].text；contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。保持每个 id、数量和顺序完全一致，不合并、不拆分、不遗漏字幕。保留人名、专有名词和既有译名；结合上下文处理代词、时态、人物关系和语气。使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、注释、时间戳或额外字段。";
+const TARGET_LANGUAGES = new Set(["zh-Hans", "zh-Hant", "ja", "ko", "en", "es", "fr", "de", "it", "pt-BR", "ru", "ar", "hi"]);
 const SUBTITLE_TRACK_SETTING_KEYS = new Set([
   "primaryTrackKey",
   "primaryTrackPreference",
   "primaryLanguage",
   "secondaryTrackKey",
   "secondaryTrackPreference",
-  "secondaryLanguage"
+  "secondaryLanguage",
+  "aiSourceTrackKey",
+  "aiSourceTrackPreference",
+  "aiSourceLanguage"
 ]);
+const AI_SETTING_KEYS = new Set(["aiRole", "aiTargetLanguage", "aiProviderId", "aiStyleGuide", "aiSourceTrackKey", "aiSourceTrackPreference", "aiSourceLanguage"]);
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -25,6 +31,13 @@ const DEFAULT_SETTINGS = {
   secondaryLanguage: "en",
   secondaryTrackKey: "",
   secondaryTrackPreference: "",
+  aiRole: "off",
+  aiSourceTrackKey: "",
+  aiSourceTrackPreference: "",
+  aiSourceLanguage: "",
+  aiTargetLanguage: "zh-Hans",
+  aiProviderId: "openai",
+  aiStyleGuide: DEFAULT_TRANSLATION_PROMPT,
   primaryFontSize: 26,
   secondaryFontSize: 28,
   primaryVerticalOffset: 26,
@@ -59,13 +72,19 @@ const state = {
   tracks: [],
   primaryCues: [],
   secondaryCues: [],
-  selectedTrackKeys: { primary: "", secondary: "" },
+  aiSourceCues: [],
+  selectedTrackKeys: { primary: "", secondary: "", aiSource: "" },
   loadStatus: {
     primary: { cueCount: 0, error: "" },
-    secondary: { cueCount: 0, error: "" }
+    secondary: { cueCount: 0, error: "" },
+    aiSource: { cueCount: 0, error: "" }
   },
+  translationStatus: { phase: "off", count: 0, error: "", logs: [] },
+  initialWait: null,
+  waitedForWatch: "",
   tickId: 0,
   refreshToken: 0,
+  subtitleEpoch: 0,
   playerQueryId: 0,
   locationId: 0,
   watchId: "",
@@ -77,6 +96,7 @@ const state = {
 
 const overlay = modules.createSubtitleOverlay();
 const store = modules.createSubtitleStore();
+const translator = modules.createTranslationScheduler({ translate: translateBatch, onUpdate: onTranslationUpdate });
 
 boot();
 
@@ -115,6 +135,7 @@ function bindRuntimeMessages() {
     if (areaName !== "local") return;
 
     let shouldRefreshTracks = false;
+    let shouldRefreshTranslation = Boolean(changes.providers);
     let settingsChanged = false;
 
     for (const [key, change] of Object.entries(changes)) {
@@ -122,13 +143,19 @@ function bindRuntimeMessages() {
       state.settings[key] = change.newValue === undefined ? DEFAULT_SETTINGS[key] : change.newValue;
       settingsChanged = true;
       shouldRefreshTracks ||= SUBTITLE_TRACK_SETTING_KEYS.has(key);
+      shouldRefreshTranslation ||= AI_SETTING_KEYS.has(key) || key === "enabled";
     }
 
-    if (!settingsChanged) return;
-    overlay.applySettings(state.settings);
+    if (!settingsChanged && !shouldRefreshTranslation) return;
+    if (settingsChanged) overlay.applySettings(state.settings);
+    if (shouldRefreshTranslation) {
+      releaseInitialWait(true);
+      translator.clear();
+    }
+    if (shouldRefreshTracks) refreshSelectedSubtitles();
+    else if (shouldRefreshTranslation) syncTranslator();
     updateNativeSubtitleVisibility();
-    if (shouldRefreshTracks) void refreshSelectedSubtitles();
-    else renderForCurrentTime();
+    renderForCurrentTime();
   });
 }
 
@@ -152,6 +179,7 @@ function bindPopupMessages() {
       settings: normalizeSettings(state.settings),
       tracks: state.tracks,
       loadStatus: state.loadStatus,
+      translationStatus: state.translationStatus,
       watchId: state.watchId,
       url: location.href
     });
@@ -236,14 +264,20 @@ async function loadSettingsForWatch(watchId) {
 
 function clearSubtitleState() {
   state.refreshToken += 1;
+  state.subtitleEpoch += 1;
+  releaseInitialWait(false);
+  state.waitedForWatch = "";
   state.tracks = [];
-  state.selectedTrackKeys = { primary: "", secondary: "" };
+  state.selectedTrackKeys = { primary: "", secondary: "", aiSource: "" };
   state.primaryCues = [];
   state.secondaryCues = [];
+  state.aiSourceCues = [];
   state.loadStatus = {
     primary: { cueCount: 0, error: "" },
-    secondary: { cueCount: 0, error: "" }
+    secondary: { cueCount: 0, error: "" },
+    aiSource: { cueCount: 0, error: "" }
   };
+  translator.clear();
   store.clear();
   // SPA route changes may detach the subtitle host element; clear the
   // fullscreen-management flags so overlay.mount() reattaches listeners
@@ -283,11 +317,11 @@ function bindVideo(video) {
   if (!video || video === state.video) return;
 
   if (state.video) {
-    state.video.removeEventListener("timeupdate", renderForCurrentTime);
-    state.video.removeEventListener("seeked", renderForCurrentTime);
-    state.video.removeEventListener("ratechange", renderForCurrentTime);
-    state.video.removeEventListener("play", startFrameLoop);
-    state.video.removeEventListener("pause", stopFrameLoop);
+    state.video.removeEventListener("timeupdate", onPlaybackTimeChange);
+    state.video.removeEventListener("seeked", onPlaybackSeek);
+    state.video.removeEventListener("ratechange", onPlaybackTimeChange);
+    state.video.removeEventListener("play", onVideoPlay);
+    state.video.removeEventListener("pause", onVideoPause);
     if (typeof state.unbindVideoFullscreen === "function") {
       state.unbindVideoFullscreen();
       state.unbindVideoFullscreen = null;
@@ -295,16 +329,17 @@ function bindVideo(video) {
   }
 
   state.video = video;
-  video.addEventListener("timeupdate", renderForCurrentTime);
-  video.addEventListener("seeked", renderForCurrentTime);
-  video.addEventListener("ratechange", renderForCurrentTime);
-  video.addEventListener("play", startFrameLoop);
-  video.addEventListener("pause", stopFrameLoop);
+  video.addEventListener("timeupdate", onPlaybackTimeChange);
+  video.addEventListener("seeked", onPlaybackSeek);
+  video.addEventListener("ratechange", onPlaybackTimeChange);
+  video.addEventListener("play", onVideoPlay);
+  video.addEventListener("pause", onVideoPause);
   const bindFs = modules.bindVideoFullscreen;
   if (typeof bindFs === "function") {
     state.unbindVideoFullscreen = bindFs(video, () => overlay.mount?.());
   }
   overlay.mount?.();
+  onPlaybackTimeChange();
   startFrameLoop();
 }
 
@@ -317,7 +352,8 @@ function refreshSelectedSubtitles() {
   const token = ++state.refreshToken;
   const selected = [
     ["primary", pickTrack(state.tracks, state.settings.primaryTrackKey, state.settings.primaryTrackPreference, state.settings.primaryLanguage)],
-    ["secondary", pickTrack(state.tracks, state.settings.secondaryTrackKey, state.settings.secondaryTrackPreference, state.settings.secondaryLanguage)]
+    ["secondary", pickTrack(state.tracks, state.settings.secondaryTrackKey, state.settings.secondaryTrackPreference, state.settings.secondaryLanguage)],
+    ["aiSource", pickTrack(state.tracks, state.settings.aiSourceTrackKey, state.settings.aiSourceTrackPreference, state.settings.aiSourceLanguage)]
   ];
 
   for (const [role, track] of selected) {
@@ -329,6 +365,7 @@ function refreshSelectedSubtitles() {
     }
     if (track) void loadTrackCues(role, track, token);
   }
+  syncTranslator();
   renderForCurrentTime();
 }
 
@@ -344,6 +381,9 @@ async function loadTrackCues(role, track, token) {
   if (token !== state.refreshToken) return;
   state[`${role}Cues`] = cues;
   state.loadStatus[role] = { cueCount: cues.length, error };
+  updateNativeSubtitleVisibility();
+  if (state.initialWait && hasNativeFallback()) releaseInitialWait(true);
+  syncTranslator();
   renderForCurrentTime();
 }
 
@@ -354,14 +394,162 @@ function renderForCurrentTime() {
   }
 
   const timeMs = state.video.currentTime * 1000 + state.settings.timingOffsetMs;
-  overlay.render({
-    primaryCues: dedupeActiveCues(activeAtTime(state.primaryCues, timeMs)),
-    secondaryCues: dedupeActiveCues(activeAtTime(state.secondaryCues, timeMs))
+  const primaryCues = dedupeActiveCues(activeAtTime(state.primaryCues, timeMs));
+  const secondaryCues = dedupeActiveCues(activeAtTime(state.secondaryCues, timeMs));
+  const role = state.settings.aiRole;
+  if (role === "primary" || role === "secondary") {
+    const source = dedupeActiveCues(activeAtTime(state.aiSourceCues, timeMs));
+    const translated = translator.translatedFor(source);
+    const nativeFallback = state.selectedTrackKeys[role] !== state.selectedTrackKeys.aiSource;
+    if (translated.length > 0) {
+      if (role === "primary") overlay.render({ primaryCues: translated, secondaryCues });
+      else overlay.render({ primaryCues, secondaryCues: translated });
+      return;
+    }
+    if (!nativeFallback) {
+      if (role === "primary") primaryCues.length = 0;
+      else secondaryCues.length = 0;
+    }
+  }
+  overlay.render({ primaryCues, secondaryCues });
+}
+
+function syncTranslator() {
+  const role = state.settings.aiRole;
+  if (!state.settings.enabled || (role !== "primary" && role !== "secondary") || !isWatchPage()) {
+    if (state.translationStatus.phase !== "off") translator.clear();
+    return;
+  }
+
+  const sourceTrack = state.tracks.find((track) => track.key === state.selectedTrackKeys.aiSource);
+  const cues = state.aiSourceCues;
+  if (!sourceTrack || cues.length === 0) {
+    if (state.translationStatus.phase !== "off") translator.clear();
+    state.translationStatus = {
+      phase: state.tracks.length && !sourceTrack ? "error" : "waiting",
+      count: 0,
+      error: state.tracks.length && !sourceTrack ? "source_unavailable" : ""
+    };
+    return;
+  }
+
+  const identity = JSON.stringify([
+    state.watchId, state.subtitleEpoch, sourceTrack.key, role,
+    state.settings.aiTargetLanguage, state.settings.aiProviderId, state.settings.aiStyleGuide
+  ]);
+  translator.setSource({
+    identity,
+    budgetKey: `${state.watchId}:${state.subtitleEpoch}`,
+    cues,
+    sourceLanguage: sourceTrack.language,
+    targetLanguage: state.settings.aiTargetLanguage
+  });
+  if (state.video) {
+    translator.observe(currentTimeMs(), state.video.playbackRate || 1);
+    maybeWaitForFirstTranslation();
+  }
+}
+
+function translateBatch(batch) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeoutId = setTimeout(() => finish({ ok: false, errorCode: "unavailable", trace: [
+      { stage: "rejected", reason: "message_timeout" }
+    ] }), 22000);
+    function finish(result) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      resolve(result);
+    }
+    try {
+      runtime.runtime.sendMessage({ type: "NETFLIX_DUAL_SUBTITLES_TRANSLATE_BATCH", diagnostic: true, ...batch }, (response) => {
+        finish(runtime.runtime.lastError
+          ? { ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "runtime_error" }] }
+          : response ?? { ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "empty_reply" }] });
+      });
+    } catch {
+      finish({ ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "send_failed" }] });
+    }
   });
 }
 
+function onTranslationUpdate(status) {
+  state.translationStatus = status;
+  if (state.initialWait && (status.phase === "error" || translator.readyAt(currentTimeMs()) || hasNativeFallback())) {
+    releaseInitialWait(true);
+  }
+  renderForCurrentTime();
+}
+
+function currentTimeMs() {
+  return (state.video?.currentTime ?? 0) * 1000 + state.settings.timingOffsetMs;
+}
+
+function onPlaybackTimeChange() {
+  if (state.video && state.settings.enabled) translator.observe(currentTimeMs(), state.video.playbackRate || 1);
+  renderForCurrentTime();
+}
+
+function onPlaybackSeek() {
+  if (state.video && state.settings.enabled) translator.observe(currentTimeMs(), state.video.playbackRate || 1, true);
+  renderForCurrentTime();
+}
+
+function onVideoPlay() {
+  startFrameLoop();
+  if (state.initialWait) {
+    releaseInitialWait(false);
+    return;
+  }
+  onPlaybackTimeChange();
+  maybeWaitForFirstTranslation();
+}
+
+function onVideoPause() {
+  stopFrameLoop();
+  if (state.initialWait && !state.initialWait.internalPause) state.initialWait.userPaused = true;
+}
+
+function hasNativeFallback() {
+  const role = state.settings.aiRole;
+  return state[`${role}Cues`]?.length > 0 && state.selectedTrackKeys[role] !== state.selectedTrackKeys.aiSource;
+}
+
+function maybeWaitForFirstTranslation() {
+  const video = state.video;
+  const role = state.settings.aiRole;
+  if (!video || video.paused || typeof video.pause !== "function" || !state.settings.enabled ||
+      (role !== "primary" && role !== "secondary") || !isWatchPage() || hasNativeFallback()) return;
+  if (!state.settings.aiSourceTrackKey && !state.settings.aiSourceLanguage) return;
+  const watch = `${state.watchId}:${role}`;
+  if (state.initialWait || state.waitedForWatch === watch ||
+      (state.translationStatus.count > 0 && translator.readyAt(currentTimeMs()))) return;
+
+  state.waitedForWatch = watch;
+  const wait = { video, watchId: state.watchId, internalPause: true, userPaused: false, timer: 0 };
+  state.initialWait = wait;
+  wait.timer = setTimeout(() => {
+    if (state.initialWait !== wait) return;
+    state.translationStatus = { ...state.translationStatus, phase: "error", error: "initial_timeout" };
+    releaseInitialWait(true);
+  }, 3000);
+  video.pause();
+  queueMicrotask(() => { wait.internalPause = false; });
+}
+
+function releaseInitialWait(resume) {
+  const wait = state.initialWait;
+  if (!wait) return;
+  clearTimeout(wait.timer);
+  state.initialWait = null;
+  if (resume && !wait.userPaused && wait.video === state.video && wait.watchId === state.watchId && wait.video.paused) {
+    void Promise.resolve(wait.video.play()).catch(() => {});
+  }
+}
+
 function updateNativeSubtitleVisibility() {
-  const shouldHide = isWatchPage() && state.settings.enabled && state.settings.hideNativeSubtitles;
+  const shouldHide = shouldHideNativeSubtitles();
   let style = document.querySelector("#netflix-dual-subtitles-native-hide-style");
 
   if (!shouldHide) {
@@ -402,8 +590,13 @@ function postNativeSubtitlePreference() {
   window.postMessage({
     source: "netflix-dual-subtitles-bridge",
     type: "set-native-subtitles-hidden",
-    hidden: isWatchPage() && state.settings.enabled && state.settings.hideNativeSubtitles
+    hidden: shouldHideNativeSubtitles()
   }, window.location.origin);
+}
+
+function shouldHideNativeSubtitles() {
+  return isWatchPage() && state.settings.enabled && state.settings.hideNativeSubtitles
+    && (state.settings.aiRole === "off" || state.primaryCues.length > 0 || state.secondaryCues.length > 0);
 }
 
 function startFrameLoop() {
@@ -497,6 +690,8 @@ function normalizeSettings(stored) {
   for (const key of Object.keys(DEFAULT_SETTINGS)) {
     if (stored[key] !== undefined) settings[key] = stored[key];
   }
+  if (!TARGET_LANGUAGES.has(settings.aiTargetLanguage)) settings.aiTargetLanguage = DEFAULT_SETTINGS.aiTargetLanguage;
+  if (typeof settings.aiStyleGuide !== "string" || !settings.aiStyleGuide.trim()) settings.aiStyleGuide = DEFAULT_TRANSLATION_PROMPT;
   if (stored.fontSize !== undefined && stored.secondaryFontSize === undefined) {
     settings.secondaryFontSize = stored.fontSize;
   }

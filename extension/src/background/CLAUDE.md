@@ -2,9 +2,9 @@
 > L2 | 父级: ../CLAUDE.md
 
 成员清单
-service_worker.js: 初始化全局默认配置与按剧集设置容器，提供字幕下载兜底
+service_worker.js: 初始化默认设置、迁移旧键、字幕下载、多 provider 翻译与连通性测试；对配置、授权、HTTP、解析与 ID 校验生成不含凭证和正文的阶段诊断
 
 设计边界:
-后台脚本保持无业务状态，页面级数据由 content script 自己管理。
+后台不保存页面级字幕状态；翻译时才读取所选 provider 的本地凭证。官方 OpenAI 使用固定 host 与严格 JSON Schema；兼容端点必须是 HTTPS `/chat/completions`（localhost/127.0.0.1 可用 HTTP），且必须拥有运行时授权。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

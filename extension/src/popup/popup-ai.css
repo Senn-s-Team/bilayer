@@ -1,0 +1,167 @@
+/*
+ * [INPUT]: 依赖 popup.css 的 Neumorphism 令牌与 popup.html 的 provider 管理及 AI 配置表单
+ * [OUTPUT]: 提供多 provider 配置、模型列表、连通性测试状态与可滚动完整翻译日志的局部样式
+ * [POS]: popup 的翻译配置样式，跟随基础样式加载以保持弹窗尺寸边界
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+.ai-section {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 14px 2px 16px;
+  border-top: 1px solid rgba(101, 112, 124, 0.14);
+  border-bottom: 1px solid rgba(101, 112, 124, 0.14);
+}
+
+.ai-heading {
+  margin-bottom: 2px;
+}
+
+.ai-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.provider-switcher {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.provider-switcher select {
+  flex: 1;
+  min-width: 0;
+}
+
+.provider-editor:not([hidden]) {
+  display: grid;
+  gap: 10px;
+}
+
+.provider-switcher .ai-button {
+  flex: none;
+  min-width: 30px;
+  padding: 0;
+}
+
+.provider-test-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.provider-test-row .ai-credential-status {
+  overflow-wrap: anywhere;
+}
+
+.provider-model-row {
+  display: flex;
+  gap: 8px;
+}
+
+.provider-model-row input {
+  min-width: 0;
+  flex: 1;
+}
+
+.provider-model-row .ai-button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.ai-section input,
+.ai-section textarea {
+  padding: 9px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ai-section input {
+  height: 36px;
+}
+
+.ai-section textarea {
+  min-height: 58px;
+  max-height: 110px;
+  resize: vertical;
+}
+
+.ai-section input::placeholder,
+.ai-section textarea::placeholder {
+  color: var(--faint);
+}
+
+.ai-credential {
+  display: grid;
+  gap: 9px;
+}
+
+.ai-credential-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-credential-status {
+  min-width: 0;
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.ai-button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--accent-deep);
+  background: var(--surface);
+  box-shadow: var(--raised-shadow-small);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ai-button:active:not(:disabled) {
+  box-shadow: var(--pressed-shadow);
+}
+
+.ai-button-quiet {
+  color: var(--muted);
+}
+
+.ai-consent {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.ai-log-panel {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.ai-log-panel summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ai-log {
+  max-height: 280px;
+  margin: 8px 0 0;
+  padding: 9px 10px;
+  overflow: auto;
+  border-radius: 7px;
+  color: var(--muted);
+  background: var(--surface-deep);
+  box-shadow: var(--pressed-shadow);
+  font: 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

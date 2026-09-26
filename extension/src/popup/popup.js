@@ -1,11 +1,16 @@
 /**
- * [INPUT]: 依赖 browser/chrome storage/tabs API 与 popup.html 的字幕、固定预览和当前角色样式控件
- * [OUTPUT]: 对外提供跨剧集记忆的双字幕偏好、样式编辑与状态反馈
- * [POS]: popup 的交互层，被 Safari 弹窗文档加载
+ * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API、popup.html 的逐行来源、provider 管理和样式控件
+ * [OUTPUT]: 对外提供独立 AI 源轨道、provider 管理、端点授权、/models 模型发现、连通性测试及带总数的完整翻译日志
+ * [POS]: popup 交互层；字幕源与提示词是全局设置，模型、端点和密钥只属于所选 provider
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
 const runtime = globalThis.browser ?? globalThis.chrome;
+const DEFAULT_TRANSLATION_PROMPT = "你是一位专业的影视字幕翻译员，也是目标语言的母语使用者。只翻译 items[].text；contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。保持每个 id、数量和顺序完全一致，不合并、不拆分、不遗漏字幕。保留人名、专有名词和既有译名；结合上下文处理代词、时态、人物关系和语气。使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、注释、时间戳或额外字段。";
+const LEGACY_TRANSLATION_PROMPT = "请将字幕准确翻译成目标语言。保持原意、人物语气和上下文，使用自然口语；保留人名、专有名词与格式；不要添加解释或额外内容。";
+const TARGET_LANGUAGES = new Set([
+  "zh-Hans", "zh-Hant", "ja", "ko", "en", "es", "fr", "de", "it", "pt-BR", "ru", "ar", "hi"
+]);
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -16,6 +21,13 @@ const DEFAULT_SETTINGS = {
   secondaryTrackKey: "",
   secondaryTrackPreference: "",
   secondaryLanguage: "en",
+  aiRole: "off",
+  aiSourceTrackKey: "",
+  aiSourceTrackPreference: "",
+  aiSourceLanguage: "",
+  aiTargetLanguage: "zh-Hans",
+  aiProviderId: "openai",
+  aiStyleGuide: DEFAULT_TRANSLATION_PROMPT,
   primaryFontSize: 26,
   secondaryFontSize: 28,
   primaryVerticalOffset: 26,
@@ -43,6 +55,10 @@ const DEFAULT_SETTINGS = {
   secondaryMaxWidth: 86,
   timingOffsetMs: 0
 };
+
+const DEFAULT_PROVIDERS = [
+  { id: "openai", name: "OpenAI 官方", endpoint: "", model: "gpt-4o-mini", credential: "" }
+];
 
 const STYLE_ROLE_SUFFIXES = [
   "FontSize",
@@ -90,6 +106,21 @@ const controls = {
   timingOffsetMs: document.querySelector("#timingOffsetMs")
 };
 
+const aiControls = {
+  aiTargetLanguage: document.querySelector("#aiTargetLanguage"),
+  aiStyleGuide: document.querySelector("#aiStyleGuide")
+};
+const providerControls = {
+  select: document.querySelector("#aiProvider"),
+  add: document.querySelector("#addProvider"),
+  delete: document.querySelector("#deleteProvider"),
+  editor: document.querySelector("#providerEditor"),
+  name: document.querySelector("#providerName"),
+  model: document.querySelector("#providerModel"),
+  endpoint: document.querySelector("#providerEndpoint"),
+  source: document.querySelector("#aiSourceLanguage")
+};
+
 const advancedControls = {
   FontSize: { element: document.querySelector("#styleFontSize"), numeric: true },
   VerticalOffset: { element: document.querySelector("#styleVerticalOffset"), numeric: true },
@@ -111,6 +142,18 @@ const elements = {
   primaryStatus: document.querySelector("#primaryStatus"),
   secondaryStatus: document.querySelector("#secondaryStatus"),
   trackGrid: document.querySelector("#trackGrid"),
+  primaryTrackLabel: document.querySelector("#primaryTrackLabel"),
+  secondaryTrackLabel: document.querySelector("#secondaryTrackLabel"),
+  aiCredential: document.querySelector("#aiCredential"),
+  aiCredentialStatus: document.querySelector("#aiCredentialStatus"),
+  saveAiCredential: document.querySelector("#saveAiCredential"),
+  deleteAiCredential: document.querySelector("#deleteAiCredential"),
+  aiEndpointStatus: document.querySelector("#aiEndpointStatus"),
+  testProvider: document.querySelector("#testProvider"),
+  fetchProviderModels: document.querySelector("#fetchProviderModels"),
+  providerModelList: document.querySelector("#providerModelList"),
+  providerTestStatus: document.querySelector("#providerTestStatus"),
+  translationLog: document.querySelector("#translationLog"),
   swapTracks: document.querySelector("#swapTracks"),
   reloadTracks: document.querySelector("#reloadTracks"),
   resetStyles: document.querySelector("#resetStyles"),
@@ -130,6 +173,7 @@ const elements = {
 };
 
 let currentSettings = { ...DEFAULT_SETTINGS };
+let currentProviders = DEFAULT_PROVIDERS.map((provider) => ({ ...provider }));
 let currentPageState = null;
 let currentTracks = [];
 let currentTrackSignature = "";
@@ -143,9 +187,13 @@ async function init() {
   const [stored, pageState] = await Promise.all([readStoredSettings(), readPageState()]);
   currentWatchId = readWatchId(pageState);
   currentSettings = normalizeSettings(stored);
+  if (stored.aiStyleGuide === LEGACY_TRANSLATION_PROMPT) await writeSettings({ aiStyleGuide: DEFAULT_TRANSLATION_PROMPT });
+  currentProviders = Array.isArray(stored.providers) && stored.providers.length ? stored.providers : DEFAULT_PROVIDERS.map((provider) => ({ ...provider }));
+  if (!currentProviders.some((provider) => provider.id === currentSettings.aiProviderId)) currentSettings.aiProviderId = currentProviders[0].id;
   applyPageState(pageState, true);
   writeControls();
   bindControls();
+  readCredentialStatus();
   scheduleStatePoll();
 }
 
@@ -163,17 +211,55 @@ function bindControls() {
   });
 
   for (const [key, control] of Object.entries(controls)) {
-    control.addEventListener("input", () => {
+    control.addEventListener(key.endsWith("TrackKey") ? "change" : "input", () => {
+      if (key.endsWith("TrackKey")) {
+        selectSubtitleSource(key.startsWith("primary") ? "primary" : "secondary", control.value);
+        return;
+      }
       const update = readUpdate(key, control);
       Object.assign(currentSettings, update);
       void writeSettings(update);
-
-      if (key === "primaryTrackKey" || key === "secondaryTrackKey") {
-        markTrackLoading(key.startsWith("primary") ? "primary" : "secondary");
-        scheduleStatePoll(0);
-      }
     });
   }
+
+  providerControls.select.addEventListener("change", () => {
+    currentSettings.aiProviderId = providerControls.select.value;
+    void writeSettings({ aiProviderId: currentSettings.aiProviderId });
+    writeProviderControls();
+    scheduleStatePoll(0);
+  });
+  providerControls.add.addEventListener("click", () => void addProvider());
+  providerControls.delete.addEventListener("click", () => void deleteProvider());
+  providerControls.name.addEventListener("change", () => void updateProviderField("name", providerControls.name.value.trim()));
+  providerControls.model.addEventListener("change", () => void updateProviderField("model", providerControls.model.value.trim()));
+  providerControls.endpoint.addEventListener("change", updateEndpoint);
+  providerControls.test = elements.testProvider;
+  providerControls.test.addEventListener("click", () => void testProviderConnection());
+  elements.fetchProviderModels.addEventListener("click", () => void fetchProviderModels());
+  providerControls.source.addEventListener("change", () => {
+    const track = currentTracks.find((item) => item.key === providerControls.source.value);
+    const update = {
+      aiSourceTrackKey: track?.key ?? "",
+      aiSourceTrackPreference: track ? trackPreference(track) : "",
+      aiSourceLanguage: track?.language ?? ""
+    };
+    Object.assign(currentSettings, update);
+    void writeSettings(update);
+    scheduleStatePoll(0);
+  });
+
+  for (const key of ["aiTargetLanguage", "aiStyleGuide"]) {
+    aiControls[key].addEventListener("change", () => {
+      const value = aiControls[key].value.trim() || DEFAULT_SETTINGS[key];
+      aiControls[key].value = value;
+      currentSettings[key] = value;
+      void writeSettings({ [key]: value });
+      if (currentSettings.aiRole !== "off") scheduleStatePoll(0);
+    });
+  }
+
+  elements.saveAiCredential.addEventListener("click", () => void saveCredential());
+  elements.deleteAiCredential.addEventListener("click", () => void deleteCredential());
 
   for (const [suffix, config] of Object.entries(advancedControls)) {
     config.element.addEventListener("input", () => {
@@ -225,6 +311,106 @@ function selectStyleRole(role) {
   writeAdvancedControls();
 }
 
+function selectSubtitleSource(role, value) {
+  const other = role === "primary" ? "secondary" : "primary";
+  if (value === "__ai__") {
+    const source = findSelectedTrack(currentSettings.aiSourceTrackKey, currentSettings.aiSourceTrackPreference, currentSettings.aiSourceLanguage)
+      ?? findSelectedTrack(currentSettings[`${other}TrackKey`], currentSettings[`${other}TrackPreference`], currentSettings[`${other}Language`]);
+    if (!source) {
+      writeRoleStatus(role, "先选择 AI 源语言轨道", "error");
+      writeControls();
+      return;
+    }
+    const update = { aiRole: role };
+    if (!currentSettings.aiSourceTrackKey && !currentSettings.aiSourceTrackPreference && !currentSettings.aiSourceLanguage) {
+      update.aiSourceTrackKey = source.key;
+      update.aiSourceTrackPreference = trackPreference(source);
+      update.aiSourceLanguage = source.language;
+    }
+    Object.assign(currentSettings, update);
+    void writeSettings(update);
+  } else {
+    const key = `${role}TrackKey`;
+    const update = readUpdate(key, controls[key]);
+    if (currentSettings.aiRole === role) update.aiRole = "off";
+    Object.assign(currentSettings, update);
+    void writeSettings(update);
+    markTrackLoading(role);
+  }
+  writeControls();
+  writeStatus();
+  scheduleStatePoll(0);
+}
+
+function updateEndpoint() {
+  const providerId = currentSettings.aiProviderId;
+  const raw = providerControls.endpoint.value.trim();
+  if (!raw) {
+    void updateProviderField("endpoint", "");
+    elements.aiEndpointStatus.textContent = "使用 OpenAI 官方接口";
+    return;
+  }
+  let url;
+  let normalized;
+  try {
+    normalized = normalizeProviderEndpoint(raw);
+    url = new URL(normalized);
+  } catch {
+    elements.aiEndpointStatus.textContent = "请输入 HTTPS Base URL（自动补全 /v1/chat/completions）";
+    return;
+  }
+  providerControls.endpoint.value = normalized;
+  const origin = `${url.protocol}//${url.hostname}/*`;
+  if (!runtime.permissions?.request) {
+    elements.aiEndpointStatus.textContent = "当前浏览器无法申请该服务的域名访问权限";
+    return;
+  }
+  elements.aiEndpointStatus.textContent = "正在申请服务域名访问权限";
+  runtime.permissions.request({ origins: [origin] }, (granted) => {
+    if (providerId !== currentSettings.aiProviderId) return;
+    if (runtime.runtime.lastError || !granted) {
+      elements.aiEndpointStatus.textContent = "未授权该域名；字幕与密钥不会发送";
+      return;
+    }
+    void updateProviderField("endpoint", normalized);
+    elements.aiEndpointStatus.textContent = `已授权 ${url.host}；已使用 ${url.pathname}`;
+    if (currentSettings.aiRole !== "off") scheduleStatePoll(0);
+  });
+}
+
+function normalizeProviderEndpoint(raw) {
+  const url = new URL(raw);
+  if (url.username || url.password || url.search || url.hash) throw new Error("unsafe endpoint");
+  if (url.pathname.endsWith("/chat/completions")) return url.href;
+  const base = url.pathname.replace(/\/+$/, "");
+  url.pathname = `${base.endsWith("/v1") ? base : `${base}/v1`}/chat/completions`;
+  return url.href;
+}
+
+function fetchProviderModels() {
+  const provider = selectedProvider();
+  if (!provider) return Promise.resolve();
+  elements.fetchProviderModels.disabled = true;
+  elements.providerTestStatus.textContent = "正在获取模型列表…";
+  return new Promise((resolve) => {
+    runtime.runtime.sendMessage({ type: "NETFLIX_DUAL_SUBTITLES_LIST_MODELS", providerId: provider.id }, (result) => {
+      elements.fetchProviderModels.disabled = false;
+      if (runtime.runtime.lastError || !result?.ok) {
+        elements.providerTestStatus.textContent = result?.errorCode === "permission_denied" ? "失败：未授权服务域名" : "获取模型失败";
+        resolve();
+        return;
+      }
+      elements.providerModelList.replaceChildren(...result.models.map((model) => {
+        const option = document.createElement("option");
+        option.value = model;
+        return option;
+      }));
+      elements.providerTestStatus.textContent = `已获取 ${result.models.length} 个模型`;
+      resolve();
+    });
+  });
+}
+
 async function swapTracks() {
   const update = {
     primaryTrackKey: currentSettings.secondaryTrackKey,
@@ -234,6 +420,9 @@ async function swapTracks() {
     secondaryTrackPreference: currentSettings.primaryTrackPreference,
     secondaryLanguage: currentSettings.primaryLanguage
   };
+  if (currentSettings.aiRole !== "off") {
+    update.aiRole = currentSettings.aiRole === "primary" ? "secondary" : "primary";
+  }
 
   for (const suffix of STYLE_ROLE_SUFFIXES) {
     update[`primary${suffix}`] = currentSettings[`secondary${suffix}`];
@@ -242,8 +431,14 @@ async function swapTracks() {
 
   Object.assign(currentSettings, update);
   writeControls();
-  markTrackLoading("primary");
-  markTrackLoading("secondary");
+  writeAvailability();
+  if (currentSettings.aiRole === "off") {
+    markTrackLoading("primary");
+    markTrackLoading("secondary");
+  } else {
+    markTrackLoading(currentSettings.aiRole === "primary" ? "secondary" : "primary");
+    writeRoleStatus(currentSettings.aiRole, "AI 等待原字幕", "loading");
+  }
   await writeSettings(update);
   scheduleStatePoll(0);
 }
@@ -274,7 +469,11 @@ function applyPageState(pageState, forceTrackUpdate = false) {
 
   if (watchChanged) {
     currentWatchId = nextWatchId;
-    if (pageState?.settings) currentSettings = normalizeSettings(pageState.settings);
+    if (pageState?.settings) {
+      const providerId = currentSettings.aiProviderId;
+      currentSettings = normalizeSettings(pageState.settings);
+      currentSettings.aiProviderId = providerId;
+    }
     forceTrackUpdate = true;
   }
 
@@ -293,24 +492,105 @@ function applyPageState(pageState, forceTrackUpdate = false) {
 }
 
 function populateTrackSelects() {
-  populateTrackSelect(controls.primaryTrackKey, "不显示", currentSettings.primaryTrackKey, currentSettings.primaryTrackPreference, currentSettings.primaryLanguage);
-  populateTrackSelect(controls.secondaryTrackKey, "不显示", currentSettings.secondaryTrackKey, currentSettings.secondaryTrackPreference, currentSettings.secondaryLanguage);
+  populateTrackSelect("primary");
+  populateTrackSelect("secondary");
+  const source = findSelectedTrack(currentSettings.aiSourceTrackKey, currentSettings.aiSourceTrackPreference, currentSettings.aiSourceLanguage);
+  providerControls.source.replaceChildren(createOption("", "请选择源语言字幕"), ...currentTracks.map(trackToOption));
+  providerControls.source.value = source?.key ?? "";
+  providerControls.source.disabled = currentTracks.length === 0;
 }
 
-function populateTrackSelect(select, emptyLabel, selectedKey, preference, language) {
-  const selectedValue = findSelectedTrack(selectedKey, preference, language)?.key ?? "";
-  select.replaceChildren(createOption("", emptyLabel), ...currentTracks.map(trackToOption));
-  select.value = selectedValue;
+function populateTrackSelect(role) {
+  const select = controls[`${role}TrackKey`];
+  const other = role === "primary" ? "secondary" : "primary";
+  const selectedValue = findSelectedTrack(currentSettings[`${role}TrackKey`], currentSettings[`${role}TrackPreference`], currentSettings[`${role}Language`])?.key ?? "";
+  const source = findSelectedTrack(currentSettings.aiSourceTrackKey, currentSettings.aiSourceTrackPreference, currentSettings.aiSourceLanguage)
+    ?? findSelectedTrack(currentSettings[`${other}TrackKey`], currentSettings[`${other}TrackPreference`], currentSettings[`${other}Language`]);
+  const aiOption = createOption("__ai__", "AI 翻译所选源语言");
+  aiOption.disabled = currentSettings.aiRole === other || !source;
+  select.replaceChildren(createOption("", "不显示"), ...currentTracks.map(trackToOption), aiOption);
+  select.value = currentSettings.aiRole === role ? "__ai__" : selectedValue;
 }
 
 function writeControls() {
   controls.enabled.checked = currentSettings.enabled;
   controls.hideNativeSubtitles.checked = currentSettings.hideNativeSubtitles;
-  controls.primaryTrackKey.value = findSelectedTrack(currentSettings.primaryTrackKey, currentSettings.primaryTrackPreference, currentSettings.primaryLanguage)?.key ?? "";
-  controls.secondaryTrackKey.value = findSelectedTrack(currentSettings.secondaryTrackKey, currentSettings.secondaryTrackPreference, currentSettings.secondaryLanguage)?.key ?? "";
+  populateTrackSelects();
+  for (const [key, control] of Object.entries(aiControls)) control.value = currentSettings[key];
+  writeProviderControls();
   controls.timingOffsetMs.value = currentSettings.timingOffsetMs;
   writeLayoutPreset();
   writeAdvancedControls();
+}
+
+function selectedProvider() {
+  return currentProviders.find((provider) => provider.id === currentSettings.aiProviderId) ?? null;
+}
+
+function writeProviderControls() {
+  providerControls.select.replaceChildren(...currentProviders.map((provider) => createOption(provider.id, provider.name)));
+  providerControls.select.value = currentSettings.aiProviderId;
+  const provider = selectedProvider();
+  providerControls.editor.hidden = !provider;
+  providerControls.delete.disabled = currentProviders.length <= 1;
+  providerControls.name.value = provider?.name ?? "";
+  providerControls.model.value = provider?.model ?? "";
+  providerControls.endpoint.value = provider?.endpoint ?? "";
+  elements.aiEndpointStatus.textContent = provider?.endpoint
+    ? `已保存 ${new URL(provider.endpoint).host}；使用前需获得域名授权`
+    : "使用 OpenAI 官方接口";
+  readCredentialStatus();
+}
+
+function testProviderConnection() {
+  const provider = selectedProvider();
+  if (!provider) return Promise.resolve();
+  const providerId = provider.id;
+  elements.testProvider.disabled = true;
+  elements.providerTestStatus.textContent = "测试中…";
+  return new Promise((resolve) => {
+    runtime.runtime.sendMessage({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId }, (result) => {
+      elements.testProvider.disabled = false;
+      if (providerId !== currentSettings.aiProviderId) { resolve(); return; }
+      if (runtime.runtime.lastError || !result?.ok) {
+        const errors = {
+          auth: "密钥无效", rate_limit: "请求过于频繁", quota: "额度不足",
+          permission_denied: "未授权服务域名", configuration: "请先填写有效模型、端点和密钥",
+          unavailable: "服务不可达", invalid_response: "服务返回格式有误"
+        };
+        elements.providerTestStatus.textContent = `失败：${errors[result?.errorCode] ?? "请求失败"}`;
+      } else {
+        elements.providerTestStatus.textContent = "连接成功";
+      }
+      resolve();
+    });
+  });
+}
+
+async function updateProviderField(field, value, refresh = true) {
+  const provider = selectedProvider();
+  if (!provider) return;
+  if (field === "name" && !value) value = provider.name;
+  if (field === "model" && (!value || /[\s\x00-\x1f]/.test(value))) value = provider.model;
+  currentProviders = currentProviders.map((item) => item.id === provider.id ? { ...item, [field]: value } : item);
+  await writeSettings({ providers: currentProviders });
+  if (refresh) writeProviderControls();
+}
+
+async function addProvider() {
+  const id = crypto.randomUUID();
+  currentProviders = [...currentProviders, { id, name: `新服务 ${currentProviders.length}`, endpoint: "", model: "gpt-4o-mini", credential: "" }];
+  currentSettings.aiProviderId = id;
+  await writeSettings({ providers: currentProviders, aiProviderId: id });
+  writeProviderControls();
+}
+
+async function deleteProvider() {
+  if (currentProviders.length <= 1) return;
+  currentProviders = currentProviders.filter((provider) => provider.id !== currentSettings.aiProviderId);
+  currentSettings.aiProviderId = currentProviders[0].id;
+  await writeSettings({ providers: currentProviders, aiProviderId: currentSettings.aiProviderId });
+  writeProviderControls();
 }
 
 function writeLayoutPreset() {
@@ -411,6 +691,7 @@ function colorWithOpacity(color, opacity) {
 }
 
 function writeStatus() {
+  writeTranslationLog(currentPageState?.translationStatus?.logs ?? []);
   if (!currentPageState) {
     writePageStatus("未连接 Netflix 页面", "error");
     writeRoleStatus("primary", "等待 Netflix 页面", "idle");
@@ -425,21 +706,47 @@ function writeStatus() {
     return;
   }
 
+  const sourceRole = currentSettings.aiRole === "off"
+    ? null
+    : currentSettings.aiRole === "primary" ? "secondary" : "primary";
   const primary = currentPageState.loadStatus?.primary;
   const secondary = currentPageState.loadStatus?.secondary;
-  const hasError = Boolean(primary?.error || secondary?.error);
+  const sourceStatus = sourceRole === "primary" ? primary : secondary;
+  const hasError = sourceRole ? Boolean(sourceStatus?.error) : Boolean(primary?.error || secondary?.error);
 
   if (currentTracks.length === 0) writePageStatus("正在读取字幕", "loading");
-  else if (hasError) writePageStatus(`已识别 ${currentTracks.length} 条，部分加载失败`, "error");
+  else if (hasError) writePageStatus(`已识别 ${currentTracks.length} 条，原字幕加载失败`, "error");
   else writePageStatus(`已识别 ${currentTracks.length} 条字幕`, "ready");
 
-  writeLoadStatus("primary", primary, currentSettings.primaryTrackKey || currentSettings.primaryLanguage);
-  writeLoadStatus("secondary", secondary, currentSettings.secondaryTrackKey || currentSettings.secondaryLanguage);
+  if (sourceRole) {
+    writeLoadStatus(sourceRole, sourceStatus, currentSettings[`${sourceRole}TrackKey`] || currentSettings[`${sourceRole}Language`]);
+    writeTranslationStatus(currentSettings.aiRole, currentPageState.translationStatus);
+  } else {
+    writeLoadStatus("primary", primary, currentSettings.primaryTrackKey || currentSettings.primaryLanguage);
+    writeLoadStatus("secondary", secondary, currentSettings.secondaryTrackKey || currentSettings.secondaryLanguage);
+  }
 }
 
 function writePageStatus(message, state) {
   elements.pageStatus.textContent = message;
   elements.statusDot.dataset.state = state;
+}
+
+function writeTranslationLog(logs) {
+  const summary = elements.translationLog.closest("details")?.querySelector("summary");
+  if (!logs?.length) {
+    elements.translationLog.textContent = "暂无翻译日志";
+    if (summary) summary.textContent = "完整翻译日志";
+    return;
+  }
+  if (summary) summary.textContent = `完整翻译日志 · ${logs.length} 条`;
+  elements.translationLog.textContent = logs.map((entry) => {
+    const { at, event, message, ...details } = entry;
+    const timestamp = at ? new Date(at).toLocaleTimeString() : "--:--:--";
+    const suffix = Object.keys(details).length ? ` ${JSON.stringify(details)}` : "";
+    return `[${timestamp}] ${event} ${message}${suffix}`;
+  }).join("\n");
+  elements.translationLog.scrollTop = elements.translationLog.scrollHeight;
 }
 
 function writeLoadStatus(role, loadStatus, hasSelection) {
@@ -461,6 +768,35 @@ function writeLoadStatus(role, loadStatus, hasSelection) {
   writeRoleStatus(role, currentTracks.length > 0 ? "正在加载" : "等待字幕轨道", "loading");
 }
 
+function writeTranslationStatus(role, status) {
+  switch (status?.phase) {
+    case "ready":
+      writeRoleStatus(role, `AI 已翻译 ${status.count ?? 0} 条`, "ready");
+      break;
+    case "translating":
+      writeRoleStatus(role, `AI 翻译中 · ${status.count ?? 0} 条`, "loading");
+      break;
+    case "error": {
+      const errors = {
+        auth: "API 密钥无效",
+        rate_limit: "请求过于频繁",
+        quota: "API 额度不足",
+        unavailable: "兼容服务网络不可用",
+        invalid_response: "服务返回格式有误",
+        configuration: "请检查端点、密钥、模型和设置",
+        permission_denied: "未授权兼容服务域名",
+        source_unavailable: "请选择 AI 源语言字幕轨道",
+        initial_timeout: "首批翻译超时，已继续播放原文",
+        budget_exceeded: "本集翻译额度已用尽"
+      };
+      writeRoleStatus(role, `AI 翻译失败：${errors[status.error] ?? "请检查密钥及设置"}`, "error");
+      break;
+    }
+    default:
+      writeRoleStatus(role, "AI 等待原字幕", "loading");
+  }
+}
+
 function writeRoleStatus(role, message, state) {
   const element = role === "primary" ? elements.primaryStatus : elements.secondaryStatus;
   element.textContent = message;
@@ -476,6 +812,8 @@ function writeAvailability() {
   const tracksReady = onWatchPage && currentTracks.length > 0;
   controls.primaryTrackKey.disabled = !tracksReady;
   controls.secondaryTrackKey.disabled = !tracksReady;
+  elements.primaryTrackLabel.textContent = "第一行字幕来源";
+  elements.secondaryTrackLabel.textContent = "第二行字幕来源";
   elements.swapTracks.disabled = !tracksReady;
   elements.reloadTracks.disabled = !onWatchPage;
   elements.reloadTracks.classList.remove("is-busy");
@@ -484,21 +822,25 @@ function writeAvailability() {
 
 function scheduleStatePoll(attempt = 0) {
   clearTimeout(pollTimer);
-  if (attempt >= 10 || (currentPageState && !isWatchPage(currentPageState))) return;
+  if ((attempt >= 10 && currentSettings.aiRole === "off") || (currentPageState && !isWatchPage(currentPageState))) return;
 
   pollTimer = setTimeout(async () => {
     const pageState = await readPageState();
     applyPageState(pageState);
 
-    if (shouldKeepPolling(pageState)) scheduleStatePoll(attempt + 1);
-  }, attempt === 0 ? 350 : 900);
+    if (shouldKeepPolling(pageState)) scheduleStatePoll(Math.min(attempt + 1, 10));
+  }, attempt === 0 ? 350 : attempt < 10 ? 900 : 2000);
 }
 
 function shouldKeepPolling(pageState) {
   if (!isWatchPage(pageState)) return false;
+  if (currentSettings.aiRole !== "off") return true;
   if ((pageState?.tracks?.length ?? 0) === 0) return true;
 
-  return ["primary", "secondary"].some((role) => {
+  const nativeRoles = currentSettings.aiRole === "off"
+    ? ["primary", "secondary"]
+    : [currentSettings.aiRole === "primary" ? "secondary" : "primary"];
+  return nativeRoles.some((role) => {
     const selected = currentSettings[`${role}TrackKey`] || currentSettings[`${role}Language`];
     const status = pageState?.loadStatus?.[role];
     return selected && !status?.error && !status?.cueCount;
@@ -580,7 +922,7 @@ function readWatchId(pageState) {
 
 function readStoredSettings() {
   return new Promise((resolve) => {
-    runtime.storage.local.get(DEFAULT_SETTINGS, resolve);
+    runtime.storage.local.get({ ...DEFAULT_SETTINGS, providers: DEFAULT_PROVIDERS }, resolve);
   });
 }
 
@@ -589,7 +931,15 @@ function writeSettings(update) {
 }
 
 function normalizeSettings(stored) {
-  const settings = { ...DEFAULT_SETTINGS, ...stored };
+  const settings = { ...DEFAULT_SETTINGS };
+  for (const key of Object.keys(DEFAULT_SETTINGS)) {
+    if (stored[key] !== undefined) settings[key] = stored[key];
+  }
+
+  if (!TARGET_LANGUAGES.has(settings.aiTargetLanguage)) settings.aiTargetLanguage = DEFAULT_SETTINGS.aiTargetLanguage;
+  if (settings.aiStyleGuide === LEGACY_TRANSLATION_PROMPT || typeof settings.aiStyleGuide !== "string" || !settings.aiStyleGuide.trim()) {
+    settings.aiStyleGuide = DEFAULT_TRANSLATION_PROMPT;
+  }
 
   if (stored.fontSize !== undefined && stored.secondaryFontSize === undefined) {
     settings.secondaryFontSize = stored.fontSize;
@@ -604,6 +954,26 @@ function normalizeSettings(stored) {
   }
 
   return settings;
+}
+
+function readCredentialStatus() {
+  elements.aiCredential.value = "";
+  elements.aiCredentialStatus.textContent = selectedProvider()?.credential ? "已配置密钥" : "未配置密钥";
+}
+
+async function saveCredential() {
+  const credential = elements.aiCredential.value.trim();
+  if (!credential || !selectedProvider()) return;
+  elements.aiCredential.value = "";
+  await updateProviderField("credential", credential, false);
+  elements.saveAiCredential.disabled = false;
+}
+
+async function deleteCredential() {
+  if (!selectedProvider()) return;
+  elements.aiCredential.value = "";
+  await updateProviderField("credential", "", false);
+  elements.deleteAiCredential.disabled = false;
 }
 
 function readPageState() {

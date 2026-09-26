@@ -1,6 +1,6 @@
 /*
- * [INPUT]: 依赖 popup.html 的状态栏、页签、双字幕与样式控件结构
- * [OUTPUT]: 对外提供固定 420x600 视口、常驻预览与分区滚动的 Neumorphism 弹窗视觉
+ * [INPUT]: 依赖 popup.html 的状态栏、原生与 AI 字幕配置、页签和角色样式结构
+ * [OUTPUT]: 对外提供固定 420x600 视口、可滚动的 BYOK 配置、完整换行的轨道错误状态与常驻样式预览
  * [POS]: popup 模块的样式层，被 popup.html 加载
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -59,7 +59,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -73,7 +74,8 @@ input[type="range"] {
 
 button:focus-visible,
 select:focus-visible,
-input:focus-visible {
+input:focus-visible,
+textarea:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring), var(--pressed-shadow);
 }
@@ -377,8 +379,12 @@ h2 {
 }
 
 select,
-input[type="number"] {
+input[type="number"],
+input[type="text"],
+input[type="password"],
+textarea {
   width: 100%;
+  min-width: 0;
   border: 0;
   border-radius: 7px;
   color: var(--ink);
@@ -400,13 +406,12 @@ select {
   min-height: 15px;
   margin-top: 8px;
   padding-left: 1px;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   color: var(--faint);
   font-size: 10px;
   font-weight: 600;
   line-height: 1.5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .track-status[data-state="ready"] {
