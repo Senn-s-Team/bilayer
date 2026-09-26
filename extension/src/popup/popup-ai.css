@@ -1,20 +1,52 @@
 /*
- * [INPUT]: 依赖 popup.css 的 Neumorphism 令牌与 popup.html 的 provider 管理及 AI 配置表单
- * [OUTPUT]: 提供多 provider 配置、模型列表、连通性测试状态与可滚动完整翻译日志的局部样式
+ * [INPUT]: 依赖 popup.css 的 Neumorphism 令牌、popup.html 的互斥字幕模式与 AI 翻译页
+ * [OUTPUT]: 提供模式单选、独立翻译设置、provider 表单、测试状态和可滚动日志的局部样式
  * [POS]: popup 的翻译配置样式，跟随基础样式加载以保持弹窗尺寸边界
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
+.ai-panel {
+  gap: 4px;
+}
+.subtitle-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--surface-deep);
+  box-shadow: var(--pressed-shadow);
+}
+
+.subtitle-mode button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.subtitle-mode button[aria-pressed="true"] {
+  color: var(--accent-deep);
+  background: var(--surface);
+  box-shadow: var(--raised-shadow-small);
+}
+
 .ai-section {
   display: grid;
   min-width: 0;
   gap: 12px;
-  padding: 14px 2px 16px;
-  border-top: 1px solid rgba(101, 112, 124, 0.14);
+  padding: 4px 2px 18px;
   border-bottom: 1px solid rgba(101, 112, 124, 0.14);
 }
 
-.ai-heading {
-  margin-bottom: 2px;
+.ai-section:last-child {
+  border-bottom: 0;
+}
+
+.prefetch-field input {
+  width: 84px;
 }
 
 .ai-fields {
@@ -83,8 +115,8 @@
 }
 
 .ai-section textarea {
-  min-height: 58px;
-  max-height: 110px;
+  min-height: 110px;
+  max-height: 220px;
   resize: vertical;
 }
 

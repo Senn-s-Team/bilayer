@@ -1,6 +1,6 @@
 /*
- * [INPUT]: 依赖 popup.html 的状态栏、原生与 AI 字幕配置、页签和角色样式结构
- * [OUTPUT]: 对外提供固定 420x600 视口、可滚动的 BYOK 配置、完整换行的轨道错误状态与常驻样式预览
+ * [INPUT]: 依赖 popup.html 的状态栏、三页签、字幕轨道与角色样式结构
+ * [OUTPUT]: 提供固定 420x600 视口、三页签布局、轨道错误换行与常驻样式预览
  * [POS]: popup 模块的样式层，被 popup.html 加载
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -250,7 +250,7 @@ h1 {
 
 .tab-list {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
   border-radius: 8px;

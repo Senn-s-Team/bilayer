@@ -22,7 +22,7 @@ README.md - 安装、开发、转换 Safari 工程的操作地图
 </config>
 
 架构决策:
-Safari 工程由 `scripts/create-safari-project.sh` 从 WebExtension 源码生成，源码保持跨浏览器格式；Netflix 私有页面状态集中在 page/content 桥接层，字幕解析与 overlay 渲染保持平台无关。两行字幕各自选择原生轨道或 AI 翻译，AI 可从独立的第三条 Netflix 原生轨道取源；provider 的名称、端点、模型和凭证作为同一数组条目持久化，background 只在 worker 内读取凭证。
+Safari 工程由 `scripts/create-safari-project.sh` 从 WebExtension 源码生成，源码保持跨浏览器格式；Netflix 私有页面状态集中在 page/content 桥接层，字幕解析与 overlay 渲染保持平台无关。aiRole 单一状态在双原生与原生加 AI 之间互斥切换，AI 源轨道可独立于显示的原生行；provider 的名称、端点、模型和凭证作为同一数组条目持久化，全局提示词与预翻译参数不属于 provider，background 只在 worker 内读取凭证。
 
 变更日志:
 2026-07-25: 创建 Safari WebExtension 源码项目，加入 Netflix 双字幕 MVP 架构。
@@ -40,5 +40,6 @@ Safari 工程由 `scripts/create-safari-project.sh` 从 WebExtension 源码生�
 2026-09-26: 日志显示累计条数、扩大滚动窗口；单批翻译失败后继续预取后续字幕。
 2026-09-26: 翻译请求按编号记录后台配置、域名授权、HTTP 状态/耗时、解析和 ID 校验阶段及脱敏失败原因；同集切换 provider 保留既有链路日志。
 2026-09-26: 字幕层逐帧复用未变化的 DOM 节点，避免播放期间重复销毁和重建字幕行。
+2026-09-26: 增设 AI 翻译页并把全局提示词、语言、前瞻设置从 provider 表单移出；字幕页以 aiRole 互斥切换双原生与原生加 AI，预翻译默认 10 句组且受 60-120 秒时窗约束，前后文每侧默认 2 条。
 
 法则: 极简·稳定·导航·版本精确

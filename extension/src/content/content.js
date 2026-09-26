@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖轨道归一化、subtitleStore 与 translationScheduler、overlay、fullscreenMount 及 page bridge 播放器查询
- * [OUTPUT]: 提供逐行原生/AI 来源组合、独立 AI 源轨道、首句等待、切集隔离、不含凭证的页面状态及消息传输失败诊断
+ * [OUTPUT]: 提供互斥双原生/AI 翻译、独立 AI 源轨道、默认 10 组预取和可调上下文、首句等待、切集隔离及脱敏页面状态
  * [POS]: content 入口；只协调播放与视图，AI provider 配置和密钥由 background 从扩展存储读取
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -20,7 +20,7 @@ const SUBTITLE_TRACK_SETTING_KEYS = new Set([
   "aiSourceTrackPreference",
   "aiSourceLanguage"
 ]);
-const AI_SETTING_KEYS = new Set(["aiRole", "aiTargetLanguage", "aiProviderId", "aiStyleGuide", "aiSourceTrackKey", "aiSourceTrackPreference", "aiSourceLanguage"]);
+const AI_SETTING_KEYS = new Set(["aiRole", "aiTargetLanguage", "aiProviderId", "aiStyleGuide", "aiContextCount", "aiSourceTrackKey", "aiSourceTrackPreference", "aiSourceLanguage"]);
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -37,6 +37,8 @@ const DEFAULT_SETTINGS = {
   aiSourceLanguage: "",
   aiTargetLanguage: "zh-Hans",
   aiProviderId: "openai",
+  aiPrefetchCount: 10,
+  aiContextCount: 2,
   aiStyleGuide: DEFAULT_TRANSLATION_PROMPT,
   primaryFontSize: 26,
   secondaryFontSize: 28,
@@ -136,13 +138,19 @@ function bindRuntimeMessages() {
 
     let shouldRefreshTracks = false;
     let shouldRefreshTranslation = Boolean(changes.providers);
+    let shouldUpdatePrefetch = false;
     let settingsChanged = false;
 
     for (const [key, change] of Object.entries(changes)) {
       if (!Object.hasOwn(DEFAULT_SETTINGS, key)) continue;
-      state.settings[key] = change.newValue === undefined ? DEFAULT_SETTINGS[key] : change.newValue;
+      state.settings[key] = key === "aiPrefetchCount" && (!Number.isInteger(change.newValue) || change.newValue < 0 || change.newValue > 50)
+        ? DEFAULT_SETTINGS.aiPrefetchCount
+        : key === "aiContextCount" && (!Number.isInteger(change.newValue) || change.newValue < 0 || change.newValue > 4)
+          ? DEFAULT_SETTINGS.aiContextCount
+          : change.newValue === undefined ? DEFAULT_SETTINGS[key] : change.newValue;
       settingsChanged = true;
       shouldRefreshTracks ||= SUBTITLE_TRACK_SETTING_KEYS.has(key);
+      shouldUpdatePrefetch ||= key === "aiPrefetchCount";
       shouldRefreshTranslation ||= AI_SETTING_KEYS.has(key) || key === "enabled";
     }
 
@@ -153,7 +161,7 @@ function bindRuntimeMessages() {
       translator.clear();
     }
     if (shouldRefreshTracks) refreshSelectedSubtitles();
-    else if (shouldRefreshTranslation) syncTranslator();
+    else if (shouldRefreshTranslation || shouldUpdatePrefetch) syncTranslator();
     updateNativeSubtitleVisibility();
     renderForCurrentTime();
   });
@@ -435,14 +443,16 @@ function syncTranslator() {
 
   const identity = JSON.stringify([
     state.watchId, state.subtitleEpoch, sourceTrack.key, role,
-    state.settings.aiTargetLanguage, state.settings.aiProviderId, state.settings.aiStyleGuide
+    state.settings.aiTargetLanguage, state.settings.aiProviderId, state.settings.aiStyleGuide, state.settings.aiContextCount
   ]);
   translator.setSource({
     identity,
     budgetKey: `${state.watchId}:${state.subtitleEpoch}`,
     cues,
     sourceLanguage: sourceTrack.language,
-    targetLanguage: state.settings.aiTargetLanguage
+    targetLanguage: state.settings.aiTargetLanguage,
+    prefetchCount: state.settings.aiPrefetchCount,
+    contextCount: state.settings.aiContextCount
   });
   if (state.video) {
     translator.observe(currentTimeMs(), state.video.playbackRate || 1);
@@ -691,6 +701,12 @@ function normalizeSettings(stored) {
     if (stored[key] !== undefined) settings[key] = stored[key];
   }
   if (!TARGET_LANGUAGES.has(settings.aiTargetLanguage)) settings.aiTargetLanguage = DEFAULT_SETTINGS.aiTargetLanguage;
+  if (!Number.isInteger(settings.aiPrefetchCount) || settings.aiPrefetchCount < 0 || settings.aiPrefetchCount > 50) {
+    settings.aiPrefetchCount = DEFAULT_SETTINGS.aiPrefetchCount;
+  }
+  if (!Number.isInteger(settings.aiContextCount) || settings.aiContextCount < 0 || settings.aiContextCount > 4) {
+    settings.aiContextCount = DEFAULT_SETTINGS.aiContextCount;
+  }
   if (typeof settings.aiStyleGuide !== "string" || !settings.aiStyleGuide.trim()) settings.aiStyleGuide = DEFAULT_TRANSLATION_PROMPT;
   if (stored.fontSize !== undefined && stored.secondaryFontSize === undefined) {
     settings.secondaryFontSize = stored.fontSize;

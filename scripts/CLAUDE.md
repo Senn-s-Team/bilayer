@@ -3,10 +3,10 @@
 
 成员清单
 check.mjs: 零依赖项目检查器，验证 manifest JSON 与 JavaScript 语法
-content.test.mjs: 可控浏览器上下文运行真实 content.js，覆盖独立源轨道、provider 切换、凭证隔离、首句等待及后台阶段送达弹窗状态
+content.test.mjs: 驱动真实内容脚本，验证独立源、provider 切换、预取热更新、上下文重译与凭证隔离
 overlay.test.mjs: 运行真实字幕层并模拟 Shadow DOM，验证相同字幕节点复用及单行更新、消失状态
 subtitle-store.test.mjs: 驱动真实字幕存储，验证同轨并发请求合并及切集后缓存失效
-translation.test.mjs: 驱动真实时间轴调度，验证首句、预取、seek、预算、后台阶段关联及切换来源后的日志保留
+translation.test.mjs: 驱动真实调度器，验证首句优先、默认 10 组和 60-120 秒双上限、邻句、seek、预算与日志关联
 translation-worker.test.mjs: 模拟后台请求，验证 provider 切换、权限与上游错误、脱敏阶段诊断和字幕 ID 校验
 create-safari-project.sh: Safari 工程生成器，自动发现 Xcode、调用 converter、修正宿主 App bundle id 前缀，并为 Debug/Release 分配 dev/release bundle id
 package-dmg.sh: Release 构建与 dmg 打包脚本，产物输出到 dist/ 并包含 /Applications 快捷方式

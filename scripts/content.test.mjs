@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node.js test/vm 与扩展 content.js 源码，使用可控浏览器消息和字幕加载器
- * [OUTPUT]: 验证凭证隔离、独立 AI 源、provider 切换重译及后台阶段日志经内容脚本送达弹窗状态
+ * [OUTPUT]: 验证凭证隔离、独立 AI 源、provider 重译、预取变更不丢译文、上下文变更重译及脱敏日志
  * [POS]: scripts 的内容脚本行为回归检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -208,6 +208,48 @@ test("AI subtitle replaces native fallback while preserving the source line", as
   assert.equal(page.frames.at(-1)?.secondaryCues?.[0]?.text, "你好");
   assert.deepEqual(JSON.parse(JSON.stringify(page.getState().translationStatus.logs.filter(({ event }) => event === "provider_stage")
     .map(({ stage }) => stage))), ["response", "validated"]);
+});
+
+test("changing prefetch count keeps translated lines and schedules only newly eligible dialogue", async () => {
+  const page = await createPage({ primaryTrackKey: "en", aiSourceTrackKey: "en", aiRole: "secondary", aiPrefetchCount: 0 });
+  const sourceTrack = deferred();
+  page.loads.set("en", sourceTrack);
+  page.announce([{ key: "en", language: "en", label: "English" }]);
+  sourceTrack.resolve([
+    { startMs: 1000, endMs: 2000, text: "Hello." },
+    { startMs: 5000, endMs: 6000, text: "Next." }
+  ]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(page.translationMessages.length, 1);
+  page.translationMessages[0].callback({ ok: true, items: [{ id: "0", text: "你好。" }] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(page.translationMessages.length, 1);
+  assert.equal(page.getState().translationStatus.count, 1);
+  page.listeners.storage({ aiPrefetchCount: { newValue: 1 } }, "local");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(page.translationMessages.length, 2);
+  assert.equal(page.translationMessages[1].message.items[0].id, "1");
+  assert.equal(page.getState().translationStatus.count, 1);
+});
+
+test("changing context count starts a new translation with the updated neighboring lines", async () => {
+  const page = await createPage({ primaryTrackKey: "en", aiSourceTrackKey: "en", aiRole: "secondary", aiPrefetchCount: 0 });
+  const sourceTrack = deferred();
+  page.loads.set("en", sourceTrack);
+  page.announce([{ key: "en", language: "en", label: "English" }]);
+  sourceTrack.resolve([
+    { startMs: 1000, endMs: 2000, text: "Hello." },
+    { startMs: 5000, endMs: 6000, text: "Next." }
+  ]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(JSON.parse(JSON.stringify(page.translationMessages[0].message.contextAfter)), ["Next."]);
+  page.translationMessages[0].callback({ ok: true, items: [{ id: "0", text: "你好。" }] });
+  await new Promise((resolve) => setImmediate(resolve));
+  page.listeners.storage({ aiContextCount: { newValue: 0 } }, "local");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(page.translationMessages.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(page.translationMessages[1].message.contextAfter)), []);
+  assert.equal(page.translationMessages[1].message.items[0].id, "0");
 });
 
 test("AI translation can occupy the first line with original subtitles second", async () => {

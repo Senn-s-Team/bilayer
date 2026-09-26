@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node.js test/vm 与 translationScheduler.js，注入可控翻译请求
- * [OUTPUT]: 验证首句、预取、seek、预算、译文对齐、后台阶段关联及切换 provider 后的日志保留
+ * [OUTPUT]: 验证首句优先、预取条数/时间双上限、邻句数量、seek、预算、译文对齐及链路日志保留
  * [POS]: scripts 的翻译调度行为回归检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -54,6 +54,61 @@ test("first sentence translates before prefetch and inherits source timing", asy
   scheduler.observe(1100, 1);
   await flush();
   assert.equal(requests.filter((batch) => batch.items.some(({ id }) => id === "0")).length, 1);
+});
+
+test("prefetch count limits future subtitle groups while preserving the current line", async () => {
+  const requests = [];
+  const entries = Array.from({ length: 16 }, (_, index) => ({ startMs: 1000 + index * 3000,
+    endMs: 2000 + index * 3000, text: `Line ${index}.` }));
+  const scheduler = create(async (batch) => {
+    requests.push(batch);
+    return { ok: true, items: batch.items.map(({ id }) => ({ id, text: `译 ${id}` })) };
+  });
+  scheduler.setSource({ ...sourceFor("counted", entries), prefetchCount: 3 });
+  scheduler.observe(1100);
+  await flush();
+  await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.flatMap(({ items }) => items.map(({ id }) => id)))), ["0", "1", "2", "3"]);
+  scheduler.setSource({ ...sourceFor("current-only", entries), prefetchCount: 0 });
+  scheduler.observe(1100);
+  await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).items.map(({ id }) => id))), ["0"]);
+});
+
+test("default prefetch stops at ten future groups and never crosses the time horizon", async () => {
+  const requests = [];
+  const entries = Array.from({ length: 14 }, (_, index) => ({ startMs: 1000 + index * 3000,
+    endMs: 2000 + index * 3000, text: `Line ${index}.` }));
+  entries[12] = { startMs: 70000, endMs: 71000, text: "Outside horizon." };
+  entries[13] = { startMs: 73000, endMs: 74000, text: "Later." };
+  const scheduler = create(async (batch) => {
+    requests.push(batch);
+    return { ok: true, items: batch.items.map(({ id }) => ({ id, text: `译 ${id}` })) };
+  });
+  scheduler.setSource(sourceFor("default-ten", entries));
+  scheduler.observe(1100);
+  await flush();
+  await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.flatMap(({ items }) => items.map(({ id }) => id)))),
+    Array.from({ length: 11 }, (_, index) => String(index)));
+  scheduler.observe(37000);
+  await flush();
+  assert.equal(requests.some(({ items }) => items.some(({ id }) => id === "12")), true);
+});
+
+test("context count controls neighboring lines without changing the translated item", async () => {
+  const entries = Array.from({ length: 5 }, (_, index) => ({ startMs: 1000 + index * 3000,
+    endMs: 2000 + index * 3000, text: `Line ${index}.` }));
+  for (const [count, before, after] of [[0, [], []], [1, ["Line 1."], ["Line 3."]]]) {
+    const requests = [];
+    const scheduler = create(async (batch) => { requests.push(batch); return { ok: false, errorCode: "unavailable" }; });
+    scheduler.setSource({ ...sourceFor(`context-${count}`, entries), prefetchCount: 0, contextCount: count });
+    scheduler.observe(7100);
+    await flush();
+    assert.deepEqual(JSON.parse(JSON.stringify(requests[0].items.map(({ id }) => id))), ["2"]);
+    assert.deepEqual(JSON.parse(JSON.stringify(requests[0].contextBefore)), before);
+    assert.deepEqual(JSON.parse(JSON.stringify(requests[0].contextAfter)), after);
+  }
 });
 
 test("one failed batch does not stop prefetching later subtitle groups", async () => {

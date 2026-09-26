@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 browser/chrome storage、permissions API 与 host_permissions/optional_host_permissions 的跨域 fetch 能力
- * [OUTPUT]: 提供字幕下载、多 provider Chat Completions 翻译、脱敏分阶段请求诊断、响应解析、连通性测试、模型发现与旧键迁移
+ * [OUTPUT]: 初始化翻译默认值并提供字幕下载、多 provider Chat Completions 翻译、脱敏诊断、响应解析、连通性测试与旧键迁移
  * [POS]: background 生命周期入口；凭证仅存于 provider 条目且只在 worker 内读取，兼容服务必须通过端点校验与运行时域名授权
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -62,6 +62,8 @@ const DEFAULT_SETTINGS = {
   aiSourceLanguage: "",
   aiTargetLanguage: "zh-Hans",
   aiProviderId: DEFAULT_PROVIDER_ID,
+  aiPrefetchCount: 10,
+  aiContextCount: 2,
   aiStyleGuide: ""
 };
 

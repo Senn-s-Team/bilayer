@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API、popup.html 的逐行来源、provider 管理和样式控件
- * [OUTPUT]: 对外提供独立 AI 源轨道、provider 管理、端点授权、/models 模型发现、连通性测试及带总数的完整翻译日志
- * [POS]: popup 交互层；字幕源与提示词是全局设置，模型、端点和密钥只属于所选 provider
+ * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API 及 popup.html 的三页签、互斥模式、全局翻译和 provider 控件
+ * [OUTPUT]: 提供双原生/AI 模式切换、独立 AI 源轨道、可调预翻译与上下文、provider 授权/模型发现及链路日志
+ * [POS]: popup 交互层；字幕模式由 aiRole 单一状态表示，翻译设置全局共享，密钥和端点只属于所选 provider
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -27,6 +27,8 @@ const DEFAULT_SETTINGS = {
   aiSourceLanguage: "",
   aiTargetLanguage: "zh-Hans",
   aiProviderId: "openai",
+  aiPrefetchCount: 10,
+  aiContextCount: 2,
   aiStyleGuide: DEFAULT_TRANSLATION_PROMPT,
   primaryFontSize: 26,
   secondaryFontSize: 28,
@@ -108,6 +110,8 @@ const controls = {
 
 const aiControls = {
   aiTargetLanguage: document.querySelector("#aiTargetLanguage"),
+  aiPrefetchCount: document.querySelector("#aiPrefetchCount"),
+  aiContextCount: document.querySelector("#aiContextCount"),
   aiStyleGuide: document.querySelector("#aiStyleGuide")
 };
 const providerControls = {
@@ -154,6 +158,9 @@ const elements = {
   providerModelList: document.querySelector("#providerModelList"),
   providerTestStatus: document.querySelector("#providerTestStatus"),
   translationLog: document.querySelector("#translationLog"),
+  nativeMode: document.querySelector("#nativeMode"),
+  aiMode: document.querySelector("#aiMode"),
+  modeDescription: document.querySelector("#modeDescription"),
   swapTracks: document.querySelector("#swapTracks"),
   reloadTracks: document.querySelector("#reloadTracks"),
   resetStyles: document.querySelector("#resetStyles"),
@@ -198,9 +205,20 @@ async function init() {
 }
 
 function bindControls() {
-  document.querySelectorAll("[data-tab]").forEach((button) => {
+  const tabButtons = [...document.querySelectorAll("[data-tab]")];
+  tabButtons.forEach((button, index) => {
     button.addEventListener("click", () => selectTab(button.dataset.tab));
+    button.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const target = event.key === "Home" ? 0 : event.key === "End" ? tabButtons.length - 1
+        : (index + (event.key === "ArrowRight" ? 1 : -1) + tabButtons.length) % tabButtons.length;
+      tabButtons[target].focus();
+      selectTab(tabButtons[target].dataset.tab);
+    });
   });
+  elements.nativeMode.addEventListener("click", () => void selectSubtitleMode("native"));
+  elements.aiMode.addEventListener("click", () => void selectSubtitleMode("ai"));
 
   document.querySelectorAll("[data-layout-preset]").forEach((button) => {
     button.addEventListener("click", () => void selectLayoutPreset(button.dataset.layoutPreset));
@@ -213,7 +231,7 @@ function bindControls() {
   for (const [key, control] of Object.entries(controls)) {
     control.addEventListener(key.endsWith("TrackKey") ? "change" : "input", () => {
       if (key.endsWith("TrackKey")) {
-        selectSubtitleSource(key.startsWith("primary") ? "primary" : "secondary", control.value);
+        selectSubtitleSource(key.startsWith("primary") ? "primary" : "secondary");
         return;
       }
       const update = readUpdate(key, control);
@@ -257,6 +275,17 @@ function bindControls() {
       if (currentSettings.aiRole !== "off") scheduleStatePoll(0);
     });
   }
+  for (const [key, max] of [["aiPrefetchCount", 50], ["aiContextCount", 4]]) {
+    const control = aiControls[key];
+    control.addEventListener("change", () => {
+      const value = Number(control.value);
+      const count = control.value.trim() && Number.isInteger(value) && value >= 0 && value <= max
+        ? value : DEFAULT_SETTINGS[key];
+      control.value = count;
+      currentSettings[key] = count;
+      void writeSettings({ [key]: count });
+    });
+  }
 
   elements.saveAiCredential.addEventListener("click", () => void saveCredential());
   elements.deleteAiCredential.addEventListener("click", () => void deleteCredential());
@@ -282,6 +311,7 @@ function selectTab(tabName) {
     const active = button.dataset.tab === tabName;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
   });
 
   document.querySelectorAll("[data-panel]").forEach((panel) => {
@@ -311,32 +341,35 @@ function selectStyleRole(role) {
   writeAdvancedControls();
 }
 
-function selectSubtitleSource(role, value) {
-  const other = role === "primary" ? "secondary" : "primary";
-  if (value === "__ai__") {
-    const source = findSelectedTrack(currentSettings.aiSourceTrackKey, currentSettings.aiSourceTrackPreference, currentSettings.aiSourceLanguage)
-      ?? findSelectedTrack(currentSettings[`${other}TrackKey`], currentSettings[`${other}TrackPreference`], currentSettings[`${other}Language`]);
-    if (!source) {
-      writeRoleStatus(role, "先选择 AI 源语言轨道", "error");
-      writeControls();
-      return;
-    }
-    const update = { aiRole: role };
-    if (!currentSettings.aiSourceTrackKey && !currentSettings.aiSourceTrackPreference && !currentSettings.aiSourceLanguage) {
+async function selectSubtitleMode(mode) {
+  const aiRole = mode === "native" ? "off" : currentSettings.aiRole === "off" ? "secondary" : currentSettings.aiRole;
+  if (aiRole === currentSettings.aiRole) return;
+
+  const update = { aiRole };
+  if (aiRole !== "off" && !currentSettings.aiSourceTrackKey && !currentSettings.aiSourceTrackPreference && !currentSettings.aiSourceLanguage) {
+    const nativeRole = aiRole === "primary" ? "secondary" : "primary";
+    const source = findSelectedTrack(currentSettings[`${nativeRole}TrackKey`], currentSettings[`${nativeRole}TrackPreference`], currentSettings[`${nativeRole}Language`]);
+    if (source) {
       update.aiSourceTrackKey = source.key;
       update.aiSourceTrackPreference = trackPreference(source);
       update.aiSourceLanguage = source.language;
     }
-    Object.assign(currentSettings, update);
-    void writeSettings(update);
-  } else {
-    const key = `${role}TrackKey`;
-    const update = readUpdate(key, controls[key]);
-    if (currentSettings.aiRole === role) update.aiRole = "off";
-    Object.assign(currentSettings, update);
-    void writeSettings(update);
-    markTrackLoading(role);
   }
+  Object.assign(currentSettings, update);
+  writeControls();
+  writeAvailability();
+  writeStatus();
+  await writeSettings(update);
+  scheduleStatePoll(0);
+}
+
+function selectSubtitleSource(role) {
+  if (currentSettings.aiRole === role) return;
+  const key = `${role}TrackKey`;
+  const update = readUpdate(key, controls[key]);
+  Object.assign(currentSettings, update);
+  void writeSettings(update);
+  markTrackLoading(role);
   writeControls();
   writeStatus();
   scheduleStatePoll(0);
@@ -502,20 +535,30 @@ function populateTrackSelects() {
 
 function populateTrackSelect(role) {
   const select = controls[`${role}TrackKey`];
-  const other = role === "primary" ? "secondary" : "primary";
-  const selectedValue = findSelectedTrack(currentSettings[`${role}TrackKey`], currentSettings[`${role}TrackPreference`], currentSettings[`${role}Language`])?.key ?? "";
-  const source = findSelectedTrack(currentSettings.aiSourceTrackKey, currentSettings.aiSourceTrackPreference, currentSettings.aiSourceLanguage)
-    ?? findSelectedTrack(currentSettings[`${other}TrackKey`], currentSettings[`${other}TrackPreference`], currentSettings[`${other}Language`]);
-  const aiOption = createOption("__ai__", "AI 翻译所选源语言");
-  aiOption.disabled = currentSettings.aiRole === other || !source;
-  select.replaceChildren(createOption("", "不显示"), ...currentTracks.map(trackToOption), aiOption);
-  select.value = currentSettings.aiRole === role ? "__ai__" : selectedValue;
+  if (currentSettings.aiRole === role) {
+    select.replaceChildren(createOption("__ai__", "AI 翻译"));
+    select.value = "__ai__";
+    return;
+  }
+  const selected = findSelectedTrack(currentSettings[`${role}TrackKey`], currentSettings[`${role}TrackPreference`], currentSettings[`${role}Language`]);
+  select.replaceChildren(createOption("", "不显示"), ...currentTracks.map(trackToOption));
+  select.value = selected?.key ?? "";
+}
+
+function writeModeControls() {
+  const isAi = currentSettings.aiRole !== "off";
+  elements.nativeMode.setAttribute("aria-pressed", String(!isAi));
+  elements.aiMode.setAttribute("aria-pressed", String(isAi));
+  elements.modeDescription.textContent = isAi
+    ? "一行显示 Netflix 原生字幕，另一行显示 AI 译文；翻译源轨道可在「AI 翻译」页独立选择。"
+    : "两行分别显示 Netflix 原生字幕；切换模式不会清除轨道或翻译设置。";
 }
 
 function writeControls() {
   controls.enabled.checked = currentSettings.enabled;
   controls.hideNativeSubtitles.checked = currentSettings.hideNativeSubtitles;
   populateTrackSelects();
+  writeModeControls();
   for (const [key, control] of Object.entries(aiControls)) control.value = currentSettings[key];
   writeProviderControls();
   controls.timingOffsetMs.value = currentSettings.timingOffsetMs;
@@ -810,10 +853,10 @@ function markTrackLoading(role) {
 function writeAvailability() {
   const onWatchPage = isWatchPage(currentPageState);
   const tracksReady = onWatchPage && currentTracks.length > 0;
-  controls.primaryTrackKey.disabled = !tracksReady;
-  controls.secondaryTrackKey.disabled = !tracksReady;
-  elements.primaryTrackLabel.textContent = "第一行字幕来源";
-  elements.secondaryTrackLabel.textContent = "第二行字幕来源";
+  controls.primaryTrackKey.disabled = !tracksReady || currentSettings.aiRole === "primary";
+  controls.secondaryTrackKey.disabled = !tracksReady || currentSettings.aiRole === "secondary";
+  elements.primaryTrackLabel.textContent = currentSettings.aiRole === "primary" ? "第一行 · AI 译文" : "第一行 · Netflix 字幕";
+  elements.secondaryTrackLabel.textContent = currentSettings.aiRole === "secondary" ? "第二行 · AI 译文" : "第二行 · Netflix 字幕";
   elements.swapTracks.disabled = !tracksReady;
   elements.reloadTracks.disabled = !onWatchPage;
   elements.reloadTracks.classList.remove("is-busy");
@@ -937,6 +980,12 @@ function normalizeSettings(stored) {
   }
 
   if (!TARGET_LANGUAGES.has(settings.aiTargetLanguage)) settings.aiTargetLanguage = DEFAULT_SETTINGS.aiTargetLanguage;
+  if (!Number.isInteger(settings.aiPrefetchCount) || settings.aiPrefetchCount < 0 || settings.aiPrefetchCount > 50) {
+    settings.aiPrefetchCount = DEFAULT_SETTINGS.aiPrefetchCount;
+  }
+  if (!Number.isInteger(settings.aiContextCount) || settings.aiContextCount < 0 || settings.aiContextCount > 4) {
+    settings.aiContextCount = DEFAULT_SETTINGS.aiContextCount;
+  }
   if (settings.aiStyleGuide === LEGACY_TRANSLATION_PROMPT || typeof settings.aiStyleGuide !== "string" || !settings.aiStyleGuide.trim()) {
     settings.aiStyleGuide = DEFAULT_TRANSLATION_PROMPT;
   }

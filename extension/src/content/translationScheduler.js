@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖已解析的 Netflix cue 时间轴与注入的批量翻译请求
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供当前句优先、预取、失败续调、句组对齐、预算及关联后台阶段的会话日志
+ * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 createTranslationScheduler，支持当前句优先、预取双上限、可调邻句、预算与链路日志
  * [POS]: content 的纯调度层，不接触密钥、提供商协议或字幕原文日志
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -22,6 +22,8 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
   let inFlight = 0;
   let positionMs = 0;
   let leadMs = 60000;
+  let prefetchCount = 10;
+  let contextCount = 2;
   let urgentSeek = false;
   let failure = "";
   let translations = new Map();
@@ -48,6 +50,10 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
   }
 
   function setSource(source) {
+    prefetchCount = Number.isInteger(source.prefetchCount) && source.prefetchCount >= 0 && source.prefetchCount <= 50
+      ? source.prefetchCount : 10;
+    contextCount = Number.isInteger(source.contextCount) && source.contextCount >= 0 && source.contextCount <= 4
+      ? source.contextCount : 2;
     if (source.identity === identity && source.cues === cues) return;
     const cancelledRequests = inFlight;
     generation++;
@@ -101,17 +107,18 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
     if (!identity) return;
     const start = groups.findIndex((group) => group.endMs >= positionMs);
     if (start < 0) return;
+    const last = Math.min(groups.length - 1, start + prefetchCount);
     const maxConcurrent = urgentSeek ? 2 : 1;
     while (inFlight < maxConcurrent) {
       let first = -1;
-      for (let index = start; index < groups.length && groups[index].startMs <= positionMs + leadMs; index++) {
+      for (let index = start; index <= last && groups[index].startMs <= positionMs + leadMs; index++) {
         if (!isDone(groups[index])) { first = index; break; }
       }
       if (first < 0) break;
       const items = [];
       const selected = [];
       let characters = 0;
-      for (let index = first; index < groups.length && groups[index].startMs <= positionMs + leadMs; index++) {
+      for (let index = first; index <= last && groups[index].startMs <= positionMs + leadMs; index++) {
         const group = groups[index];
         if (isDone(group)) continue;
         if (selected.length && (items.length + group.ids.length > MAX_BATCH_ITEMS || characters + group.characters > MAX_BATCH_CHARACTERS)) break;
@@ -124,11 +131,11 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
         // 首句单独发出，避免播放开始时等待整个预取窗口。
         if (first === start) break;
       }
-      const before = groups.slice(Math.max(0, first - 2), first)
-        .flatMap((group) => group.ids).slice(-2).map((id) => cues[Number(id)].text);
+      const before = contextCount === 0 ? [] : groups.slice(Math.max(0, first - contextCount), first)
+        .flatMap((group) => group.ids).slice(-contextCount).map((id) => cues[Number(id)].text);
       const lastGroup = groups.indexOf(selected.at(-1));
-      const after = groups.slice(lastGroup + 1, lastGroup + 3)
-        .flatMap((group) => group.ids).slice(0, 2).map((id) => cues[Number(id)].text);
+      const after = contextCount === 0 ? [] : groups.slice(lastGroup + 1, lastGroup + 1 + contextCount)
+        .flatMap((group) => group.ids).slice(0, contextCount).map((id) => cues[Number(id)].text);
       const totalCharacters = characters + before.join("").length + after.join("").length;
       if (requests >= MAX_REQUESTS || sentCharacters + totalCharacters > MAX_CHARACTERS) {
         failure = "budget_exceeded";
