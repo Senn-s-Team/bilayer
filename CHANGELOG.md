@@ -7,40 +7,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
-
-- English UI with localization support. `extension/manifest.json` declares
-  `"default_locale": "en"` and resolves `name`, `description`, and `action.default_title` from
-  `__MSG_*` messages; `extension/_locales/en` and `extension/_locales/zh_CN` each define the same
-  356 keys. A new `extension/src/i18n.js` exposes `i18n.t()`, `i18n.apply(root)`, and
-  `i18n.uiLanguage()`, drives `data-i18n` / `-placeholder` / `-title` / `-aria-label` attributes,
-  and syncs `document.documentElement.lang` with `runtime.i18n.getUILanguage()`. The popup,
-  onboarding, diagnostics, and export pages load it before their own scripts. Content scripts and
-  the page bridge stay unlocalized: they render subtitle text, not UI.
-- Tag-triggered release pipeline. `.github/workflows/release.yml` runs on `v*` tag pushes on
-  `macos-latest`, asserts the tag matches `extension/manifest.json`, builds the Safari app and
-  `dist/Bilayer-<version>.dmg`, then creates or updates the GitHub Release for that tag with the
-  DMG attached. A manual `workflow_dispatch` run skips publishing and uploads the DMG as a
-  workflow artifact. Supporting scripts: `scripts/assert-release-version.sh` guards the
-  tag/manifest match, and `scripts/xcode-env.sh` finds a full Xcode under `/Applications`
-  (`Xcode.app`, `Xcode-<version>.app`, or the runner's `Xcode_<version>.app`) when
-  `xcode-select` points at CommandLineTools.
-
-### Changed
-
-- **Requires macOS 12.4 or later.** `safari-web-extension-converter` sets the project's
-  `MACOSX_DEPLOYMENT_TARGET` to the build machine's SDK version, which made
-  `LSMinimumSystemVersion` follow whichever machine built the app. `scripts/create-safari-project.sh`
-  now pins `MACOSX_DEPLOYMENT_TARGET = 12.4` for the host app and the extension: the MV3 manifest
-  needs Safari 15.4+, and `optional_host_permissions` needs Safari 15.5, which ships with
-  macOS 12.4.
-
-### Notes
-
-- Release builds have no Developer ID certificate, so the DMG is ad-hoc signed ("Sign to Run
-  Locally") and not notarized: Gatekeeper blocks it on other Macs. Users must right-click → Open,
-  or clear the quarantine attribute. See the release section of [README.md](README.md).
-
 ## [0.3.0] - 2026-09-27
 
 Renamed from `Netflix Dual Subtitles Safari` to `Bilayer`. The name, icon, and UI accent
@@ -57,6 +23,22 @@ guidelines 5.2.1 and 2.3.x.
 - `.editorconfig`.
 - `package.json` now declares `license`, `engines`, `repository`, `homepage`, `bugs`,
   `description`, and `keywords`.
+- English UI with localization support. `extension/manifest.json` declares
+  `"default_locale": "en"` and resolves `name`, `description`, and `action.default_title` from
+  `__MSG_*` messages; `extension/_locales/en` and `extension/_locales/zh_CN` each define the same
+  356 keys. A new `extension/src/i18n.js` exposes `i18n.t()`, `i18n.apply(root)`, and
+  `i18n.uiLanguage()`, drives `data-i18n` / `-placeholder` / `-title` / `-aria-label` attributes,
+  and syncs `document.documentElement.lang` with `runtime.i18n.getUILanguage()`. The popup,
+  onboarding, diagnostics, and export pages load it before their own scripts. Content scripts and
+  the page bridge stay unlocalized: they render subtitle text, not UI.
+- Tag-triggered release pipeline. `.github/workflows/release.yml` runs on `v*` tag pushes on
+  `macos-latest`, asserts the tag matches `extension/manifest.json`, builds the Safari app and
+  `dist/Bilayer-<version>.dmg`, then creates or updates the GitHub Release for that tag with the
+  DMG attached. A manual `workflow_dispatch` run skips publishing and uploads the DMG as a
+  workflow artifact. Supporting scripts: `scripts/assert-release-version.sh` guards the
+  tag/manifest match, and `scripts/xcode-env.sh` finds a full Xcode under `/Applications`
+  (`Xcode.app`, `Xcode-<version>.app`, or the runner's `Xcode_<version>.app`) when
+  `xcode-select` points at CommandLineTools.
 
 ### Changed
 
@@ -77,6 +59,12 @@ guidelines 5.2.1 and 2.3.x.
 - Extracted `scripts/sign-app.sh` as the single implementation of entitlements, codesigning,
   and plugin registration, replacing the block that `install-app.sh` previously duplicated
   inline.
+- **Requires macOS 12.4 or later.** `safari-web-extension-converter` sets the project's
+  `MACOSX_DEPLOYMENT_TARGET` to the build machine's SDK version, which made
+  `LSMinimumSystemVersion` follow whichever machine built the app. `scripts/create-safari-project.sh`
+  now pins `MACOSX_DEPLOYMENT_TARGET = 12.4` for the host app and the extension: the MV3 manifest
+  needs Safari 15.4+, and `optional_host_permissions` needs Safari 15.5, which ships with
+  macOS 12.4.
 
 ### Fixed
 
@@ -96,6 +84,9 @@ guidelines 5.2.1 and 2.3.x.
   settings, provider credentials, and site grants.
 - `netflix-page-bridge.js`, the `netflix-track:` URL scheme, and the Netflix host permissions
   are deliberately unchanged: they name the target site, not the brand.
+- Release builds have no Developer ID certificate, so the DMG is ad-hoc signed ("Sign to Run
+  Locally") and not notarized: Gatekeeper blocks it on other Macs. Users must right-click → Open,
+  or clear the quarantine attribute. See the release section of [README.md](README.md).
 
 ## [0.2.2] - 2026-09-27
 
