@@ -17,8 +17,9 @@ This is a build-free WebExtension source project. `scripts/create-safari-project
 ## Develop
 
 ```bash
-npm run check   # manifest and JavaScript syntax
-npm test        # content, scheduler, store, and worker behavior regressions
+npm run check        # manifest and JavaScript syntax
+npm test             # content, scheduler, store, and worker behavior regressions
+npm run install:app  # compile Release, sign, and overwrite /Applications/Netflix Dual Subtitles.app
 ```
 
 ## Generate Safari Project
