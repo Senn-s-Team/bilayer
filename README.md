@@ -15,6 +15,11 @@ This is a build-free WebExtension source project. `scripts/create-safari-project
 - `extension/src/popup/`: extension popup for language and display settings.
 - `scripts/`: local validation, icon derivation, and Safari conversion helpers.
 
+## Requirements
+
+- Node.js >= 22 for `npm run check` and `npm test` (no dependencies to install).
+- Full Xcode for `npm run safari:project` and the build/install scripts. `npm run icons` needs macOS `sips`.
+
 ## Develop
 
 ```bash
@@ -58,3 +63,23 @@ Only selected subtitle text and the configured number of neighboring cues on eac
 - Prioritize the current subtitle, then prefetch at most the configured future groups (default 10) inside a 60-second window (up to 120 seconds at higher playback rates); seek and episode/track changes invalidate stale results.
 - Keep the prompt, languages, context and prefetch parameters global; providers own only their name, endpoint, model and credential. Unrelated storage and API keys are not page state.
 - Persist subtitle selections, display settings, and provider configurations globally; translated text remains memory-only.
+
+## Privacy
+
+The extension reads the subtitle tracks the Netflix player already requests, and sends only the
+selected subtitle text plus the configured neighboring cues to the endpoint **you** configure.
+API keys live in extension local storage, which is **not encrypted**, and are read only inside the
+background service worker. The opt-in diagnostics panel keeps the latest 20 request/response pairs
+in extension memory, including subtitle text, and never captures `Authorization`. See
+[SECURITY.md](SECURITY.md) for the full boundary and how to report a problem.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). `npm run check && npm test` is the whole gate; CI runs both
+on Node 22 and 24. Notable invariants: keep `extension/manifest.json` and `package.json` versions in
+sync, do not change the bundle identifier casually, and keep third-party trademarks out of the name,
+icon, and metadata.
+
+## License
+
+[MIT](LICENSE).

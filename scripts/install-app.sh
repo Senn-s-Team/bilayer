@@ -48,50 +48,10 @@ echo "==> 2. 正在覆盖安装到 $DEST_APP..."
 rm -rf "$DEST_APP"
 /usr/bin/ditto "$BUILT_APP" "$DEST_APP"
 
-echo "==> 3. 检测代码签名身份..."
-CERT_NAME="$(security find-identity -v -p codesigning 2>/dev/null | grep -o 'Apple Development: [^"]*' | head -n 1 || true)"
-SIGN_TARGET="${CERT_NAME:--}"
+echo "==> 3. 签名、清除隔离属性并刷新 pluginkit 注册..."
+"$ROOT_DIR/scripts/sign-app.sh" "$DEST_APP"
 
-echo "==> 4. 注入沙盒权限并签名 ($SIGN_TARGET)..."
-cat << 'EOF' > /tmp/appex.entitlements
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <key>com.apple.security.files.user-selected.read-only</key>
-    <true/>
-</dict>
-</plist>
-EOF
-
-cat << 'EOF' > /tmp/app.entitlements
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <key>com.apple.security.files.user-selected.read-only</key>
-    <true/>
-    <key>com.apple.security.network.client</key>
-    <true/>
-</dict>
-</plist>
-EOF
-
-find "${DEST_APP}" -name "*.dylib" -exec codesign -f -s "${SIGN_TARGET}" {} + 2>/dev/null || true
-codesign -f -s "${SIGN_TARGET}" --entitlements /tmp/appex.entitlements "${DEST_APPEX}"
-codesign -f -s "${SIGN_TARGET}" --entitlements /tmp/app.entitlements "${DEST_APP}"
-rm -f /tmp/appex.entitlements /tmp/app.entitlements
-
-echo "==> 5. 清除隔离属性并刷新 pluginkit 插件注册..."
-xattr -cr "$DEST_APP"
-pluginkit -r "$DEST_APPEX" 2>/dev/null || true
-pluginkit -a "$DEST_APPEX"
-
-echo "==> 6. 激活宿主 App 以同步 LaunchServices..."
+echo "==> 4. 激活宿主 App 以同步 LaunchServices..."
 open "$DEST_APP"
 
 echo "==> 🎉 搞定！最新扩展已成功覆盖至 $DEST_APP"

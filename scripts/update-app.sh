@@ -1,59 +1,36 @@
 #!/usr/bin/env bash
-# 仅执行重签名、注册系统扩展并启动 Netflix.app
-set -e
+# [INPUT]: SafariApp Xcode 工程、本机 Apple 开发者证书（可选 CERT_NAME 与 NETFLIX_APP_PATH 覆盖）
+# [OUTPUT]: 对已安装宿主 App 重新签名、刷新扩展注册并重启流媒体桌面应用
+# [POS]: scripts 的已安装包重签名入口，被 npm run update:app 调用；签名与注册逻辑委托 sign-app.sh
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
-APP_PATH="/Applications/Bilayer.app"
-APPEX_PATH="${APP_PATH}/Contents/PlugIns/Bilayer Extension.appex"
-NETFLIX_PWA="/Users/chinnsenn/Applications/Netflix.app"
-CERT_NAME="Apple Development: iamchinnsenn@gmail.com (Q7T9A8KJXD)"
+set -euo pipefail
 
-if [ ! -d "${APP_PATH}" ]; then
-  echo "错误: 未找到 ${APP_PATH}，请先将编译好的 App 拷贝到 /Applications/ 下！"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_NAME="${APP_NAME:-Bilayer}"
+APP_PATH="${APP_PATH:-/Applications/$APP_NAME.app}"
+
+# 流媒体桌面应用（PWA）路径因机器而异，默认走系统 Applications，可用 NETFLIX_APP_PATH 覆盖
+STREAMING_APP_PATH="${NETFLIX_APP_PATH:-/Applications/Netflix.app}"
+
+if [[ ! -d "$APP_PATH" ]]; then
+  echo "错误: 未找到 $APP_PATH，请先运行 npm run install:app 安装。" >&2
   exit 1
 fi
 
-echo "==> 1. 使用 Apple Developer 证书签名..."
-cat << 'EOF' > /tmp/appex.entitlements
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <key>com.apple.security.files.user-selected.read-only</key>
-    <true/>
-</dict>
-</plist>
-EOF
+echo "==> 1. 重新签名并注册扩展..."
+"$ROOT_DIR/scripts/sign-app.sh" "$APP_PATH"
 
-cat << 'EOF' > /tmp/app.entitlements
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <key>com.apple.security.files.user-selected.read-only</key>
-    <true/>
-    <key>com.apple.security.network.client</key>
-    <true/>
-</dict>
-</plist>
-EOF
+echo "==> 2. 激活宿主 App..."
+open "$APP_PATH"
 
-find "${APP_PATH}" -name "*.dylib" -exec codesign -f -s "${CERT_NAME}" {} + 2>/dev/null || true
-codesign -f -s "${CERT_NAME}" --entitlements /tmp/appex.entitlements "${APPEX_PATH}"
-codesign -f -s "${CERT_NAME}" --entitlements /tmp/app.entitlements "${APP_PATH}"
-rm -f /tmp/appex.entitlements /tmp/app.entitlements
+if [[ -d "$STREAMING_APP_PATH" ]]; then
+  echo "==> 3. 重启桌面流媒体应用 ($STREAMING_APP_PATH)..."
+  /usr/bin/pkill -f "$(basename "$STREAMING_APP_PATH" .app)" 2>/dev/null || true
+  sleep 1
+  open "$STREAMING_APP_PATH"
+else
+  echo "==> 3. 未找到 $STREAMING_APP_PATH，跳过重启（可用 NETFLIX_APP_PATH 指定）。"
+fi
 
-echo "==> 2. 刷新系统扩展注册..."
-pluginkit -r "${APPEX_PATH}" 2>/dev/null || true
-pluginkit -a "${APPEX_PATH}"
-
-echo "==> 3. 激活宿主 App 并重启桌面 Netflix.app..."
-open "${APP_PATH}"
-pkill -x "Netflix" 2>/dev/null || true
-sleep 1
-open "${NETFLIX_PWA}"
-
-echo "==> 🎉 搞定！双语字幕已就绪！"
+echo "==> 🎉 完成！扩展已重新签名并生效。"

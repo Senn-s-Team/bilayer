@@ -6,23 +6,45 @@ extension/ - 浏览器扩展源码 (icons/ + src/ 五个运行上下文)
 </directory>
 
 <directory>
-SafariApp/ - Apple converter 生成的 macOS Safari App Extension 工程
+SafariApp/ - Apple converter 生成的 macOS Safari App Extension 工程（.gitignore 忽略，不进版本库与分发包）
 </directory>
 
 <directory>
-scripts/ - 本地检查、图标派生与 Safari 工程生成脚本
+scripts/ - 本地检查、图标派生、签名与 Safari 工程生成脚本（不进入扩展运行时）
+</directory>
+
+<directory>
+cases/ - 真实 provider 畸形回包的解析回归夹具，被 translation-worker.test.mjs 全量校验；字幕文本为合成内容
+</directory>
+
+<directory>
+.github/ - CI 工作流，在 Node 22/24 上跑 check 与 test
 </directory>
 
 <config>
-package.json - 项目命令入口，保持零依赖检查链路
+package.json - 项目命令入口，保持零依赖检查链路；版本必须与 extension/manifest.json 一致
 </config>
 
 <config>
 README.md - 安装、开发、转换 Safari 工程的操作地图
 </config>
 
+<config>
+LICENSE - MIT；CONTRIBUTING.md / SECURITY.md / CODE_OF_CONDUCT.md / CHANGELOG.md - 社区与合规文件
+</config>
+
+<config>
+.editorconfig - 跨编辑器缩进/换行约定
+</config>
+
 架构决策:
 Safari 工程由 `scripts/create-safari-project.sh` 从 WebExtension 源码生成，源码保持跨浏览器格式；Netflix 私有页面状态集中在 page/content 桥接层，字幕解析与 overlay 渲染保持平台无关。aiRole 单一状态在双原生与原生加 AI 之间互斥切换，AI 源轨道可独立于显示的原生行；provider 的名称、端点、模型和凭证作为同一数组条目持久化，全局提示词与预翻译参数不属于 provider，background 只在 worker 内读取凭证。
+
+品牌与身份约束:
+产品名、图标与 UI 强调色不得包含第三方商标（App Review 5.2.1 / 2.3.x 拒审风险）。宿主 bundle id 是安装身份的锚点，改名只动显示名不动 bundle id，否则已安装用户的存储、provider 凭证与 Safari 站点授权全部丢失。`netflix-page-bridge.js`、`netflix-track:` scheme 与 Netflix host 权限命名的是目标站点而非品牌，保持原名。
+
+分发包边界:
+`extension/` 下的目录树会被 converter 整棵引用进 appex，因此 `scripts/patch-safari-project.mjs` 在生成工程后剥离 `CLAUDE.md` 与测试文件，并只对 Extension target 关闭脚本沙盒（沙盒会以 Operation not permitted 拦截该阶段）。内部文档不得随分发进入用户载荷。
 
 变更日志:
 2026-07-25: 创建 Safari WebExtension 源码项目，加入 Netflix 双字幕 MVP 架构。
@@ -63,4 +85,5 @@ Safari 工程由 `scripts/create-safari-project.sh` 从 WebExtension 源码生�
 2026-09-27: 修复日文注音请求：旧 readings 任意键对象 Schema 允许模型返回 `{}`；现改为固定字段 `[{surface,reading}]` 数组请求契约，后台转换为 overlay 使用的读音映射字典，兼容旧响应格式；提示词明确按同条日文原文或日文译文生成读音，纯假名字幕允许空数组。不保证模型始终生成非空读音。
 2026-09-27: 发布 0.2.2 补丁版，同步 WebExtension 与 Safari 工程版本；包含兼容服务日文注音响应修复、模型目录下拉发现及诊断报文导出修复。
 2026-09-27: 品牌更名为 Bilayer（原 Netflix Dual Subtitles Safari），移除 Netflix 商标与品牌红以免 App Review 5.2.1/2.3.x 拒审；协议常量改名 bilayer-bridge/bilayer-host/BILAYER_*/window.Bilayer，bundle id 保持不变以保留已安装用户数据；图标改为双层语义（蓝 #4C8DFF 原文层 + 琥珀 #FFB020 译文层），新增 scripts/build-icons.sh 派生 16/32/48/96/128/256/512 全套并接入 npm run icons；版本 0.3.0。
+2026-09-27: 开源化加固：新增 MIT LICENSE、CONTRIBUTING/SECURITY/CODE_OF_CONDUCT/CHANGELOG、.editorconfig 与 GitHub Actions CI（Node 22/24）；package.json 补齐 license/engines/repository/keywords；check.mjs 改用 fileURLToPath 修正含空格路径并对 manifest↔package 版本做一致性断言；抽取 scripts/sign-app.sh 统一签名与注册，消除 install-app.sh 与 update-app.sh 的重复并移除其中的个人证书、邮箱与绝对路径；新增 scripts/patch-safari-project.mjs 在生成后剥离 appex 内的内部文档与测试文件（含 Extension target 脚本沙盒关闭）；cases/ 与 translation-worker.test.mjs 中的真实影视对白替换为合成内容并保留原有结构畸形；删除未使用的 .env。
 法则: 极简·稳定·导航·版本精确

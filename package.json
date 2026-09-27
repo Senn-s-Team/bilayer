@@ -1,8 +1,28 @@
 {
   "name": "bilayer",
   "version": "0.3.0",
+  "description": "Safari web extension that shows two subtitle lines on streaming video pages, with optional AI translation through an OpenAI-compatible service.",
   "private": true,
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Senn-s-Team/bilayer.git"
+  },
+  "homepage": "https://github.com/Senn-s-Team/bilayer#readme",
+  "bugs": {
+    "url": "https://github.com/Senn-s-Team/bilayer/issues"
+  },
+  "keywords": [
+    "safari-extension",
+    "webextension",
+    "subtitles",
+    "dual-subtitles",
+    "translation"
+  ],
   "scripts": {
     "check": "node scripts/check.mjs",
     "icons": "bash scripts/build-icons.sh",

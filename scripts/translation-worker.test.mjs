@@ -150,18 +150,18 @@ test("compatible providers may return fenced JSON or text content parts", async 
 });
 
 test("compatible providers with key typos like id/ or leading markdown are normalized and validated", async () => {
-  const rawContent = '*```json\n{"items":[{"id/":"1482","text":"工厂便化为了密室","ruby":"{工場|こうじょう}は{密室|みっしつ}となった"}]}\n```';
+  const rawContent = '*```json\n{"items":[{"id/":"1482","text":"店铺便迎来了清晨","ruby":"{店|みせ}は{朝|あさ}を{迎|むか}えた"}]}\n```';
   const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
     content: rawContent
   } }] }), {
     providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "gemini-3.5-flash-lite", credential: "private-key" }],
     aiProviderId: "custom"
   });
-  const batch = { ...message, items: [{ id: "1482", text: "工場は密室となった" }] };
+  const batch = { ...message, items: [{ id: "1482", text: "店は朝を迎えた" }] };
   const result = await worker(batch);
   assert.equal(result.ok, true);
   assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{
-    id: "1482", text: "工厂便化为了密室", ruby: "{工場|こうじょう}は{密室|みっしつ}となった", readings: { "密室": "みっしつ", "工場": "こうじょう" }
+    id: "1482", text: "店铺便迎来了清晨", ruby: "{店|みせ}は{朝|あさ}を{迎|むか}えた", readings: { "朝": "あさ", "店": "みせ", "迎": "むか" }
   }]);
 });
 
@@ -487,7 +487,7 @@ test("model returning clean readings map without ruby string is validated and no
 });
 
 test("model returning malformed trailing characters like ]5} is healed and validated", async () => {
-  const rawContent = '```json\n{"items":[{"id":"1547","text":"（高木）啊 为了防止伪造","readings":{"高木":"たかぎ","偽造":"ぎぞう","防止":"ぼうし"}},{"id":"1548","text":"（北村）在原本的设计中没有的微缩文字","readings":{"北村":"きたむら","文字":"もじ"}},{"id":"1549","text":"我将其雕刻在了东都塔内部","readings":{"東都":"とうと","中":"なか"}}]}5}\n```';
+  const rawContent = '```json\n{"items":[{"id":"1547","text":"（店员）这是本店推荐的面包","readings":{"店員":"てんいん","推薦":"すいせん"}},{"id":"1548","text":"（店长）今天早晨刚烤好的","readings":{"店長":"てんちょう","今朝":"けさ"}},{"id":"1549","text":"我把它摆在了橱窗最里面","readings":{"棚":"たな","中":"なか"}}]5}\n```';
   const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
     content: rawContent
   } }] }), {
@@ -499,27 +499,27 @@ test("model returning malformed trailing characters like ]5} is healed and valid
     sourceLanguage: "ja",
     targetLanguage: "zh-Hans",
     items: [
-      { id: "1547", text: "防偽" },
-      { id: "1548", text: "微縮" },
-      { id: "1549", text: "東都" }
+      { id: "1547", text: "推薦" },
+      { id: "1548", text: "今朝" },
+      { id: "1549", text: "棚" }
     ]
   };
   const result = await worker(batch);
   assert.equal(result.ok, true);
   assert.equal(result.items.length, 3);
   assert.equal(result.items[0].id, "1547");
-  assert.equal(result.items[0].text, "（高木）啊 为了防止伪造");
-  assert.equal(result.items[0].readings["偽造"], "ぎぞう");
+  assert.equal(result.items[0].text, "（店员）这是本店推荐的面包");
+  assert.equal(result.items[0].readings["推薦"], "すいせん");
 });
 
 test("model returning message.content as an object is parsed and validated successfully", async () => {
   const objectContent = {
     items: [
-      { id: "1585", text: "尽管如此", readings: {} },
-      { id: "1586", text: "却被国家抛弃了", readings: { "国": "くに" } },
-      { id: "1587", text: "明明是我被抛弃了", readings: { "私": "わたし" } },
-      { id: "1588", text: "我本该创作的艺术品却流传到了日本各地！ ", readings: { "私": "わたし", "作": "つく" } },
-      { id: "1589", text: "而且还是技术比我拙劣的作品", readings: { "私": "わたし", "劣": "おと" } }
+      { id: "1585", text: "天还没亮", readings: {} },
+      { id: "1586", text: "烤箱的灯却已经亮了", readings: { "灯": "ひ" } },
+      { id: "1587", text: "明明昨天还没有人在", readings: { "昨日": "きのう" } },
+      { id: "1588", text: "我本以为还需要再醒一会儿的面团却已经膨胀起来！", readings: { "生地": "きじ", "膨": "ふく" } },
+      { id: "1589", text: "而且香味比平时还要浓郁", readings: { "香": "かお", "濃": "こ" } }
     ]
   };
   const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
@@ -545,7 +545,7 @@ test("model returning message.content as an object is parsed and validated succe
   assert.equal(result.ok, true);
   assert.equal(result.items.length, 5);
   assert.equal(result.items[0].id, "1585");
-  assert.equal(result.items[0].text, "尽管如此");
+  assert.equal(result.items[0].text, "天还没亮");
 });
 
 test("all collected real-world diagnostic cases in cases/ parse and validate successfully", async () => {

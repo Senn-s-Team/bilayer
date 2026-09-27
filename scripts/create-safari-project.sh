@@ -75,6 +75,11 @@ if [[ -f "$PBXPROJ" ]]; then
   ' "$PBXPROJ"
 fi
 
+# converter 会把 extension/ 整棵树引为 appex 资源；剥离内部文档，避免随分发泄漏到用户载荷
+if [[ -f "$PBXPROJ" ]]; then
+  node "$ROOT_DIR/scripts/patch-safari-project.mjs" "$PBXPROJ"
+fi
+
 if [[ -f "$APP_INFO_PLIST" ]] && ! /usr/libexec/PlistBuddy -c "Print :SafariExtensionBundleIdentifier" "$APP_INFO_PLIST" >/dev/null 2>&1; then
   /usr/libexec/PlistBuddy -c "Add :SafariExtensionBundleIdentifier string \$(SAFARI_EXTENSION_BUNDLE_IDENTIFIER)" "$APP_INFO_PLIST"
 fi
