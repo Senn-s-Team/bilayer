@@ -336,11 +336,23 @@ function parseEmbeddedJson(content) {
   try {
     return JSON.parse(candidate);
   } catch {
-    if (!candidate.startsWith("{")) return content;
     try {
-      return JSON.parse(`[${candidate}]`);
+      const healed = candidate.replace(/\]\s*[^\s,}\]]+\s*\}/g, "]}").replace(/,\s*([}\]])/g, "$1");
+      return JSON.parse(healed);
     } catch {
-      return content;
+      const itemsMatch = candidate.match(/"items"\s*:\s*(\[\s*\{[\s\S]*\}\s*\])/);
+      if (itemsMatch) {
+        try {
+          const itemsCleaned = itemsMatch[1].replace(/,\s*([}\]])/g, "$1");
+          return { items: JSON.parse(itemsCleaned) };
+        } catch {}
+      }
+      if (!candidate.startsWith("{")) return content;
+      try {
+        return JSON.parse(`[${candidate}]`);
+      } catch {
+        return content;
+      }
     }
   }
 }

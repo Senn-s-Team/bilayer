@@ -26,7 +26,37 @@ const MAX_RAW_DIAGNOSTICS = 20;
 let rawDiagnosticsVersion = 0;
 let rawCaptureEnabled = true;
 let rawDiagnosticSequence = 0;
+let diagnosticsLoaded = false;
 
+function loadRawDiagnosticsIfNeeded() {
+  if (diagnosticsLoaded) return Promise.resolve();
+  return new Promise((resolve) => {
+    try {
+      runtime.storage.local.get(["__raw_diagnostics__", "__raw_diagnostics_version__", "__raw_diagnostic_seq__"], (stored) => {
+        diagnosticsLoaded = true;
+        if (Array.isArray(stored?.__raw_diagnostics__) && stored.__raw_diagnostics__.length) {
+          rawDiagnostics.splice(0, rawDiagnostics.length, ...stored.__raw_diagnostics__.slice(-MAX_RAW_DIAGNOSTICS));
+          rawDiagnosticsVersion = stored.__raw_diagnostics_version__ ?? rawDiagnostics.length;
+          rawDiagnosticSequence = stored.__raw_diagnostic_seq__ ?? rawDiagnostics.length;
+        }
+        resolve();
+      });
+    } catch {
+      diagnosticsLoaded = true;
+      resolve();
+    }
+  });
+}
+
+function persistRawDiagnostics() {
+  try {
+    runtime.storage.local.set({
+      __raw_diagnostics__: rawDiagnostics.slice(-MAX_RAW_DIAGNOSTICS),
+      __raw_diagnostics_version__: rawDiagnosticsVersion,
+      __raw_diagnostic_seq__: rawDiagnosticSequence
+    });
+  } catch {}
+}
 
 const DEFAULT_SETTINGS = {
   onboardingCompleted: false,
@@ -136,8 +166,14 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, errorCode: "configuration" });
       return true;
     }
-    sendResponse({ ok: true, enabled: rawCaptureEnabled, version: rawDiagnosticsVersion,
-      ...(message.version === rawDiagnosticsVersion ? {} : { records: rawDiagnostics.map((record) => structuredClone(record)) }) });
+    void loadRawDiagnosticsIfNeeded().then(() => {
+      sendResponse({
+        ok: true,
+        enabled: rawCaptureEnabled,
+        version: rawDiagnosticsVersion,
+        ...(message.version === rawDiagnosticsVersion ? {} : { records: rawDiagnostics.map((record) => structuredClone(record)) })
+      });
+    });
     return true;
   }
   if (message?.type === "NETFLIX_DUAL_SUBTITLES_SET_RAW_DIAGNOSTICS") {
@@ -156,6 +192,7 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     rawDiagnostics.length = 0;
     rawDiagnosticsVersion++;
+    persistRawDiagnostics();
     sendResponse({ ok: true });
     return true;
   }
@@ -331,6 +368,7 @@ async function translateBatch(message, sender, testProviderId = "") {
       rawDiagnostics.push(rawRecord);
       if (rawDiagnostics.length > MAX_RAW_DIAGNOSTICS) rawDiagnostics.shift();
       rawDiagnosticsVersion++;
+      persistRawDiagnostics();
     }
     const response = await fetch(endpoint, requestOptions);
 
@@ -383,8 +421,11 @@ async function translateBatch(message, sender, testProviderId = "") {
       durationMs: Date.now() - startedAt });
   } finally {
     clearTimeout(timeout);
-    if (rawRecord) rawRecord.completedAt = Date.now();
-    if (rawRecord) rawDiagnosticsVersion++;
+    if (rawRecord) {
+      rawRecord.completedAt = Date.now();
+      rawDiagnosticsVersion++;
+      persistRawDiagnostics();
+    }
   }
 }
 
@@ -414,11 +455,26 @@ function parseTranslationJson(content, compatible) {
   try {
     parsed = JSON.parse(candidate);
   } catch (error) {
-    if (!compatible || !candidate.startsWith("{")) throw error;
     try {
-      parsed = { items: JSON.parse(`[${candidate}]`) };
+      const healed = candidate.replace(/\]\s*[^\s,}\]]+\s*\}/g, "]}").replace(/,\s*([}\]])/g, "$1");
+      parsed = JSON.parse(healed);
     } catch {
-      throw error;
+      const itemsMatch = candidate.match(/"items"\s*:\s*(\[\s*\{[\s\S]*\}\s*\])/);
+      if (itemsMatch) {
+        try {
+          const itemsCleaned = itemsMatch[1].replace(/,\s*([}\]])/g, "$1");
+          parsed = { items: JSON.parse(itemsCleaned) };
+        } catch {}
+      }
+      if (!parsed && compatible) {
+        try {
+          parsed = { items: JSON.parse(`[${candidate}]`) };
+        } catch {
+          throw error;
+        }
+      } else if (!parsed) {
+        throw error;
+      }
     }
   }
   return normalizeTranslationPayload(parsed);

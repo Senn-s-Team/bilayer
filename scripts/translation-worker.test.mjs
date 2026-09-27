@@ -404,3 +404,29 @@ test("model returning clean readings map without ruby string is validated and no
   assert.equal(result.ok, true);
   assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "你好", readings: { "私": "わたし" } }]);
 });
+
+test("model returning malformed trailing characters like ]5} is healed and validated", async () => {
+  const rawContent = '```json\n{"items":[{"id":"1547","text":"（高木）啊 为了防止伪造","readings":{"高木":"たかぎ","偽造":"ぎぞう","防止":"ぼうし"}},{"id":"1548","text":"（北村）在原本的设计中没有的微缩文字","readings":{"北村":"きたむら","文字":"もじ"}},{"id":"1549","text":"我将其雕刻在了东都塔内部","readings":{"東都":"とうと","中":"なか"}}]}5}\n```';
+  const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: rawContent
+  } }] }), {
+    providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "gemini-3.5-flash-lite", credential: "private-key" }],
+    aiProviderId: "custom"
+  });
+  const batch = {
+    ...message,
+    sourceLanguage: "ja",
+    targetLanguage: "zh-Hans",
+    items: [
+      { id: "1547", text: "防偽" },
+      { id: "1548", text: "微縮" },
+      { id: "1549", text: "東都" }
+    ]
+  };
+  const result = await worker(batch);
+  assert.equal(result.ok, true);
+  assert.equal(result.items.length, 3);
+  assert.equal(result.items[0].id, "1547");
+  assert.equal(result.items[0].text, "（高木）啊 为了防止伪造");
+  assert.equal(result.items[0].readings["偽造"], "ぎぞう");
+});
