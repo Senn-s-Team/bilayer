@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 browser/chrome runtime 消息 API 与 diagnostics.html 的报文面板
- * [OUTPUT]: 轮询原始报文，提供折叠 JSON 树、键盘路径导航、长字符串预览及逐字原文切换
+ * [OUTPUT]: 轮询原始报文，提供紧凑检查器、可搜索 JSON 树、层级控制及逐字原文切换
  * [POS]: diagnostics 模块的交互层，只允许扩展诊断页读取 background 内存记录
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -19,9 +19,18 @@ const elements = {
   detailMeta: document.querySelector("#detailMeta"),
   detailTitle: document.querySelector("#detailTitle"),
   detailResult: document.querySelector("#detailResult"),
+  transportSummary: document.querySelector("#transportSummary"),
   requestMeta: document.querySelector("#requestMeta"),
   headersView: document.querySelector("#headersView"),
   payloadView: document.querySelector("#payloadView"),
+  payloadShape: document.querySelector("#payloadShape"),
+  jsonTools: document.querySelector("#jsonTools"),
+  jsonSearch: document.querySelector("#jsonSearch"),
+  searchStatus: document.querySelector("#searchStatus"),
+  previousMatch: document.querySelector("#previousMatch"),
+  nextMatch: document.querySelector("#nextMatch"),
+  expandTree: document.querySelector("#expandTree"),
+  collapseTree: document.querySelector("#collapseTree"),
   jsonPath: document.querySelector("#jsonPath"),
   jsonPathValue: document.querySelector("#jsonPathValue"),
   toggleRaw: document.querySelector("#toggleRaw")
@@ -33,17 +42,46 @@ let payloadKind = "request";
 let showRaw = false;
 let version = -1;
 let renderedPayload = null;
+let searchMatches = [];
+let activeMatch = -1;
 
 void init();
 
 async function init() {
   bindControls();
+  if (!runtime?.runtime?.sendMessage) {
+    showLocalPreview();
+    return;
+  }
   await send({ type: "NETFLIX_DUAL_SUBTITLES_SET_RAW_DIAGNOSTICS", enabled: true });
   await refresh();
   window.addEventListener("pagehide", () => {
     void send({ type: "NETFLIX_DUAL_SUBTITLES_SET_RAW_DIAGNOSTICS", enabled: false });
   });
   window.setInterval(refresh, 1000);
+}
+
+function showLocalPreview() {
+  const at = Date.now();
+  const body = JSON.stringify({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: "请保持字幕自然、简洁。" },
+      { role: "user", content: JSON.stringify({ items: [{ id: "42", text: "We should get going." }], contextBefore: ["It's getting late."], contextAfter: ["The train leaves soon."] }) }
+    ],
+    temperature: 0.2
+  });
+  records = [{ id: 1, at, completedAt: at + 842, validated: true,
+    request: { url: "https://api.openai.com/v1/chat/completions", method: "POST", headers: { "Content-Type": "application/json" }, body },
+    response: { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ choices: [{ message: { role: "assistant", content: JSON.stringify({ items: [{ id: "42", text: "そろそろ行こう。" }] }) } }] }) }
+  }];
+  selectedId = 1;
+  elements.liveStatus.textContent = "界面预览 · 示例数据";
+  elements.liveStatus.dataset.state = "idle";
+  elements.toggle.disabled = true;
+  elements.refresh.disabled = true;
+  elements.clear.disabled = true;
+  render();
 }
 
 function bindControls() {
@@ -72,6 +110,16 @@ function bindControls() {
     elements.toggleRaw.setAttribute("aria-pressed", String(showRaw));
     renderDetail();
   });
+  elements.jsonSearch.addEventListener("input", updateSearch);
+  elements.jsonSearch.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    selectSearchMatch(event.shiftKey ? -1 : 1, true);
+  });
+  elements.previousMatch.addEventListener("click", () => selectSearchMatch(-1, true));
+  elements.nextMatch.addEventListener("click", () => selectSearchMatch(1, true));
+  elements.expandTree.addEventListener("click", () => setTreeDepth(Infinity));
+  elements.collapseTree.addEventListener("click", () => setTreeDepth(2));
   elements.payloadView.addEventListener("focusin", (event) => {
     const row = event.target.closest(".json-row");
     if (row) elements.jsonPathValue.textContent = row.dataset.path;
@@ -156,6 +204,7 @@ function renderDetail() {
   elements.detailTitle.textContent = `请求 ${record.id}`;
   elements.detailResult.textContent = status;
   elements.detailResult.dataset.state = record.validated ? "success" : record.failure || record.error ? "error" : "loading";
+  elements.transportSummary.textContent = `${request.method ?? "请求"} · ${response?.status ?? "等待响应"} · ${record.completedAt && record.at ? `${record.completedAt - record.at} ms` : "进行中"}`;
   elements.requestMeta.replaceChildren(
     meta("URL", request.url ?? ""),
     meta("方法", request.method ?? ""),
@@ -178,14 +227,25 @@ function renderPayload(recordId, text) {
   elements.jsonPathValue.textContent = "$";
   const parsed = showRaw ? null : parseFormattedJson(text);
   elements.jsonPath.hidden = !parsed;
+  elements.jsonTools.hidden = !parsed;
+  elements.payloadShape.textContent = showRaw ? "原始文本" : parsed ? describeJson(parsed.value) : "纯文本";
   if (parsed) {
-    elements.payloadView.append(createJsonNode(parsed.value, "$", "$"));
+    elements.payloadView.append(createJsonNode(parsed.value, "$", "$", 0));
+    updateSearch();
   } else {
+    searchMatches = [];
+    activeMatch = -1;
     const raw = document.createElement("pre");
     raw.className = "payload-raw";
     raw.textContent = text;
     elements.payloadView.append(raw);
   }
+}
+
+function describeJson(value) {
+  if (Array.isArray(value)) return `JSON 数组 · ${value.length} 项`;
+  if (value !== null && typeof value === "object") return `JSON 对象 · ${Object.keys(value).length} 个字段`;
+  return `JSON · ${value === null ? "null" : typeof value}`;
 }
 
 function parseFormattedJson(value) {
@@ -214,34 +274,46 @@ function parseEmbeddedJson(content) {
     try { return JSON.parse(`[${content}]`); } catch { return content; }
   }
 }
-function createJsonNode(value, label, path) {
+function createJsonNode(value, label, path, depth) {
   const collection = value !== null && typeof value === "object";
   const node = document.createElement(collection ? "details" : "div");
   if (collection) {
     node.className = "json-node";
-    node.open = true;
+    node.dataset.depth = String(depth);
+    node.open = depth < 2;
   }
   const row = document.createElement(collection ? "summary" : "div");
-  row.className = `json-row${collection ? "" : " json-leaf"}`;
+  row.className = `json-row ${collection ? "json-branch" : "json-leaf"}`;
   row.dataset.path = path;
+  row.searchText = `${label} ${collection ? "" : JSON.stringify(value)}`.toLowerCase();
   row.tabIndex = -1;
   const key = document.createElement("span");
   key.className = "json-key";
   key.textContent = `${label}:`;
   row.append(key);
   if (collection) {
+    const isArray = Array.isArray(value);
+    const bracket = document.createElement("span");
+    bracket.className = "json-bracket";
+    bracket.textContent = isArray ? "[" : "{";
+    const type = document.createElement("span");
+    type.className = "json-type";
+    type.textContent = isArray ? "数组" : "对象";
     const count = document.createElement("span");
     count.className = "json-count";
-    count.textContent = `${Array.isArray(value) ? value.length : Object.keys(value).length} 项`;
-    row.append(count);
+    count.textContent = `${isArray ? value.length : Object.keys(value).length} ${isArray ? "项" : "字段"}`;
+    row.append(bracket, type, count);
     const children = document.createElement("div");
     children.className = "json-children";
-    for (const [name, child] of Array.isArray(value) ? value.entries() : Object.entries(value)) {
+    for (const [name, child] of isArray ? value.entries() : Object.entries(value)) {
       const index = typeof name === "number";
       const childPath = index ? `${path}[${name}]` : `${path}${/^[a-zA-Z_$][\w$]*$/.test(name) ? `.${name}` : `[${JSON.stringify(name)}]`}`;
-      children.append(createJsonNode(child, index ? `[${name}]` : JSON.stringify(name), childPath));
+      children.append(createJsonNode(child, index ? `[${name}]` : JSON.stringify(name), childPath, depth + 1));
     }
-    node.append(row, children);
+    const close = document.createElement("div");
+    close.className = "json-close";
+    close.textContent = isArray ? "]" : "}";
+    node.append(row, children, close);
   } else {
     const valueType = value === null ? "null" : typeof value;
     if (valueType === "string" && value.length > 160) {
@@ -267,6 +339,41 @@ function createJsonNode(value, label, path) {
     node.append(row);
   }
   return node;
+}
+
+function updateSearch() {
+  const query = elements.jsonSearch.value.trim().toLowerCase();
+  for (const row of searchMatches) row.classList.remove("is-match", "is-current-match");
+  searchMatches = query ? [...elements.payloadView.querySelectorAll(".json-row")].filter((row) =>
+    query.startsWith("$") ? row.dataset.path.toLowerCase().includes(query) : row.searchText.includes(query)) : [];
+  activeMatch = searchMatches.length ? 0 : -1;
+  for (const row of searchMatches) row.classList.add("is-match");
+  elements.previousMatch.disabled = !searchMatches.length;
+  elements.nextMatch.disabled = !searchMatches.length;
+  elements.searchStatus.textContent = !query ? "搜索 JSON" : searchMatches.length ? `1 / ${searchMatches.length}` : "无匹配";
+  if (searchMatches.length) revealSearchMatch(false);
+}
+
+function selectSearchMatch(step, focus) {
+  if (!searchMatches.length) return;
+  searchMatches[activeMatch]?.classList.remove("is-current-match");
+  activeMatch = (activeMatch + step + searchMatches.length) % searchMatches.length;
+  revealSearchMatch(focus);
+}
+
+function revealSearchMatch(focus) {
+  const row = searchMatches[activeMatch];
+  for (let branch = row.closest("details"); branch; branch = branch.parentElement.closest("details")) branch.open = true;
+  row.classList.add("is-current-match");
+  row.scrollIntoView({ block: "nearest" });
+  elements.jsonPathValue.textContent = row.dataset.path;
+  elements.searchStatus.textContent = `${activeMatch + 1} / ${searchMatches.length}`;
+  if (focus) row.focus();
+}
+
+function setTreeDepth(depth) {
+  for (const node of elements.payloadView.querySelectorAll(".json-node")) node.open = Number(node.dataset.depth) < depth;
+  if (searchMatches.length) revealSearchMatch(false);
 }
 
 function navigateJsonTree(event) {

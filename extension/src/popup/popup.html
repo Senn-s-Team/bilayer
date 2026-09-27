@@ -1,6 +1,6 @@
 <!--
-  [INPUT]: 依赖 popup.css 与 popup-ai.css 的既有 Neumorphism 令牌及 popup.js 的模式、provider、翻译参数和日志交互
-  [OUTPUT]: 提供字幕/AI 翻译/样式三页签；互斥字幕模式、独立全局翻译设置、provider 凭证管理、摘要诊断与独立原始报文面板入口
+  [INPUT]: 依赖 popup.css 与 popup-ai.css 的 macOS 设置面板样式及 popup.js 的模式、provider、翻译参数和日志交互
+  [OUTPUT]: 提供四个设置页签、直达报文面板的侧栏操作与独立工作区
   [POS]: popup 模块的 DOM 壳；翻译提示词和前瞻参数位于 provider 表单之外，由 manifest action.default_popup 加载
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
@@ -9,45 +9,60 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Netflix Dual Subtitles</title>
+    <title>双字幕 · Netflix</title>
     <link rel="stylesheet" href="./popup.css">
     <link rel="stylesheet" href="./popup-ai.css">
   </head>
   <body>
     <main class="app-shell">
-      <header class="app-header">
-        <div class="brand">
-          <img class="brand-mark" src="../../icons/icon-48.png" width="36" height="36" alt="">
-          <div class="brand-copy">
-            <h1>Dual Subtitles</h1>
+      <aside class="app-sidebar">
+        <header class="app-header">
+          <div class="brand">
+            <img class="brand-mark" src="../../icons/icon-48.png" width="32" height="32" alt="">
+            <h1>双字幕</h1>
+          </div>
+        </header>
+
+        <nav class="tab-list" aria-label="设置分类" role="tablist" aria-orientation="vertical">
+          <button class="tab-button is-active" id="subtitlesTab" type="button" role="tab" aria-selected="true" aria-controls="subtitlesPanel" data-tab="subtitles">字幕</button>
+          <button class="tab-button" id="aiTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="aiPanel" data-tab="ai">AI 翻译</button>
+          <button class="tab-button" id="providerTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="providerPanel" data-tab="provider">翻译服务</button>
+          <button class="tab-button" id="stylesTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="stylesPanel" data-tab="styles">外观</button>
+        </nav>
+        <div class="sidebar-tools">
+          <button class="sidebar-action" id="openRawDiagnostics" type="button" aria-label="打开诊断报文面板">诊断 <span aria-hidden="true">↗</span></button>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="workspace-header">
+          <div class="workspace-heading">
+            <h2 id="activePageTitle">字幕</h2>
             <div class="page-status" role="status" aria-live="polite">
               <span id="statusDot" class="status-dot" data-state="loading"></span>
               <span id="pageStatus">正在连接 Netflix</span>
             </div>
           </div>
-        </div>
-
-        <label class="toggle master-toggle" title="启用字幕覆盖">
-          <span class="sr-only">启用字幕覆盖</span>
-          <input id="enabled" type="checkbox">
-          <span class="toggle-track" aria-hidden="true"></span>
-        </label>
-      </header>
-
-      <nav class="tab-list" aria-label="设置分类" role="tablist">
-        <button class="tab-button is-active" id="subtitlesTab" type="button" role="tab" aria-selected="true" aria-controls="subtitlesPanel" data-tab="subtitles">字幕</button>
-        <button class="tab-button" id="aiTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="aiPanel" data-tab="ai">AI 翻译</button>
-        <button class="tab-button" id="stylesTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="stylesPanel" data-tab="styles">样式</button>
-      </nav>
+        </header>
 
       <section id="subtitlesPanel" class="tab-panel" role="tabpanel" aria-labelledby="subtitlesTab" data-panel="subtitles">
+        <div class="settings-list">
+          <label class="setting-row" for="enabled">
+            <span><strong>启用字幕</strong><small>在 Netflix 播放页面显示双字幕</small></span>
+            <span class="toggle">
+              <input id="enabled" type="checkbox" aria-label="启用字幕覆盖">
+              <span class="toggle-track" aria-hidden="true"></span>
+            </span>
+          </label>
+        </div>
+        <section class="source-section" aria-labelledby="sourceTitle">
         <div class="section-heading">
           <div>
-            <h2>字幕来源</h2>
+            <h2 id="sourceTitle">字幕来源</h2>
           </div>
           <div class="action-group">
-            <button id="swapTracks" class="icon-button" type="button" title="交换两行字幕及样式" aria-label="交换两行字幕及样式">⇄</button>
-            <button id="reloadTracks" class="icon-button" type="button" title="重新读取字幕" aria-label="重新读取字幕">↻</button>
+            <button id="swapTracks" class="icon-button" type="button" title="交换两行字幕及样式" aria-label="交换两行字幕及样式"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 6h13m-3-3 3 3-3 3M17 14H4m3-3-3 3 3 3"/></svg></button>
+            <button id="reloadTracks" class="icon-button" type="button" title="重新读取字幕" aria-label="重新读取字幕"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M16.5 8A6.5 6.5 0 1 0 17 11m-.5-7v4h-4"/></svg></button>
           </div>
         </div>
 
@@ -55,7 +70,10 @@
           <button id="nativeMode" type="button" aria-pressed="true">双原生字幕</button>
           <button id="aiMode" type="button" aria-pressed="false">AI 翻译字幕</button>
         </div>
-        <p id="modeDescription" class="ai-consent">两行分别显示 Netflix 原生字幕。</p>
+        <div class="mode-help">
+          <p id="modeDescription" class="ai-consent">两行分别显示 Netflix 原生字幕。</p>
+          <button id="openAiSettings" class="inline-link" type="button" hidden>配置翻译</button>
+        </div>
         <div id="trackGrid" class="track-grid" aria-label="字幕轨道">
           <article class="track-card">
             <label class="field" for="primaryTrackKey">
@@ -73,6 +91,10 @@
             <p id="secondaryStatus" class="track-status" data-state="idle">未选择</p>
           </article>
         </div>
+        </section>
+
+        <section class="playback-section" aria-labelledby="playbackTitle">
+        <h2 id="playbackTitle">播放显示</h2>
         <div class="settings-list">
           <label class="setting-row" for="hideNativeSubtitles">
             <span>
@@ -96,6 +118,7 @@
             </span>
           </label>
         </div>
+        </section>
       </section>
       <section id="aiPanel" class="tab-panel ai-panel" role="tabpanel" aria-labelledby="aiTab" data-panel="ai" hidden>
         <section class="ai-section" aria-labelledby="aiSettingsTitle">
@@ -124,31 +147,39 @@
               </select>
             </label>
           </div>
-          <div class="ai-fields">
-            <label class="field prefetch-field" for="aiPrefetchCount">
-              <span class="field-label">预翻译字幕句组</span>
-              <input id="aiPrefetchCount" type="number" min="0" max="50" step="1" value="10" inputmode="numeric">
-            </label>
-            <label class="field prefetch-field" for="aiContextCount">
-              <span class="field-label">前后文各取字幕条数</span>
-              <input id="aiContextCount" type="number" min="0" max="4" step="1" value="2" inputmode="numeric">
-            </label>
-          </div>
-          <p class="ai-consent">预翻译默认最多 10 组、限播放前方 60 秒（倍速最长 120 秒）；0 只翻译当前句。前后文默认每侧 2 条，只用于理解语境。</p>
-          <label class="field" for="aiStyleGuide">
-            <span class="field-label">翻译提示词（全局，不属于翻译服务）</span>
-            <textarea id="aiStyleGuide" rows="3" maxlength="1000" placeholder="保持原意和人物语气，使用自然口语。"></textarea>
-          </label>
+          <details class="advanced-translation">
+            <summary>高级翻译设置 <span>预翻译、上下文、提示词</span></summary>
+            <div class="advanced-translation-content">
+              <div class="ai-fields">
+                <label class="field prefetch-field" for="aiPrefetchCount">
+                  <span class="field-label">预翻译字幕句组</span>
+                  <input id="aiPrefetchCount" type="number" min="0" max="50" step="1" value="10" inputmode="numeric">
+                </label>
+                <label class="field prefetch-field" for="aiContextCount">
+                  <span class="field-label">前后文各取字幕条数</span>
+                  <input id="aiContextCount" type="number" min="0" max="4" step="1" value="2" inputmode="numeric">
+                </label>
+              </div>
+              <p class="ai-consent">预翻译默认最多 10 组、限播放前方 60 秒（倍速最长 120 秒）；0 只翻译当前句。前后文默认每侧 2 条，只用于理解语境。</p>
+              <label class="field" for="aiStyleGuide">
+                <span class="field-label">翻译提示词（全局，不属于翻译服务）</span>
+                <textarea id="aiStyleGuide" rows="3" maxlength="1000" placeholder="保持原意和人物语气，使用自然口语。"></textarea>
+              </label>
+            </div>
+          </details>
+          <button id="openProviderSettings" class="inline-link section-link" type="button">配置翻译服务 →</button>
         </section>
+      </section>
 
+      <section id="providerPanel" class="tab-panel ai-panel" role="tabpanel" aria-labelledby="providerTab" data-panel="provider" hidden>
         <section class="ai-section" aria-labelledby="providerTitle">
           <h2 id="providerTitle">翻译服务</h2>
           <div class="field">
             <label class="field-label" id="providerLabel" for="aiProvider">当前服务</label>
             <div class="provider-switcher">
               <select id="aiProvider" aria-labelledby="providerLabel"></select>
-              <button id="addProvider" class="ai-button" type="button" title="新增服务" aria-label="新增服务">+</button>
-              <button id="deleteProvider" class="ai-button ai-button-quiet" type="button" title="删除服务" aria-label="删除服务">−</button>
+              <button id="addProvider" class="ai-button" type="button" title="新增服务" aria-label="新增服务"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button>
+              <button id="deleteProvider" class="ai-button ai-button-quiet" type="button" title="删除服务" aria-label="删除服务"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12"/></svg></button>
             </div>
           </div>
           <div id="providerEditor" class="provider-editor" hidden>
@@ -182,22 +213,10 @@
             </div>
           </div>
           <p class="ai-consent">启用 AI 后，源轨道字幕及邻句会发送给所选服务；使用自己的 API 密钥可能产生费用。</p>
-        </section>
-
-        <section class="ai-section" aria-labelledby="diagnosticTitle">
-          <h2 id="diagnosticTitle">诊断</h2>
           <div class="provider-test-row">
             <button id="testProvider" class="ai-button" type="button">测试连通性</button>
             <span id="providerTestStatus" class="ai-credential-status" role="status" aria-live="polite"></span>
           </div>
-          <div class="diagnostic-actions">
-            <button id="openRawDiagnostics" class="ai-button" type="button">打开原始报文面板</button>
-            <span class="ai-credential-status">包含字幕原文，请勿分享；API 密钥不会显示</span>
-          </div>
-          <details class="ai-log-panel">
-            <summary>完整翻译日志</summary>
-            <pre id="translationLog" class="ai-log" role="log" aria-live="polite">暂无翻译日志</pre>
-          </details>
         </section>
       </section>
 
@@ -205,14 +224,14 @@
         <div class="style-stage">
           <div class="style-toolbar">
             <div class="role-selector" role="group" aria-label="正在编辑的字幕">
-              <button class="is-active" type="button" data-style-role="primary"><span class="role-swatch primary"></span>第一字幕</button>
-              <button type="button" data-style-role="secondary"><span class="role-swatch secondary"></span>第二字幕</button>
+              <button class="is-active" type="button" data-style-role="primary" aria-pressed="true"><span class="role-swatch primary"></span>第一字幕</button>
+              <button type="button" data-style-role="secondary" aria-pressed="false"><span class="role-swatch secondary"></span>第二字幕</button>
             </div>
-            <button id="resetStyles" class="icon-button" type="button" title="恢复默认样式" aria-label="恢复默认样式">↺</button>
+            <button id="resetStyles" class="icon-button" type="button" title="恢复默认样式" aria-label="恢复默认样式"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 8A6.5 6.5 0 1 1 3 11m1-7v4h4"/></svg></button>
           </div>
 
           <div id="stylePreview" class="preview" aria-hidden="true" data-layout="balanced">
-            <span class="preview-label">实时预览</span>
+            <span class="preview-label">屏幕预览</span>
             <div id="primaryPreview" class="preview-line primary is-editing">第一字幕</div>
             <div id="secondaryPreview" class="preview-line secondary">Second subtitle</div>
           </div>
@@ -341,7 +360,8 @@
           </section>
         </div>
       </section>
+      </div>
     </main>
-    <script type="module" src="./popup.js"></script>
+    <script src="./popup.js"></script>
   </body>
 </html>

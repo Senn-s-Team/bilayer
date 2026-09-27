@@ -1,6 +1,6 @@
 <!--
   [INPUT]: 依赖 diagnostics.css 的诊断页样式与 diagnostics.js 的后台原始报文查询
-  [OUTPUT]: 提供请求导航、JSON 路径与键盘提示、折叠报文树和逐字原文共用的阅读区
+  [OUTPUT]: 提供紧凑请求检查器、可搜索 JSON 树、连接信息抽屉和逐字原文阅读区
   [POS]: diagnostics 模块的页面壳，由 popup 的“原始报文面板”入口打开
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
@@ -17,7 +17,7 @@
       <header class="diagnostics-header">
         <div>
           <h1>原始翻译报文</h1>
-          <p class="subtitle">最近 20 次翻译请求 · 仅存扩展内存 · 请勿分享含字幕的报文</p>
+          <p class="subtitle">最近 20 次请求 · 仅存扩展内存 · 报文含字幕原文</p>
         </div>
         <div class="header-actions">
           <span id="liveStatus" class="live-status" role="status">正在连接后台</span>
@@ -39,8 +39,8 @@
 
         <section class="detail-panel" aria-live="polite">
           <div id="detailEmpty" class="detail-empty">
-            <strong>尚未选择请求</strong>
-            <span>选择左侧记录，查看端点、耗时及完整报文。</span>
+            <strong>等待第一条翻译请求</strong>
+            <span>保持此页打开，在 Netflix 播放页启用 AI 翻译并播放字幕。</span>
           </div>
           <div id="detailContent" hidden>
             <div class="detail-heading">
@@ -50,17 +50,35 @@
               </div>
               <span id="detailResult" class="result-badge"></span>
             </div>
-            <dl id="requestMeta" class="request-meta"></dl>
-            <details class="headers-panel">
-              <summary>请求头 / 响应头（Authorization 已移除）</summary>
-              <pre id="headersView" class="headers-view"></pre>
+            <details class="transport-panel">
+              <summary><strong>连接信息</strong><span id="transportSummary"></span></summary>
+              <dl id="requestMeta" class="request-meta"></dl>
+              <details class="headers-panel">
+                <summary>请求头 / 响应头（Authorization 已移除）</summary>
+                <pre id="headersView" class="headers-view"></pre>
+              </details>
             </details>
             <div class="payload-toolbar">
               <nav class="payload-tabs" aria-label="报文内容">
                 <button class="payload-tab is-active" type="button" data-payload="request">请求体</button>
                 <button class="payload-tab" type="button" data-payload="response">响应体</button>
               </nav>
-              <button id="toggleRaw" class="payload-format" type="button" aria-pressed="false">查看原文</button>
+              <div class="payload-view-actions">
+                <span id="payloadShape" class="payload-shape" aria-live="polite"></span>
+                <button id="toggleRaw" class="payload-format" type="button" aria-pressed="false">查看原文</button>
+              </div>
+            </div>
+            <div id="jsonTools" class="json-tools" hidden>
+              <div class="json-search">
+                <input id="jsonSearch" type="search" placeholder="搜索键、值或路径" aria-label="搜索 JSON 键、值或路径" autocomplete="off" spellcheck="false">
+                <span id="searchStatus" role="status" aria-live="polite">搜索 JSON</span>
+                <button id="previousMatch" type="button" title="上一个匹配" aria-label="上一个匹配">↑</button>
+                <button id="nextMatch" type="button" title="下一个匹配" aria-label="下一个匹配">↓</button>
+              </div>
+              <div class="tree-actions">
+                <button id="expandTree" type="button">全部展开</button>
+                <button id="collapseTree" type="button">收起层级</button>
+              </div>
             </div>
             <div id="jsonPath" class="json-path" hidden><span id="jsonPathValue" aria-live="polite">$</span><span class="json-shortcuts">↑↓ 导航 · ←→ 折叠/展开</span></div>
             <div id="payloadView" class="payload-view" tabindex="0" aria-label="报文内容"></div>

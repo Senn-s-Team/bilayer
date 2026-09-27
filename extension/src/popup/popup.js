@@ -1,11 +1,12 @@
 /**
- * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API 及 popup.html 的三页签、翻译与 provider 控件；跨窗口发现 Netflix Web App 的可响应页面
- * [OUTPUT]: 提供互斥字幕模式、独立源轨道、provider 与诊断操作；验证播放页响应后再绑定消息目标并提示 Web App 权限问题
+ * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API 及 popup.html 的侧栏导航、翻译与 provider 控件；跨窗口发现 Netflix Web App 的可响应页面
+ * [OUTPUT]: 提供四页签导航、直达报文面板的入口，以及扩展内的字幕模式与 provider 操作
  * [POS]: popup 交互层；字幕模式由 aiRole 单一状态表示，翻译设置全局共享，密钥和端点只属于所选 provider
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
 const runtime = globalThis.browser ?? globalThis.chrome;
+const hasExtensionApi = Boolean(runtime?.storage?.local && runtime?.tabs && runtime?.runtime);
 const DEFAULT_TRANSLATION_PROMPT = "你是一位专业的影视字幕翻译员，也是目标语言的母语使用者。只翻译 items[].text；contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。保持每个 id、数量和顺序完全一致，不合并、不拆分、不遗漏字幕。保留人名、专有名词和既有译名；结合上下文处理代词、时态、人物关系和语气。使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、注释、时间戳或额外字段。";
 const LEGACY_TRANSLATION_PROMPT = "请将字幕准确翻译成目标语言。保持原意、人物语气和上下文，使用自然口语；保留人名、专有名词与格式；不要添加解释或额外内容。";
 const TARGET_LANGUAGES = new Set([
@@ -141,6 +142,7 @@ const advancedControls = {
 };
 
 const elements = {
+  activePageTitle: document.querySelector("#activePageTitle"),
   pageStatus: document.querySelector("#pageStatus"),
   statusDot: document.querySelector("#statusDot"),
   primaryStatus: document.querySelector("#primaryStatus"),
@@ -154,13 +156,15 @@ const elements = {
   deleteAiCredential: document.querySelector("#deleteAiCredential"),
   aiEndpointStatus: document.querySelector("#aiEndpointStatus"),
   testProvider: document.querySelector("#testProvider"),
+  providerTestStatus: document.querySelector("#providerTestStatus"),
   fetchProviderModels: document.querySelector("#fetchProviderModels"),
   providerModelList: document.querySelector("#providerModelList"),
-  translationLog: document.querySelector("#translationLog"),
   openRawDiagnostics: document.querySelector("#openRawDiagnostics"),
   nativeMode: document.querySelector("#nativeMode"),
   aiMode: document.querySelector("#aiMode"),
   modeDescription: document.querySelector("#modeDescription"),
+  openAiSettings: document.querySelector("#openAiSettings"),
+  openProviderSettings: document.querySelector("#openProviderSettings"),
   swapTracks: document.querySelector("#swapTracks"),
   reloadTracks: document.querySelector("#reloadTracks"),
   resetStyles: document.querySelector("#resetStyles"),
@@ -190,9 +194,14 @@ let currentWatchId = "";
 let connectedTabId = null;
 let connectionHint = "未连接 Netflix 页面；请在影片窗口打开弹窗";
 
+bindNavigation();
 void init();
 
 async function init() {
+  if (!hasExtensionApi) {
+    showLocalPreview();
+    return;
+  }
   const [stored, pageState] = await Promise.all([readStoredSettings(), readPageState()]);
   currentWatchId = readWatchId(pageState);
   currentSettings = normalizeSettings(stored);
@@ -206,22 +215,61 @@ async function init() {
   scheduleStatePoll();
 }
 
-function bindControls() {
+function showLocalPreview() {
+  elements.pageStatus.textContent = "界面预览 · 设置请在 Safari 扩展中使用";
+  elements.statusDot.dataset.state = "idle";
+  controls.primaryTrackKey.add(new Option("播放时选择轨道", ""));
+  controls.secondaryTrackKey.add(new Option("播放时选择轨道", ""));
+  providerControls.source.add(new Option("播放时选择源轨道", ""));
+  providerControls.select.add(new Option("OpenAI 官方", "openai"));
+  providerControls.editor.hidden = false;
+  providerControls.name.value = DEFAULT_PROVIDERS[0].name;
+  providerControls.model.value = DEFAULT_PROVIDERS[0].model;
+  elements.aiCredentialStatus.textContent = "在 Safari 扩展中配置密钥";
+  elements.testProvider.addEventListener("click", () => {
+    elements.providerTestStatus.textContent = "请在 Safari 扩展中测试连通性";
+  });
+}
+
+function bindNavigation() {
   const tabButtons = [...document.querySelectorAll("[data-tab]")];
   tabButtons.forEach((button, index) => {
     button.addEventListener("click", () => selectTab(button.dataset.tab));
     button.addEventListener("keydown", (event) => {
-      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
+      const step = ["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1;
       const target = event.key === "Home" ? 0 : event.key === "End" ? tabButtons.length - 1
-        : (index + (event.key === "ArrowRight" ? 1 : -1) + tabButtons.length) % tabButtons.length;
+        : (index + step + tabButtons.length) % tabButtons.length;
       tabButtons[target].focus();
       selectTab(tabButtons[target].dataset.tab);
     });
   });
-  elements.nativeMode.addEventListener("click", () => void selectSubtitleMode("native"));
-  elements.aiMode.addEventListener("click", () => void selectSubtitleMode("ai"));
+  elements.nativeMode.addEventListener("click", () => void chooseSubtitleMode("native"));
+  elements.aiMode.addEventListener("click", () => void chooseSubtitleMode("ai"));
+  elements.openAiSettings.addEventListener("click", () => {
+    selectTab("ai");
+    document.querySelector("#aiTab").focus();
+  });
+  elements.openProviderSettings.addEventListener("click", () => {
+    selectTab("provider");
+    document.querySelector("#providerTab").focus();
+  });
+  elements.openRawDiagnostics.addEventListener("click", () => {
+    const url = runtime?.runtime?.getURL("src/diagnostics/diagnostics.html")
+      ?? new URL("../diagnostics/diagnostics.html", location.href).href;
+    if (runtime?.tabs?.create) void runtime.tabs.create({ url });
+    else window.open(url, "_blank");
+  });
+}
 
+function chooseSubtitleMode(mode) {
+  if (hasExtensionApi) return selectSubtitleMode(mode);
+  currentSettings.aiRole = mode === "ai" ? "secondary" : "off";
+  writeModeControls();
+}
+
+function bindControls() {
   document.querySelectorAll("[data-layout-preset]").forEach((button) => {
     button.addEventListener("click", () => void selectLayoutPreset(button.dataset.layoutPreset));
   });
@@ -256,11 +304,6 @@ function bindControls() {
   providerControls.test = elements.testProvider;
   providerControls.test.addEventListener("click", () => void testProviderConnection());
   elements.fetchProviderModels.addEventListener("click", () => void fetchProviderModels());
-  elements.openRawDiagnostics.addEventListener("click", () => {
-    const url = runtime.runtime.getURL("src/diagnostics/diagnostics.html");
-    if (runtime.tabs?.create) void runtime.tabs.create({ url });
-    else window.open(url, "_blank");
-  });
   providerControls.source.addEventListener("change", () => {
     const track = currentTracks.find((item) => item.key === providerControls.source.value);
     const update = {
@@ -314,6 +357,7 @@ function bindControls() {
 }
 
 function selectTab(tabName) {
+  elements.activePageTitle.textContent = document.querySelector(`[data-tab="${tabName}"]`)?.textContent ?? "字幕";
   document.querySelectorAll("[data-tab]").forEach((button) => {
     const active = button.dataset.tab === tabName;
     button.classList.toggle("is-active", active);
@@ -556,8 +600,9 @@ function writeModeControls() {
   const isAi = currentSettings.aiRole !== "off";
   elements.nativeMode.setAttribute("aria-pressed", String(!isAi));
   elements.aiMode.setAttribute("aria-pressed", String(isAi));
+  elements.openAiSettings.hidden = !isAi;
   elements.modeDescription.textContent = isAi
-    ? "一行显示 Netflix 原生字幕，另一行显示 AI 译文；翻译源轨道可在「AI 翻译」页独立选择。"
+    ? "一行保留 Netflix 原字幕，另一行显示 AI 译文。"
     : "两行分别显示 Netflix 原生字幕；切换模式不会清除轨道或翻译设置。";
 }
 
@@ -741,7 +786,6 @@ function colorWithOpacity(color, opacity) {
 }
 
 function writeStatus() {
-  writeTranslationLog(currentPageState?.translationStatus?.logs ?? []);
   if (!currentPageState) {
     writePageStatus(connectionHint, "error");
     writeRoleStatus("primary", "未连接 Netflix 页面", "error");
@@ -780,23 +824,6 @@ function writeStatus() {
 function writePageStatus(message, state) {
   elements.pageStatus.textContent = message;
   elements.statusDot.dataset.state = state;
-}
-
-function writeTranslationLog(logs) {
-  const summary = elements.translationLog.closest("details")?.querySelector("summary");
-  if (!logs?.length) {
-    elements.translationLog.textContent = "暂无翻译日志";
-    if (summary) summary.textContent = "完整翻译日志";
-    return;
-  }
-  if (summary) summary.textContent = `完整翻译日志 · ${logs.length} 条`;
-  elements.translationLog.textContent = logs.map((entry) => {
-    const { at, event, message, ...details } = entry;
-    const timestamp = at ? new Date(at).toLocaleTimeString() : "--:--:--";
-    const suffix = Object.keys(details).length ? ` ${JSON.stringify(details)}` : "";
-    return `[${timestamp}] ${event} ${message}${suffix}`;
-  }).join("\n");
-  elements.translationLog.scrollTop = elements.translationLog.scrollHeight;
 }
 
 function writeLoadStatus(role, loadStatus, hasSelection) {
