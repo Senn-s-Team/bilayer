@@ -12,8 +12,47 @@ const LEGACY_TRANSLATION_PROMPT = "请将字幕准确翻译成目标语言。保
 const TARGET_LANGUAGES = new Set([
   "zh-Hans", "zh-Hant", "ja", "ko", "en", "es", "fr", "de", "it", "pt-BR", "ru", "ar", "hi"
 ]);
+const LLM_PRESETS = {
+  openai: {
+    name: "OpenAI 官方",
+    endpoint: "",
+    model: "gpt-4o-mini",
+    models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "chatgpt-4o-latest"]
+  },
+  deepseek: {
+    name: "DeepSeek",
+    endpoint: "https://api.deepseek.com/v1/chat/completions",
+    model: "deepseek-chat",
+    models: ["deepseek-chat", "deepseek-reasoner"]
+  },
+  openrouter: {
+    name: "OpenRouter",
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    model: "google/gemini-2.5-flash",
+    models: ["google/gemini-2.5-flash", "anthropic/claude-3.5-haiku", "openai/gpt-4o-mini", "deepseek/deepseek-chat"]
+  },
+  groq: {
+    name: "Groq",
+    endpoint: "https://api.groq.com/openai/v1/chat/completions",
+    model: "llama-3.3-70b-versatile",
+    models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+  },
+  siliconflow: {
+    name: "硅基流动",
+    endpoint: "https://api.siliconflow.cn/v1/chat/completions",
+    model: "deepseek-ai/DeepSeek-V3",
+    models: ["deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1", "Qwen/Qwen2.5-7B-Instruct"]
+  },
+  ollama: {
+    name: "Ollama 本地",
+    endpoint: "http://localhost:11434/v1/chat/completions",
+    model: "qwen2.5:7b",
+    models: ["qwen2.5:7b", "llama3.2", "deepseek-r1:8b"]
+  }
+};
 
 const DEFAULT_SETTINGS = {
+  onboardingCompleted: false,
   enabled: true,
   hideNativeSubtitles: true,
   primaryTrackKey: "",
@@ -116,14 +155,29 @@ const aiControls = {
   aiStyleGuide: document.querySelector("#aiStyleGuide")
 };
 const providerControls = {
-  select: document.querySelector("#aiProvider"),
+  masterList: document.querySelector("#providerMasterList"),
   add: document.querySelector("#addProvider"),
   delete: document.querySelector("#deleteProvider"),
   editor: document.querySelector("#providerEditor"),
+  detailView: document.querySelector("#providerDetailView"),
+  draftView: document.querySelector("#providerNewDraftView"),
   name: document.querySelector("#providerName"),
   model: document.querySelector("#providerModel"),
   endpoint: document.querySelector("#providerEndpoint"),
   source: document.querySelector("#aiSourceLanguage")
+};
+
+const newDraftControls = {
+  name: document.querySelector("#newDraftName"),
+  endpoint: document.querySelector("#newDraftEndpoint"),
+  model: document.querySelector("#newDraftModel"),
+  modelList: document.querySelector("#newDraftModelList"),
+  key: document.querySelector("#newDraftKey"),
+  saveBtn: document.querySelector("#saveNewDraftBtn"),
+  cancelBtn: document.querySelector("#cancelNewDraftBtn"),
+  cancelTop: document.querySelector("#cancelNewDraftTop"),
+  fetchBtn: document.querySelector("#fetchNewDraftModels"),
+  pills: document.querySelectorAll("[data-draft-preset]")
 };
 
 const advancedControls = {
@@ -159,6 +213,7 @@ const elements = {
   providerTestStatus: document.querySelector("#providerTestStatus"),
   fetchProviderModels: document.querySelector("#fetchProviderModels"),
   providerModelList: document.querySelector("#providerModelList"),
+  openOnboarding: document.querySelector("#openOnboarding"),
   openRawDiagnostics: document.querySelector("#openRawDiagnostics"),
   nativeMode: document.querySelector("#nativeMode"),
   aiMode: document.querySelector("#aiMode"),
@@ -221,7 +276,13 @@ function showLocalPreview() {
   controls.primaryTrackKey.add(new Option("播放时选择轨道", ""));
   controls.secondaryTrackKey.add(new Option("播放时选择轨道", ""));
   providerControls.source.add(new Option("播放时选择源轨道", ""));
-  providerControls.select.add(new Option("OpenAI 官方", "openai"));
+  if (providerControls.masterList) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "provider-master-item is-selected";
+    btn.textContent = "OpenAI 官方";
+    providerControls.masterList.appendChild(btn);
+  }
   providerControls.editor.hidden = false;
   providerControls.name.value = DEFAULT_PROVIDERS[0].name;
   providerControls.model.value = DEFAULT_PROVIDERS[0].model;
@@ -254,6 +315,12 @@ function bindNavigation() {
   elements.openProviderSettings.addEventListener("click", () => {
     selectTab("provider");
     document.querySelector("#providerTab").focus();
+  });
+  elements.openOnboarding?.addEventListener("click", () => {
+    const url = runtime?.runtime?.getURL("src/onboarding/onboarding.html")
+      ?? new URL("../onboarding/onboarding.html", location.href).href;
+    if (runtime?.tabs?.create) void runtime.tabs.create({ url });
+    else window.open(url, "_blank");
   });
   elements.openRawDiagnostics.addEventListener("click", () => {
     const url = runtime?.runtime?.getURL("src/diagnostics/diagnostics.html")
@@ -290,14 +357,15 @@ function bindControls() {
     });
   }
 
-  providerControls.select.addEventListener("change", () => {
-    currentSettings.aiProviderId = providerControls.select.value;
-    void writeSettings({ aiProviderId: currentSettings.aiProviderId });
-    writeProviderControls();
-    scheduleStatePoll(0);
-  });
-  providerControls.add.addEventListener("click", () => void addProvider());
+  providerControls.add.addEventListener("click", () => showNewDraftView());
   providerControls.delete.addEventListener("click", () => void deleteProvider());
+  newDraftControls.cancelBtn.addEventListener("click", () => hideNewDraftView());
+  newDraftControls.cancelTop.addEventListener("click", () => hideNewDraftView());
+  newDraftControls.saveBtn.addEventListener("click", () => void saveNewDraftProvider());
+  newDraftControls.fetchBtn.addEventListener("click", () => void fetchNewDraftModels());
+  newDraftControls.pills.forEach((button) => {
+    button.addEventListener("click", () => selectDraftPreset(button.dataset.draftPreset));
+  });
   providerControls.name.addEventListener("change", () => void updateProviderField("name", providerControls.name.value.trim()));
   providerControls.model.addEventListener("change", () => void updateProviderField("model", providerControls.model.value.trim()));
   providerControls.endpoint.addEventListener("change", updateEndpoint);
@@ -470,17 +538,41 @@ function normalizeProviderEndpoint(raw) {
   url.pathname = `${base.endsWith("/v1") ? base : `${base}/v1`}/chat/completions`;
   return url.href;
 }
-
-function fetchProviderModels() {
+async function fetchProviderModels() {
   const provider = selectedProvider();
   if (!provider) return Promise.resolve();
+
+  const typedKey = elements.aiCredential.value.trim();
+  if (typedKey) {
+    elements.aiCredential.value = "";
+    await updateProviderField("credential", typedKey, false);
+    readCredentialStatus();
+  }
+
+  const credential = provider.credential;
+  if (!credential && provider.endpoint !== "http://localhost:11434/v1/chat/completions") {
+    elements.providerTestStatus.textContent = "请先输入 API 密钥";
+    elements.aiCredential.focus();
+    return Promise.resolve();
+  }
+
   elements.fetchProviderModels.disabled = true;
   elements.providerTestStatus.textContent = "正在获取模型列表…";
+
+  const message = {
+    type: "NETFLIX_DUAL_SUBTITLES_LIST_MODELS",
+    providerId: provider.id,
+    credential: provider.credential,
+    endpoint: provider.endpoint
+  };
+
   return new Promise((resolve) => {
-    runtime.runtime.sendMessage({ type: "NETFLIX_DUAL_SUBTITLES_LIST_MODELS", providerId: provider.id }, (result) => {
+    runtime.runtime.sendMessage(message, async (result) => {
       elements.fetchProviderModels.disabled = false;
       if (runtime.runtime.lastError || !result?.ok) {
-        elements.providerTestStatus.textContent = result?.errorCode === "permission_denied" ? "失败：未授权服务域名" : "获取模型失败";
+        const errorMsg = result?.errorCode === "auth" ? "密钥无效" :
+                         result?.errorCode === "permission_denied" ? "未授权服务域名" : "获取模型失败";
+        elements.providerTestStatus.textContent = `失败：${errorMsg}`;
         resolve();
         return;
       }
@@ -489,7 +581,11 @@ function fetchProviderModels() {
         option.value = model;
         return option;
       }));
-      elements.providerTestStatus.textContent = `已获取 ${result.models.length} 个模型`;
+      if (result.models.length > 0) {
+        providerControls.model.value = result.models[0];
+        await updateProviderField("model", result.models[0]);
+      }
+      elements.providerTestStatus.textContent = `已获取 ${result.models.length} 个模型，已选择第 1 个`;
       resolve();
     });
   });
@@ -497,7 +593,6 @@ function fetchProviderModels() {
 
 async function swapTracks() {
   const update = {
-    primaryTrackKey: currentSettings.secondaryTrackKey,
     primaryTrackPreference: currentSettings.secondaryTrackPreference,
     primaryLanguage: currentSettings.secondaryLanguage,
     secondaryTrackKey: currentSettings.primaryTrackKey,
@@ -600,9 +695,11 @@ function writeModeControls() {
   const isAi = currentSettings.aiRole !== "off";
   elements.nativeMode.setAttribute("aria-pressed", String(!isAi));
   elements.aiMode.setAttribute("aria-pressed", String(isAi));
+  elements.nativeMode.classList.toggle("is-selected", !isAi);
+  elements.aiMode.classList.toggle("is-selected", isAi);
   elements.openAiSettings.hidden = !isAi;
   elements.modeDescription.textContent = isAi
-    ? "一行保留 Netflix 原字幕，另一行显示 AI 译文。"
+    ? "一行保留 Netflix 原字幕，另一行由所选 AI 大模型实时生成口语译文。"
     : "两行分别显示 Netflix 原生字幕；切换模式不会清除轨道或翻译设置。";
 }
 
@@ -623,23 +720,225 @@ function selectedProvider() {
 }
 
 function writeProviderControls() {
-  providerControls.select.replaceChildren(...currentProviders.map((provider) => createOption(provider.id, provider.name)));
-  providerControls.select.value = currentSettings.aiProviderId;
-  const provider = selectedProvider();
-  providerControls.editor.hidden = !provider;
+  const selected = selectedProvider();
   providerControls.delete.disabled = currentProviders.length <= 1;
-  providerControls.name.value = provider?.name ?? "";
-  providerControls.model.value = provider?.model ?? "";
-  providerControls.endpoint.value = provider?.endpoint ?? "";
-  elements.aiEndpointStatus.textContent = provider?.endpoint
-    ? `已保存 ${new URL(provider.endpoint).host}；使用前需获得域名授权`
-    : "使用 OpenAI 官方接口";
-  readCredentialStatus();
+
+  if (providerControls.masterList) {
+    providerControls.masterList.replaceChildren(...currentProviders.map((provider) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `provider-master-item${provider.id === currentSettings.aiProviderId ? " is-selected" : ""}`;
+      btn.setAttribute("role", "option");
+      btn.setAttribute("aria-selected", String(provider.id === currentSettings.aiProviderId));
+
+      const span = document.createElement("span");
+      span.textContent = provider.name || "未命名服务";
+      btn.appendChild(span);
+
+      btn.addEventListener("click", () => {
+        currentSettings.aiProviderId = provider.id;
+        void writeSettings({ aiProviderId: provider.id });
+        hideNewDraftView();
+        scheduleStatePoll(0);
+      });
+      return btn;
+    }));
+  }
+
+  if (selected) {
+    providerControls.detailView.hidden = false;
+    providerControls.draftView.hidden = true;
+    providerControls.name.value = selected.name ?? "";
+    providerControls.model.value = selected.model ?? "";
+    providerControls.endpoint.value = selected.endpoint ?? "";
+
+    const matchedPreset = Object.values(LLM_PRESETS).find((p) => p.endpoint === (selected.endpoint ?? ""));
+    const hintModel = matchedPreset?.model || "gpt-4o-mini";
+    providerControls.model.placeholder = `推荐如 ${hintModel}，可点击获取模型`;
+
+    elements.aiEndpointStatus.textContent = selected.endpoint
+      ? `已保存 ${new URL(selected.endpoint).host}；使用前需获得域名授权`
+      : "使用 OpenAI 官方接口";
+
+    if (matchedPreset && elements.providerModelList) {
+      elements.providerModelList.replaceChildren(...matchedPreset.models.map((m) => {
+        const opt = document.createElement("option");
+        opt.value = m;
+        return opt;
+      }));
+    }
+    readCredentialStatus();
+  }
 }
 
-function testProviderConnection() {
+function showNewDraftView() {
+  providerControls.detailView.hidden = true;
+  providerControls.draftView.hidden = false;
+  if (providerControls.masterList) {
+    providerControls.masterList.querySelectorAll(".provider-master-item").forEach((item) => {
+      item.classList.remove("is-selected");
+    });
+  }
+  selectDraftPreset("openai");
+  newDraftControls.key.value = "";
+  newDraftControls.name.focus();
+}
+
+function hideNewDraftView() {
+  providerControls.draftView.hidden = true;
+  providerControls.detailView.hidden = false;
+  writeProviderControls();
+}
+
+function selectDraftPreset(presetKey) {
+  newDraftControls.pills.forEach((pill) => {
+    pill.classList.toggle("is-active", pill.dataset.draftPreset === presetKey);
+  });
+  const preset = LLM_PRESETS[presetKey];
+  if (!preset) return;
+
+  newDraftControls.name.value = preset.name;
+  newDraftControls.endpoint.value = preset.endpoint;
+  newDraftControls.model.value = "";
+  newDraftControls.model.placeholder = `推荐如 ${preset.model || "gpt-4o-mini"}，可点击获取模型`;
+
+  if (newDraftControls.modelList && preset.models) {
+    newDraftControls.modelList.replaceChildren(...preset.models.map((m) => {
+      const opt = document.createElement("option");
+      opt.value = m;
+      return opt;
+    }));
+  }
+
+  if (presetKey === "ollama") {
+    newDraftControls.key.placeholder = "本地服务无需密钥，可留空";
+  } else {
+    newDraftControls.key.placeholder = "sk-...";
+  }
+}
+
+async function saveNewDraftProvider() {
+  const name = newDraftControls.name.value.trim() || "新服务";
+  const rawEndpoint = newDraftControls.endpoint.value.trim();
+  const credential = newDraftControls.key.value.trim();
+
+  let endpoint = "";
+  if (rawEndpoint) {
+    try {
+      endpoint = normalizeProviderEndpoint(rawEndpoint);
+    } catch {
+      alert("请输入有效的 HTTPS Base URL 端点");
+      return;
+    }
+  }
+
+  const model = newDraftControls.model.value.trim() ||
+    newDraftControls.model.placeholder.match(/推荐如 ([^\s，]+)/)?.[1] || "gpt-4o-mini";
+
+  if (endpoint && runtime.permissions?.request) {
+    try {
+      const url = new URL(endpoint);
+      const origin = `${url.protocol}//${url.hostname}/*`;
+      runtime.permissions.request({ origins: [origin] }, () => {
+        void runtime.runtime.lastError;
+      });
+    } catch { /* no-op */ }
+  }
+
+  const id = crypto.randomUUID();
+  const newProvider = {
+    id,
+    name,
+    endpoint,
+    model,
+    credential
+  };
+
+  // 只有在点击“保存密钥并添加”时，才将新服务写入已保存列表
+  currentProviders = [...currentProviders, newProvider];
+  currentSettings.aiProviderId = id;
+  await writeSettings({ providers: currentProviders, aiProviderId: id });
+  hideNewDraftView();
+  scheduleStatePoll(0);
+}
+
+async function fetchNewDraftModels() {
+  const credential = newDraftControls.key.value.trim();
+  const rawEndpoint = newDraftControls.endpoint.value.trim();
+  let endpoint = "";
+  if (rawEndpoint) {
+    try {
+      endpoint = normalizeProviderEndpoint(rawEndpoint);
+    } catch {
+      alert("请输入有效的 HTTPS Base URL 端点");
+      return;
+    }
+  }
+
+  if (!credential && endpoint !== "http://localhost:11434/v1/chat/completions") {
+    alert("请先在下方输入 API 密钥，以便获取模型列表");
+    newDraftControls.key.focus();
+    return;
+  }
+
+  if (endpoint && runtime.permissions?.request) {
+    try {
+      const url = new URL(endpoint);
+      const origin = `${url.protocol}//${url.hostname}/*`;
+      const granted = await new Promise((res) => runtime.permissions.request({ origins: [origin] }, res));
+      if (!granted) {
+        alert("未授权该端点域名访问权限，无法获取模型");
+        return;
+      }
+    } catch { /* no-op */ }
+  }
+
+  newDraftControls.fetchBtn.disabled = true;
+  newDraftControls.fetchBtn.textContent = "获取中…";
+
+  const message = {
+    type: "NETFLIX_DUAL_SUBTITLES_LIST_MODELS",
+    credential,
+    endpoint
+  };
+
+  runtime.runtime.sendMessage(message, (result) => {
+    newDraftControls.fetchBtn.disabled = false;
+    newDraftControls.fetchBtn.textContent = "获取模型";
+    if (runtime.runtime.lastError || !result?.ok) {
+      alert(result?.errorCode === "auth" ? "密钥无效，无法获取模型" : "获取模型列表失败，请检查端点与网络");
+      return;
+    }
+    newDraftControls.modelList.replaceChildren(...result.models.map((m) => {
+      const opt = document.createElement("option");
+      opt.value = m;
+      return opt;
+    }));
+    if (result.models.length > 0) {
+      newDraftControls.model.value = result.models[0];
+    }
+  });
+}
+
+async function deleteProvider() {
+  if (currentProviders.length <= 1) return;
+  currentProviders = currentProviders.filter((p) => p.id !== currentSettings.aiProviderId);
+  currentSettings.aiProviderId = currentProviders[0].id;
+  await writeSettings({ providers: currentProviders, aiProviderId: currentSettings.aiProviderId });
+  hideNewDraftView();
+  scheduleStatePoll(0);
+}
+async function testProviderConnection() {
   const provider = selectedProvider();
   if (!provider) return Promise.resolve();
+
+  const typedKey = elements.aiCredential.value.trim();
+  if (typedKey) {
+    elements.aiCredential.value = "";
+    await updateProviderField("credential", typedKey, false);
+    readCredentialStatus();
+  }
+
   const providerId = provider.id;
   elements.testProvider.disabled = true;
   elements.providerTestStatus.textContent = "测试中…";
@@ -666,27 +965,12 @@ async function updateProviderField(field, value, refresh = true) {
   const provider = selectedProvider();
   if (!provider) return;
   if (field === "name" && !value) value = provider.name;
-  if (field === "model" && (!value || /[\s\x00-\x1f]/.test(value))) value = provider.model;
+  if (field === "model" && /[\s\x00-\x1f]/.test(value)) value = provider.model;
   currentProviders = currentProviders.map((item) => item.id === provider.id ? { ...item, [field]: value } : item);
   await writeSettings({ providers: currentProviders });
   if (refresh) writeProviderControls();
 }
 
-async function addProvider() {
-  const id = crypto.randomUUID();
-  currentProviders = [...currentProviders, { id, name: `新服务 ${currentProviders.length}`, endpoint: "", model: "gpt-4o-mini", credential: "" }];
-  currentSettings.aiProviderId = id;
-  await writeSettings({ providers: currentProviders, aiProviderId: id });
-  writeProviderControls();
-}
-
-async function deleteProvider() {
-  if (currentProviders.length <= 1) return;
-  currentProviders = currentProviders.filter((provider) => provider.id !== currentSettings.aiProviderId);
-  currentSettings.aiProviderId = currentProviders[0].id;
-  await writeSettings({ providers: currentProviders, aiProviderId: currentSettings.aiProviderId });
-  writeProviderControls();
-}
 
 function writeLayoutPreset() {
   const preset = currentSettings.subtitleLayoutPreset;
