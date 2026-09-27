@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # [INPUT]: 已生成的 SafariApp Xcode 工程，以及 xcodebuild/hdiutil
-# [OUTPUT]: dist/Netflix Dual Subtitles-<version>.dmg
+# [OUTPUT]: dist/Bilayer-<version>.dmg
 # [POS]: scripts 的本地 macOS 分发打包入口，被 npm run package:dmg 调用
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="Netflix Dual Subtitles"
+APP_NAME="Bilayer"
 PROJECT_DIR="$ROOT_DIR/SafariApp/$APP_NAME"
 PROJECT_FILE="$PROJECT_DIR/$APP_NAME.xcodeproj"
 MANIFEST="$ROOT_DIR/extension/manifest.json"

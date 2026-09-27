@@ -1,8 +1,8 @@
-# netflix-dual-subtitles-safari - Netflix Safari 双字幕扩展
+# Bilayer - 流媒体双语字幕与 AI 翻译 Safari 扩展
 WebExtension + macOS Safari Extension Packager + 原生浏览器字幕覆盖层
 
 <directory>
-extension/ - 浏览器扩展源码 (1子目录: src...)
+extension/ - 浏览器扩展源码 (icons/ + src/ 五个运行上下文)
 </directory>
 
 <directory>
@@ -10,7 +10,7 @@ SafariApp/ - Apple converter 生成的 macOS Safari App Extension 工程
 </directory>
 
 <directory>
-scripts/ - 本地检查与 Safari 工程生成脚本
+scripts/ - 本地检查、图标派生与 Safari 工程生成脚本
 </directory>
 
 <config>
@@ -62,4 +62,5 @@ Safari 工程由 `scripts/create-safari-project.sh` 从 WebExtension 源码生�
 2026-09-27: 恢复兼容服务日文注音响应的字符串处理；已保存服务展开模型菜单时按服务发现完整模型目录，顶部搜索过滤且保留当前选择。
 2026-09-27: 修复日文注音请求：旧 readings 任意键对象 Schema 允许模型返回 `{}`；现改为固定字段 `[{surface,reading}]` 数组请求契约，后台转换为 overlay 使用的读音映射字典，兼容旧响应格式；提示词明确按同条日文原文或日文译文生成读音，纯假名字幕允许空数组。不保证模型始终生成非空读音。
 2026-09-27: 发布 0.2.2 补丁版，同步 WebExtension 与 Safari 工程版本；包含兼容服务日文注音响应修复、模型目录下拉发现及诊断报文导出修复。
+2026-09-27: 品牌更名为 Bilayer（原 Netflix Dual Subtitles Safari），移除 Netflix 商标与品牌红以免 App Review 5.2.1/2.3.x 拒审；协议常量改名 bilayer-bridge/bilayer-host/BILAYER_*/window.Bilayer，bundle id 保持不变以保留已安装用户数据；图标改为双层语义（蓝 #4C8DFF 原文层 + 琥珀 #FFB020 译文层），新增 scripts/build-icons.sh 派生 16/32/48/96/128/256/512 全套并接入 npm run icons；版本 0.3.0。
 法则: 极简·稳定·导航·版本精确

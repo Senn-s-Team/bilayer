@@ -628,7 +628,7 @@ async function fetchProviderModels(force = false) {
   elements.fetchProviderModels.disabled = true;
   elements.providerTestStatus.textContent = "正在获取模型列表…";
   await new Promise((resolve) => {
-    runtime.runtime.sendMessage({ type: "NETFLIX_DUAL_SUBTITLES_LIST_MODELS", providerId }, (result) => {
+    runtime.runtime.sendMessage({ type: "BILAYER_LIST_MODELS", providerId }, (result) => {
       request.pending = false;
       const current = selectedProvider();
       if (providerModelCatalog.get(providerId) !== request || current?.id !== providerId || current.endpoint !== request.endpoint || current.credential !== request.credential) {
@@ -695,7 +695,7 @@ async function reloadTracks() {
   writeRoleStatus("primary", "等待字幕轨道", "loading");
   writeRoleStatus("secondary", "等待字幕轨道", "loading");
 
-  await sendMessageToActiveTab({ type: "NETFLIX_DUAL_SUBTITLES_RELOAD" });
+  await sendMessageToActiveTab({ type: "BILAYER_RELOAD" });
   scheduleStatePoll(0);
 }
 
@@ -965,7 +965,7 @@ async function fetchNewDraftModels() {
   newDraftControls.fetchBtn.textContent = "获取中…";
 
   const message = {
-    type: "NETFLIX_DUAL_SUBTITLES_LIST_MODELS",
+    type: "BILAYER_LIST_MODELS",
     credential,
     endpoint
   };
@@ -1004,7 +1004,7 @@ async function testProviderConnection() {
   elements.testProvider.disabled = true;
   elements.providerTestStatus.textContent = "测试中…";
   return new Promise((resolve) => {
-    runtime.runtime.sendMessage({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId }, (result) => {
+    runtime.runtime.sendMessage({ type: "BILAYER_TEST_PROVIDER", providerId }, (result) => {
       elements.testProvider.disabled = false;
       if (providerId !== currentSettings.aiProviderId) { resolve(); return; }
       if (runtime.runtime.lastError || !result?.ok) {
@@ -1418,11 +1418,11 @@ async function deleteCredential() {
 }
 
 function readPageState() {
-  return sendMessageToActiveTab({ type: "NETFLIX_DUAL_SUBTITLES_GET_STATE" });
+  return sendMessageToActiveTab({ type: "BILAYER_GET_STATE" });
 }
 
 async function sendMessageToActiveTab(message) {
-  if (message.type !== "NETFLIX_DUAL_SUBTITLES_GET_STATE") {
+  if (message.type !== "BILAYER_GET_STATE") {
     return connectedTabId === null ? null : sendToTab(connectedTabId, message);
   }
 

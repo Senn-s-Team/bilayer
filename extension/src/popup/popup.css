@@ -20,13 +20,13 @@
   --faint: #55555c;
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.14);
-  --accent: #e50914;
-  --accent-deep: #ff1e2b;
-  --accent-glow: rgba(229, 9, 20, 0.35);
+  --accent: #4C8DFF;
+  --accent-deep: #6BA3FF;
+  --accent-glow: rgba(76, 141, 255, 0.35);
   --success: #34c759;
   --warning: #ff9f0a;
   --danger: #ff453a;
-  --focus-ring: 0 0 0 3px rgba(229, 9, 20, 0.35);
+  --focus-ring: 0 0 0 3px rgba(76, 141, 255, 0.35);
   --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.5);
   --spring: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -221,10 +221,10 @@ h1, h2, h3, p {
 
 .tab-button.is-active {
   color: #fff;
-  background: rgba(229, 9, 20, 0.16);
-  border: 1px solid rgba(229, 9, 20, 0.4);
+  background: rgba(76, 141, 255, 0.16);
+  border: 1px solid rgba(76, 141, 255, 0.4);
   font-weight: 600;
-  box-shadow: 0 0 10px rgba(229, 9, 20, 0.2);
+  box-shadow: 0 0 10px rgba(76, 141, 255, 0.2);
 }
 
 .sidebar-tools {
@@ -449,8 +449,8 @@ h2 {
 
 .select-card.is-selected {
   border-color: var(--accent);
-  background: rgba(229, 9, 20, 0.1);
-  box-shadow: 0 0 0 1px var(--accent) inset, 0 0 16px rgba(229, 9, 20, 0.22);
+  background: rgba(76, 141, 255, 0.1);
+  box-shadow: 0 0 0 1px var(--accent) inset, 0 0 16px rgba(76, 141, 255, 0.22);
 }
 
 .card-badge {
@@ -466,8 +466,8 @@ h2 {
 }
 
 .select-card.is-selected .card-badge {
-  background: rgba(229, 9, 20, 0.25);
-  color: #ff453a;
+  background: rgba(76, 141, 255, 0.25);
+  color: var(--accent-deep);
 }
 
 .select-card strong {
@@ -711,9 +711,9 @@ input::placeholder, textarea::placeholder {
 
 .preset-list button.is-active, .role-selector button.is-active {
   color: #fff;
-  background: rgba(229, 9, 20, 0.2);
-  border: 1px solid rgba(229, 9, 20, 0.4);
-  box-shadow: 0 0 10px rgba(229, 9, 20, 0.2);
+  background: rgba(76, 141, 255, 0.2);
+  border: 1px solid rgba(76, 141, 255, 0.4);
+  box-shadow: 0 0 10px rgba(76, 141, 255, 0.2);
   font-weight: 650;
 }
 

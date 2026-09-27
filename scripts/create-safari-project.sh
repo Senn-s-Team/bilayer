@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXTENSION_DIR="$ROOT_DIR/extension"
 PROJECT_DIR="$ROOT_DIR/SafariApp"
-APP_NAME="Netflix Dual Subtitles"
+APP_NAME="Bilayer"
 BUNDLE_ID="${BUNDLE_ID:-com.chinnsenn.netflix-dual-subtitles-safari}"
 DEBUG_BUNDLE_ID="${DEBUG_BUNDLE_ID:-$BUNDLE_ID.dev}"
 PBXPROJ="$PROJECT_DIR/$APP_NAME/$APP_NAME.xcodeproj/project.pbxproj"
@@ -59,7 +59,9 @@ if [[ -f "$PBXPROJ" ]]; then
       $ENV{BUNDLE_ID},
     );
     my $bundle_id_index = 0;
-    s/PRODUCT_BUNDLE_IDENTIFIER = "[^"]+";/"PRODUCT_BUNDLE_IDENTIFIER = \"" . fallback($bundle_ids[$bundle_id_index++], $ENV{BUNDLE_ID}) . "\";"/ge;
+    # converter 仅在含空格/连字符时才给值加引号；必须匹配可选的引号形式，
+    # 否则单词型 App 名会让宿主 bundle id 逃过重写，破坏 Extension 前缀约束。
+    s/PRODUCT_BUNDLE_IDENTIFIER = "?[^";]+"?;/"PRODUCT_BUNDLE_IDENTIFIER = \"" . fallback($bundle_ids[$bundle_id_index++], $ENV{BUNDLE_ID}) . "\";"/ge;
   ' "$PBXPROJ"
   /usr/bin/perl -0pi -e '
     sub fallback { defined $_[0] ? $_[0] : $_[1] }

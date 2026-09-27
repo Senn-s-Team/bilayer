@@ -1,6 +1,6 @@
-# Netflix Dual Subtitles Safari
+# Bilayer
 
-macOS Safari Web Extension for two Netflix subtitle lines, with optional translation through OpenAI or an OpenAI-compatible Chat Completions service.
+macOS Safari Web Extension for two subtitle lines on streaming video pages, with optional AI translation through OpenAI or an OpenAI-compatible Chat Completions service.
 
 ## Status
 
@@ -9,17 +9,19 @@ This is a build-free WebExtension source project. `scripts/create-safari-project
 ## Structure
 
 - `extension/`: browser extension source consumed by Safari's converter.
+- `extension/icons/`: `icon.svg` is the only hand-maintained icon source; `npm run icons` derives every PNG size.
 - `extension/src/page/`: page-world bridge that observes Netflix player metadata and subtitle requests.
 - `extension/src/content/`: isolated content script, subtitle loading, parsing, timing, and overlay rendering.
 - `extension/src/popup/`: extension popup for language and display settings.
-- `scripts/`: local validation and Safari conversion helpers.
+- `scripts/`: local validation, icon derivation, and Safari conversion helpers.
 
 ## Develop
 
 ```bash
 npm run check        # manifest and JavaScript syntax
 npm test             # content, scheduler, store, and worker behavior regressions
-npm run install:app  # compile Release, sign, and overwrite /Applications/Netflix Dual Subtitles.app
+npm run icons        # regenerate 16/32/48/96/128/256/512 PNGs from icon.svg
+npm run install:app  # compile Release, sign, and overwrite /Applications/Bilayer.app
 ```
 
 ## Generate Safari Project

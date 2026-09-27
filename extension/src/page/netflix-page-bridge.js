@@ -6,7 +6,7 @@
  */
 
 (() => {
-  const SOURCE = "netflix-dual-subtitles-bridge";
+  const SOURCE = "bilayer-bridge";
   const PROFILE_HINTS = ["webvtt-lssdh-ios8", "webvtt-lssdh", "dfxp-ls-sdh", "dfxp-ls-sdh-ios8", "simplesdh"];
   const seen = new Set();
   const originalJsonParse = JSON.parse;
@@ -14,8 +14,8 @@
   let desiredNativeHidden = false;
   let isResolvingTrackUrl = false;
 
-  if (window.__NetflixDualSubtitlesBridgeInstalled) return;
-  window.__NetflixDualSubtitlesBridgeInstalled = true;
+  if (window.__BilayerBridgeInstalled) return;
+  window.__BilayerBridgeInstalled = true;
 
   hookJson();
   hookFetch();

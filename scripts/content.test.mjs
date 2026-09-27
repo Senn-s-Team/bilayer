@@ -50,7 +50,7 @@ async function createPage(stored = {}) {
   };
   const window = {
     location,
-    NetflixDualSubtitles: {
+    Bilayer: {
       normalizeTracks: (payload) => payload.tracks,
       createSubtitleStore: () => ({ load: (track) => loads.get(track.key).promise, clear() {} }),
       createSubtitleOverlay: () => ({
@@ -103,12 +103,12 @@ async function createPage(stored = {}) {
     },
     getState() {
       let result;
-      listeners.runtime({ type: "NETFLIX_DUAL_SUBTITLES_GET_STATE" }, null, (value) => { result = value; });
+      listeners.runtime({ type: "BILAYER_GET_STATE" }, null, (value) => { result = value; });
       return result;
     },
     announce(tracks) {
       listeners.message({ source: window, data: {
-        source: "netflix-dual-subtitles-bridge", type: "tracks", payload: { tracks }
+        source: "bilayer-bridge", type: "tracks", payload: { tracks }
       } });
     }
   };

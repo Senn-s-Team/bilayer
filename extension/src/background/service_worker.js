@@ -6,7 +6,7 @@
  */
 
 const runtime = globalThis.browser ?? globalThis.chrome;
-const TRANSLATE_MESSAGE = "NETFLIX_DUAL_SUBTITLES_TRANSLATE_BATCH";
+const TRANSLATE_MESSAGE = "BILAYER_TRANSLATE_BATCH";
 const OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_PROVIDER_ID = "openai";
 const DEFAULT_TRANSLATION_PROMPT = "你是一位专业的影视字幕翻译员，也是目标语言的母语使用者。只翻译 items[].text；contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。保持每个 id、数量和顺序完全一致，不合并、不拆分、不遗漏字幕。保留人名、专有名词和既有译名；结合上下文处理代词、时态、人物关系和语气。使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、注释、时间戳或额外字段。";
@@ -148,20 +148,20 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
         ...(message.diagnostic === true ? { trace: [{ stage: "rejected", reason: "worker_exception" }] } : {}) }));
     return true;
   }
-  if (message?.type === "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER") {
+  if (message?.type === "BILAYER_TEST_PROVIDER") {
     void testProviderConnection(message.providerId, sender)
       .then(sendResponse)
       .catch(() => sendResponse({ ok: false, errorCode: "unavailable" }));
     return true;
   }
-  if (message?.type === "NETFLIX_DUAL_SUBTITLES_LIST_MODELS") {
+  if (message?.type === "BILAYER_LIST_MODELS") {
     void listProviderModels(message, sender)
       .then(sendResponse)
       .catch(() => sendResponse({ ok: false, errorCode: "unavailable" }));
     return true;
   }
 
-  if (message?.type === "NETFLIX_DUAL_SUBTITLES_GET_RAW_DIAGNOSTICS") {
+  if (message?.type === "BILAYER_GET_RAW_DIAGNOSTICS") {
     if (!isDiagnosticsSender(sender)) {
       sendResponse({ ok: false, errorCode: "configuration" });
       return true;
@@ -176,7 +176,7 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
-  if (message?.type === "NETFLIX_DUAL_SUBTITLES_SET_RAW_DIAGNOSTICS") {
+  if (message?.type === "BILAYER_SET_RAW_DIAGNOSTICS") {
     if (!isDiagnosticsSender(sender) || typeof message.enabled !== "boolean") {
       sendResponse({ ok: false, errorCode: "configuration" });
       return true;
@@ -185,7 +185,7 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true, enabled: rawCaptureEnabled });
     return true;
   }
-  if (message?.type === "NETFLIX_DUAL_SUBTITLES_CLEAR_RAW_DIAGNOSTICS") {
+  if (message?.type === "BILAYER_CLEAR_RAW_DIAGNOSTICS") {
     if (!isDiagnosticsSender(sender)) {
       sendResponse({ ok: false, errorCode: "configuration" });
       return true;
@@ -196,7 +196,7 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true });
     return true;
   }
-  if (message?.type !== "NETFLIX_DUAL_SUBTITLES_FETCH_SUBTITLE") return false;
+  if (message?.type !== "BILAYER_FETCH_SUBTITLE") return false;
 
   void fetchSubtitle(message.url)
     .then((result) => sendResponse(result))

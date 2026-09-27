@@ -2,8 +2,8 @@
 # 仅执行重签名、注册系统扩展并启动 Netflix.app
 set -e
 
-APP_PATH="/Applications/Netflix Dual Subtitles.app"
-APPEX_PATH="${APP_PATH}/Contents/PlugIns/Netflix Dual Subtitles Extension.appex"
+APP_PATH="/Applications/Bilayer.app"
+APPEX_PATH="${APP_PATH}/Contents/PlugIns/Bilayer Extension.appex"
 NETFLIX_PWA="/Users/chinnsenn/Applications/Netflix.app"
 CERT_NAME="Apple Development: iamchinnsenn@gmail.com (Q7T9A8KJXD)"
 

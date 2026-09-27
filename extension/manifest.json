@@ -1,18 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "Netflix Dual Subtitles Safari",
-  "version": "0.2.2",
-  "description": "Show a second subtitle track on Netflix Web in Safari.",
+  "name": "Bilayer",
+  "version": "0.3.0",
+  "description": "Bilingual subtitles with optional AI translation on streaming video pages.",
   "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "96": "icons/icon-96.png",
-    "128": "icons/icon-128.png"
+    "128": "icons/icon-128.png",
+    "256": "icons/icon-256.png",
+    "512": "icons/icon-512.png"
   },
   "permissions": ["storage", "activeTab"],
   "host_permissions": ["https://netflix.com/*", "https://www.netflix.com/*", "https://*.nflxvideo.net/*", "https://api.openai.com/*"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
   "action": {
-    "default_title": "Netflix Dual Subtitles",
+    "default_title": "Bilayer",
     "default_popup": "src/popup/popup.html"
   },
   "background": {

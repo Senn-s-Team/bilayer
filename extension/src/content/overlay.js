@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 DOM/Shadow DOM 渲染能力、字幕样式设置与 subtitleParser 输出的 cue 数组（支持带 ruby 的日文注音）、fullscreenMount 的挂载点选择
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供双字幕布局与独立视觉样式；逐帧复用未变化的字幕节点（包含 ruby 标记）、渲染假名注音并通过 mount() 接入全屏挂载
+ * [OUTPUT]: 对 window.Bilayer 提供双字幕布局与独立视觉样式；逐帧复用未变化的字幕节点（包含 ruby 标记）、渲染假名注音并通过 mount() 接入全屏挂载
  * [POS]: content 的显示层，被 content.js 按播放时间驱动；mount() 由 fullscreenMount 接管挂载点
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -18,10 +18,10 @@ const SUBTITLE_FONT_FAMILIES = {
   rounded: '"Arial Rounded MT Bold", "SF Pro Rounded", -apple-system, sans-serif'
 };
 
-window.NetflixDualSubtitles ??= {};
-window.NetflixDualSubtitles.createSubtitleOverlay = function createSubtitleOverlay() {
+window.Bilayer ??= {};
+window.Bilayer.createSubtitleOverlay = function createSubtitleOverlay() {
   const host = document.createElement("div");
-  host.id = "netflix-dual-subtitles-host";
+  host.id = "bilayer-host";
   Object.assign(host.style, {
     position: "fixed",
     inset: "0",
@@ -172,7 +172,7 @@ window.NetflixDualSubtitles.createSubtitleOverlay = function createSubtitleOverl
     mount() {
       ensureMounted(host);
       if (host.__fullscreenInstalled) return;
-      const install = window.NetflixDualSubtitles?.installFullscreenHostManagement;
+      const install = window.Bilayer?.installFullscreenHostManagement;
       if (typeof install === "function") install(host);
     }
   };
@@ -212,7 +212,7 @@ function colorWithOpacity(color, opacity) {
 
 function ensureMounted(host) {
   if (host.isConnected) return;
-  const target = window.NetflixDualSubtitles?.pickMountTarget?.() ?? document.documentElement;
+  const target = window.Bilayer?.pickMountTarget?.() ?? document.documentElement;
   if (target) target.append(host);
 }
 

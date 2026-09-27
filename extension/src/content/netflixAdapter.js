@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Netflix 页面桥接层传入的 player API、manifest 与 timed text 响应片段
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 normalizeTracks 函数，将私有结构转换成稳定 Track
+ * [OUTPUT]: 对 window.Bilayer 提供 normalizeTracks 函数，将私有结构转换成稳定 Track
  * [POS]: content 的 Netflix 边界适配器，隔离页面私有字段变化
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -17,8 +17,8 @@ const OFF_PATTERN = /^(off|none|关闭|關閉|关闭字幕|關閉字幕|字幕�
 const NON_SUBTITLE_FORMAT_PATTERN = /image|jpeg|jpg|png|svg|stpp|itt/i;
 const FORCED_PATTERN = /forced|narrative/i;
 
-window.NetflixDualSubtitles ??= {};
-window.NetflixDualSubtitles.normalizeTracks = function normalizeTracks(payload) {
+window.Bilayer ??= {};
+window.Bilayer.normalizeTracks = function normalizeTracks(payload) {
   const candidates = collectObjects(payload);
   const tracks = candidates.flatMap(toTracks).filter(isPlayableTrack);
   const byKey = new Map();

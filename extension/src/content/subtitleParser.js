@@ -1,13 +1,13 @@
 /**
  * [INPUT]: 依赖浏览器 DOMParser 与字幕文本载荷
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 parseSubtitle 函数（输出统一 {startMs,endMs,text} cue）与 collapseSubtitleLines
+ * [OUTPUT]: 对 window.Bilayer 提供 parseSubtitle 函数（输出统一 {startMs,endMs,text} cue）与 collapseSubtitleLines
  * [POS]: content 的格式解析层，被 subtitleStore 调用并规范化单句换行
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
-window.NetflixDualSubtitles ??= {};
-window.NetflixDualSubtitles.collapseSubtitleLines = collapseSubtitleLines;
-window.NetflixDualSubtitles.parseSubtitle = function parseSubtitle(text, contentType = "") {
+window.Bilayer ??= {};
+window.Bilayer.collapseSubtitleLines = collapseSubtitleLines;
+window.Bilayer.parseSubtitle = function parseSubtitle(text, contentType = "") {
   const trimmed = text.trim();
   if (!trimmed) return [];
 

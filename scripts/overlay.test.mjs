@@ -62,7 +62,7 @@ function createOverlay() {
   };
   const window = {};
   runInNewContext(source, { window, document }, { filename: "overlay.js" });
-  return { overlay: window.NetflixDualSubtitles.createSubtitleOverlay(), primary, secondary, host };
+  return { overlay: window.Bilayer.createSubtitleOverlay(), primary, secondary, host };
 }
 
 test("unchanged subtitles retain their DOM nodes across playback frames", () => {

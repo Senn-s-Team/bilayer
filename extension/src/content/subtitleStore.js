@@ -1,12 +1,12 @@
 /**
- * [INPUT]: 依赖 window.NetflixDualSubtitles.parseSubtitle、background/page bridge 字幕下载与轨道解析能力
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 createSubtitleStore 工厂，合并同轨并发加载并按剧集世代缓存 cue
+ * [INPUT]: 依赖 window.Bilayer.parseSubtitle、background/page bridge 字幕下载与轨道解析能力
+ * [OUTPUT]: 对 window.Bilayer 提供 createSubtitleStore 工厂，合并同轨并发加载并按剧集世代缓存 cue
  * [POS]: content 的字幕数据层；过期下载可完成旧调用，但不得填充新剧集缓存
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
-window.NetflixDualSubtitles ??= {};
-window.NetflixDualSubtitles.createSubtitleStore = function createSubtitleStore() {
+window.Bilayer ??= {};
+window.Bilayer.createSubtitleStore = function createSubtitleStore() {
   const runtime = globalThis.browser ?? globalThis.chrome;
   const cache = new Map();
   const pending = new Map();
@@ -16,7 +16,7 @@ window.NetflixDualSubtitles.createSubtitleStore = function createSubtitleStore()
 
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
-    if (event.data?.source !== "netflix-dual-subtitles-bridge") return;
+    if (event.data?.source !== "bilayer-bridge") return;
     if (event.data?.type !== "load-subtitle-result" && event.data?.type !== "resolve-track-url-result") return;
 
     const request = pending.get(event.data.requestId);
@@ -45,7 +45,7 @@ window.NetflixDualSubtitles.createSubtitleStore = function createSubtitleStore()
       const job = (async () => {
         const url = normalizeUrl(await resolveTrackUrlIfNeeded(track));
         const { text, contentType } = await loadSubtitle(url);
-        const cues = window.NetflixDualSubtitles.parseSubtitle(text, contentType);
+        const cues = window.Bilayer.parseSubtitle(text, contentType);
         if (cues.length === 0) throw new Error("Subtitle parsed 0 cues");
         if (epoch === generation) cache.set(track.key, cues);
         return cues;
@@ -92,7 +92,7 @@ window.NetflixDualSubtitles.createSubtitleStore = function createSubtitleStore()
       }
 
       runtime.runtime.sendMessage({
-        type: "NETFLIX_DUAL_SUBTITLES_FETCH_SUBTITLE",
+        type: "BILAYER_FETCH_SUBTITLE",
         url
       }, (response) => {
         const runtimeError = runtime.runtime.lastError;
@@ -135,7 +135,7 @@ window.NetflixDualSubtitles.createSubtitleStore = function createSubtitleStore()
       });
 
       window.postMessage({
-        source: "netflix-dual-subtitles-bridge",
+        source: "bilayer-bridge",
         type: "load-subtitle",
         requestId,
         url: normalizeUrl(url)
@@ -176,7 +176,7 @@ window.NetflixDualSubtitles.createSubtitleStore = function createSubtitleStore()
       });
 
       window.postMessage({
-        source: "netflix-dual-subtitles-bridge",
+        source: "bilayer-bridge",
         type: "resolve-track-url",
         requestId,
         key: track.key,

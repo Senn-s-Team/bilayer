@@ -59,7 +59,7 @@ async function init() {
     showLocalPreview();
     return;
   }
-  await send({ type: "NETFLIX_DUAL_SUBTITLES_SET_RAW_DIAGNOSTICS", enabled: true });
+  await send({ type: "BILAYER_SET_RAW_DIAGNOSTICS", enabled: true });
   await refresh();
   window.setInterval(refresh, 1000);
 }
@@ -90,11 +90,11 @@ function showLocalPreview() {
 function bindControls() {
   elements.refresh.addEventListener("click", () => void refresh());
   elements.toggle.addEventListener("click", async () => {
-    await send({ type: "NETFLIX_DUAL_SUBTITLES_SET_RAW_DIAGNOSTICS", enabled: elements.toggle.dataset.enabled !== "true" });
+    await send({ type: "BILAYER_SET_RAW_DIAGNOSTICS", enabled: elements.toggle.dataset.enabled !== "true" });
     await refresh();
   });
   elements.clear.addEventListener("click", async () => {
-    await send({ type: "NETFLIX_DUAL_SUBTITLES_CLEAR_RAW_DIAGNOSTICS" });
+    await send({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" });
     records = [];
     selectedId = null;
     version = -1;
@@ -172,7 +172,7 @@ function bindControls() {
 }
 
 async function refresh() {
-  const result = await send({ type: "NETFLIX_DUAL_SUBTITLES_GET_RAW_DIAGNOSTICS", version });
+  const result = await send({ type: "BILAYER_GET_RAW_DIAGNOSTICS", version });
   if (!result?.ok) {
     elements.liveStatus.textContent = "后台连接失败";
     elements.liveStatus.dataset.state = "error";

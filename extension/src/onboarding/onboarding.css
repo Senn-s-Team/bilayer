@@ -9,11 +9,11 @@
       --window-bg: rgba(22, 22, 26, 0.78);
       --card-bg: rgba(255, 255, 255, 0.04);
       --card-border: rgba(255, 255, 255, 0.08);
-      --card-border-active: rgba(229, 9, 20, 0.85);
+      --card-border-active: rgba(76, 141, 255, 0.85);
       --text: #f5f5f7;
       --text-muted: #86868b;
-      --accent: #e50914;
-      --accent-glow: rgba(229, 9, 20, 0.35);
+      --accent: #4C8DFF;
+      --accent-glow: rgba(76, 141, 255, 0.35);
       --surface-blur: blur(30px) saturate(190%);
       --spring: cubic-bezier(0.16, 1, 0.3, 1);
     }
@@ -68,7 +68,7 @@
       width: 26px;
       height: 26px;
       border-radius: 6px;
-      box-shadow: 0 2px 8px rgba(229, 9, 20, 0.4);
+      box-shadow: 0 2px 8px rgba(76, 141, 255, 0.4);
     }
 
     .stepper {
@@ -174,7 +174,7 @@
 
     .select-card.is-selected {
       border-color: var(--card-border-active);
-      background: rgba(229, 9, 20, 0.08);
+      background: rgba(76, 141, 255, 0.08);
       box-shadow: 0 0 0 1px var(--card-border-active) inset;
     }
 
@@ -191,8 +191,8 @@
     }
 
     .select-card.is-selected .card-badge {
-      background: rgba(229, 9, 20, 0.25);
-      color: #ff453a;
+      background: rgba(76, 141, 255, 0.25);
+      color: var(--accent-deep);
     }
 
     .select-card strong {
@@ -300,7 +300,7 @@
     }
 
     .text-input:focus, .select-input:focus {
-      border-color: rgba(229, 9, 20, 0.85);
+      border-color: rgba(76, 141, 255, 0.85);
       box-shadow: 0 0 0 3px var(--accent-glow);
     }
 
@@ -403,9 +403,9 @@
       letter-spacing: 0.04em;
       padding: 3px 9px;
       border-radius: 6px;
-      background: rgba(229, 9, 20, 0.18);
-      color: #ff453a;
-      border: 1px solid rgba(229, 9, 20, 0.35);
+      background: rgba(76, 141, 255, 0.18);
+      color: var(--accent-deep);
+      border: 1px solid rgba(76, 141, 255, 0.35);
       display: flex;
       align-items: center;
       gap: 6px;
@@ -630,5 +630,5 @@
     }
 
     .btn-accent:hover {
-      background: #ff1e2b;
+      background: var(--accent-deep);
     }

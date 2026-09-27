@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # [INPUT]: Xcode 工程、本地编译产物及本机 Apple 开发者证书
-# [OUTPUT]: 编译 Release 版本，自动覆盖到 /Applications/Netflix Dual Subtitles.app 并完成重签名与 pluginkit 注册
+# [OUTPUT]: 编译 Release 版本，自动覆盖到 /Applications/Bilayer.app 并完成重签名与 pluginkit 注册
 # [POS]: scripts 的一键构建与本地安装部署入口，被 npm run install:app 调用
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="Netflix Dual Subtitles"
+APP_NAME="Bilayer"
 PROJECT_DIR="$ROOT_DIR/SafariApp/$APP_NAME"
 PROJECT_FILE="$PROJECT_DIR/$APP_NAME.xcodeproj"
 BUILD_DIR="$ROOT_DIR/build"

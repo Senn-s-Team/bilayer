@@ -14,7 +14,7 @@ const schedulerSource = readFileSync(new URL("../extension/src/content/translati
 const overlaySource = readFileSync(new URL("../extension/src/content/overlay.js", import.meta.url), "utf8");
 const sender = { id: "extension-id", tab: { url: "https://www.netflix.com/watch/42" } };
 const message = {
-  type: "NETFLIX_DUAL_SUBTITLES_TRANSLATE_BATCH",
+  type: "BILAYER_TRANSLATE_BATCH",
   sourceLanguage: "en", targetLanguage: "zh-Hans",
   items: [{ id: "0", text: "Hello" }],
   contextBefore: [], contextAfter: ["How are you?"]
@@ -228,7 +228,7 @@ test("popup provider connectivity test uses the selected provider and returns on
     aiProviderId: "custom",
     providers: [{ id: "custom", name: "Custom", endpoint: "", model: "c1", credential: "key2" }]
   });
-  const result = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "custom" }, {
+  const result = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "custom" }, {
     id: "extension-id", url: "extension://src/popup/popup.html"
   });
   assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: true, jsonMode: "json_schema" });
@@ -245,9 +245,9 @@ test("raw diagnostic page sees exact request and malformed response without leak
   });
   const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
     tab: { url: "extension://src/diagnostics/diagnostics.html" } };
-  const get = () => worker({ type: "NETFLIX_DUAL_SUBTITLES_GET_RAW_DIAGNOSTICS" }, page);
+  const get = () => worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page);
   assert.equal((await get()).records.length, 0);
-  assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_SET_RAW_DIAGNOSTICS", enabled: true }, page)).ok, true);
+  assert.equal((await worker({ type: "BILAYER_SET_RAW_DIAGNOSTICS", enabled: true }, page)).ok, true);
   const result = await worker({ ...message, diagnostic: true });
   assert.equal(result.errorCode, "invalid_response");
   assert.equal(JSON.stringify(result).includes("private-key"), false);
@@ -259,11 +259,11 @@ test("raw diagnostic page sees exact request and malformed response without leak
   assert.equal(records[0].response.body, rawBody);
   assert.equal(records[0].response.status, 200);
   assert.equal(records[0].failure.reason, "items_mismatch");
-  assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_GET_RAW_DIAGNOSTICS" }, sender)).ok, false);
-  assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_GET_RAW_DIAGNOSTICS" },
+  assert.equal((await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, sender)).ok, false);
+  assert.equal((await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" },
     { id: "extension-id", url: "extension://src/popup/popup.html" })).ok, false);
-  assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_CLEAR_RAW_DIAGNOSTICS" }, sender)).ok, false);
-  assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_CLEAR_RAW_DIAGNOSTICS" }, page)).ok, true);
+  assert.equal((await worker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, sender)).ok, false);
+  assert.equal((await worker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, page)).ok, true);
   assert.equal((await get()).records.length, 0);
 });
 
@@ -284,7 +284,7 @@ test("onboarding page is authorized to run provider connectivity test and reject
     url: "extension://src/onboarding/onboarding.html",
     tab: { id: 10, url: "extension://src/onboarding/onboarding.html" }
   };
-  const result = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "openai" }, onboardingSender);
+  const result = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "openai" }, onboardingSender);
   assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: true, jsonMode: "json_schema" });
   assert.equal(sent.options.headers.Authorization, "Bearer key1");
 
@@ -293,7 +293,7 @@ test("onboarding page is authorized to run provider connectivity test and reject
     url: "https://evil.com",
     tab: { id: 11, url: "https://evil.com" }
   };
-  const deniedResult = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "openai" }, maliciousSender);
+  const deniedResult = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "openai" }, maliciousSender);
   assert.equal(deniedResult.ok, false);
 });
 
@@ -342,7 +342,7 @@ async function assertJapaneseSourceRenders(worker) {
   const subtitle = { startMs: 1000, endMs: 2000, text: "私は田中です" };
   const window = {};
   runInNewContext(schedulerSource, { window }, { filename: "translationScheduler.js" });
-  const scheduler = window.NetflixDualSubtitles.createTranslationScheduler({ translate: () => worker({
+  const scheduler = window.Bilayer.createTranslationScheduler({ translate: () => worker({
     ...message, sourceLanguage: "ja", targetLanguage: "zh-Hans", japaneseRuby: true,
     items: [{ id: "0", text: subtitle.text }]
   }) });
@@ -371,7 +371,7 @@ async function assertJapaneseSourceRenders(worker) {
     documentElement: { append(node) { node.isConnected = true; } }
   };
   runInNewContext(overlaySource, { window, document }, { filename: "overlay.js" });
-  const overlay = window.NetflixDualSubtitles.createSubtitleOverlay();
+  const overlay = window.Bilayer.createSubtitleOverlay();
   overlay.render({ primaryCues: scheduler.annotateSource([subtitle]), secondaryCues: scheduler.translatedFor([subtitle]) });
   assert.equal(primary.children[0].children[0].tagName, "RUBY");
   assert.equal(primary.children[0].children[0].children[0].tagName, "RT");
@@ -590,7 +590,7 @@ test("connectivity probe falls back to json_object and none when json_schema is 
     providers: [{ id: "deepseek", name: "DeepSeek", endpoint: "https://api.deepseek.com/v1/chat/completions", model: "deepseek-chat", credential: "key" }]
   });
 
-  const result = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "deepseek" }, {
+  const result = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "deepseek" }, {
     id: "extension-id", url: "extension://src/popup/popup.html"
   });
   assert.equal(result.ok, true);
@@ -614,7 +614,7 @@ test("connectivity probe marks jsonMode as none and warns when both json_schema 
     providers: [{ id: "legacy", name: "Legacy", endpoint: "https://legacy.example/v1/chat/completions", model: "legacy-v1", credential: "key" }]
   });
 
-  const result = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "legacy" }, {
+  const result = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "legacy" }, {
     id: "extension-id", url: "extension://src/popup/popup.html"
   });
   assert.equal(result.ok, true);

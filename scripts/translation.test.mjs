@@ -23,7 +23,7 @@ function deferred() {
 function create(translate) {
   const window = {};
   runInNewContext(source, { window }, { filename: "translationScheduler.js" });
-  return window.NetflixDualSubtitles.createTranslationScheduler({ translate, onUpdate() {} });
+  return window.Bilayer.createTranslationScheduler({ translate, onUpdate() {} });
 }
 function sourceFor(identity, entries = cues) {
   return { identity, cues: entries, sourceLanguage: "en", targetLanguage: "zh-Hans" };
@@ -211,7 +211,7 @@ test("translation status exposes complete request lifecycle logs", async () => {
   const scheduler = (() => {
     const window = {};
     runInNewContext(source, { window }, { filename: "translationScheduler.js" });
-    return window.NetflixDualSubtitles.createTranslationScheduler({
+    return window.Bilayer.createTranslationScheduler({
       translate: async (batch) => ({ ok: true, items: batch.items.map(({ id }) => ({ id, text: `译 ${id}` })) }),
       onUpdate: (status) => updates.push(status)
     });
@@ -230,7 +230,7 @@ test("request logs measure end-to-end time for successes and failures", async ()
   const pending = [];
   const window = {};
   runInNewContext(source, { window, Date: class extends Date { static now() { return now; } } }, { filename: "translationScheduler.js" });
-  const scheduler = window.NetflixDualSubtitles.createTranslationScheduler({
+  const scheduler = window.Bilayer.createTranslationScheduler({
     translate: () => {
       const request = deferred();
       pending.push(request);

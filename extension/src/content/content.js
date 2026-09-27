@@ -6,7 +6,7 @@
  */
 
 const runtime = globalThis.browser ?? globalThis.chrome;
-const modules = window.NetflixDualSubtitles;
+const modules = window.Bilayer;
 const DEFAULT_TRANSLATION_PROMPT = "你是一位专业的影视字幕翻译员，也是目标语言的母语使用者。只翻译 items[].text；contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。保持每个 id、数量和顺序完全一致，不合并、不拆分、不遗漏字幕。保留人名、专有名词和既有译名；结合上下文处理代词、时态、人物关系和语气。使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、注释、时间戳或额外字段。";
 const TARGET_LANGUAGES = new Set(["zh-Hans", "zh-Hant", "ja", "ko", "en", "es", "fr", "de", "it", "pt-BR", "ru", "ar", "hi"]);
 const SUBTITLE_TRACK_SETTING_KEYS = new Set([
@@ -169,7 +169,7 @@ function bindRuntimeMessages() {
 
 function bindPopupMessages() {
   runtime.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type === "NETFLIX_DUAL_SUBTITLES_RELOAD") {
+    if (message?.type === "BILAYER_RELOAD") {
       if (!isWatchPage()) {
         sendResponse({ ok: false });
         return true;
@@ -181,7 +181,7 @@ function bindPopupMessages() {
       return true;
     }
 
-    if (message?.type !== "NETFLIX_DUAL_SUBTITLES_GET_STATE") return false;
+    if (message?.type !== "BILAYER_GET_STATE") return false;
 
     sendResponse({
       settings: normalizeSettings(state.settings),
@@ -200,7 +200,7 @@ function bindPopupMessages() {
 function bindBridgeMessages() {
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
-    if (event.data?.source !== "netflix-dual-subtitles-bridge") return;
+    if (event.data?.source !== "bilayer-bridge") return;
     if (event.data?.type === "load-subtitle-result" || event.data?.type === "resolve-track-url-result") return;
     if (!isWatchPage()) return;
     syncWatchState();
@@ -290,10 +290,10 @@ function clearSubtitleState() {
   // SPA route changes may detach the subtitle host element; clear the
   // fullscreen-management flags so overlay.mount() reattaches listeners
   // and reparent logic runs on the next mount against the new player.
-  const host = document.getElementById("netflix-dual-subtitles-host");
+  const host = document.getElementById("bilayer-host");
   if (host) {
     host.__fullscreenInstalled = false;
-    host.__netflixDualSubtitles_mountedKey = null;
+    host.__bilayer_mountedKey = null;
   }
   overlay.render();
 }
@@ -314,7 +314,7 @@ function requestPlayerTracks() {
   if (state.settingsWatchId !== state.watchId) return;
 
   window.postMessage({
-    source: "netflix-dual-subtitles-bridge",
+    source: "bilayer-bridge",
     type: "query-player-tracks"
   }, window.location.origin);
 
@@ -483,7 +483,7 @@ function translateBatch(batch) {
       resolve(result);
     }
     try {
-      runtime.runtime.sendMessage({ type: "NETFLIX_DUAL_SUBTITLES_TRANSLATE_BATCH", diagnostic: true, ...batch }, (response) => {
+      runtime.runtime.sendMessage({ type: "BILAYER_TRANSLATE_BATCH", diagnostic: true, ...batch }, (response) => {
         finish(runtime.runtime.lastError
           ? { ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "runtime_error" }] }
           : response ?? { ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "empty_reply" }] });
@@ -570,7 +570,7 @@ function releaseInitialWait(resume) {
 
 function updateNativeSubtitleVisibility() {
   const shouldHide = shouldHideNativeSubtitles();
-  let style = document.querySelector("#netflix-dual-subtitles-native-hide-style");
+  let style = document.querySelector("#bilayer-native-hide-style");
 
   if (!shouldHide) {
     style?.remove();
@@ -581,7 +581,7 @@ function updateNativeSubtitleVisibility() {
   if (style) return;
 
   style = document.createElement("style");
-  style.id = "netflix-dual-subtitles-native-hide-style";
+  style.id = "bilayer-native-hide-style";
   style.textContent = `
     .player-timedtext,
     .player-timedtext-text-container,
@@ -608,7 +608,7 @@ function updateNativeSubtitleVisibility() {
 
 function postNativeSubtitlePreference() {
   window.postMessage({
-    source: "netflix-dual-subtitles-bridge",
+    source: "bilayer-bridge",
     type: "set-native-subtitles-hidden",
     hidden: shouldHideNativeSubtitles()
   }, window.location.origin);

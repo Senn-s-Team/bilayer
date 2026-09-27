@@ -1,12 +1,12 @@
 /**
  * [INPUT]: 依赖已挂载的字幕 host 元素与 document/webkitFullscreenElement 状态
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 pickMountTarget/installFullscreenHostManagement/bindVideoFullscreen
+ * [OUTPUT]: 对 window.Bilayer 提供 pickMountTarget/installFullscreenHostManagement/bindVideoFullscreen
  * [POS]: content 的全屏挂载管理，跨 WebKit 视频级与文档级 fullscreen 事件 reparent host
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
 (function installFullscreenMountModule() {
-  const ns = window.NetflixDualSubtitles ?? (window.NetflixDualSubtitles = {});
+  const ns = window.Bilayer ?? (window.Bilayer = {});
 
   function pickMountTarget() {
     try {
@@ -34,9 +34,9 @@
     }
     const target = resolver();
     if (!target) return;
-    if (host.__netflixDualSubtitles_mountedKey === target) return;
+    if (host.__bilayer_mountedKey === target) return;
     reparentHost(host, target);
-    host.__netflixDualSubtitles_mountedKey = target;
+    host.__bilayer_mountedKey = target;
   }
 
   function installFullscreenHostManagement(host) {

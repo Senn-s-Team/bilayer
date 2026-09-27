@@ -3,6 +3,7 @@
 
 成员清单
 check.mjs: 零依赖项目检查器，验证 manifest JSON 与 JavaScript 语法
+build-icons.sh: 图标派生器，从 extension/icons/icon.svg 唯一手工源经 sips 生成 16/32/48/96/128/256/512 PNG，并校验 manifest 引用与产物一致
 content.test.mjs: 驱动真实内容脚本，验证独立源、日文源字幕 ruby 注音回填、provider 切换、预取热更新、上下文重译与凭证隔离
 overlay.test.mjs: 运行真实字幕层并模拟 Shadow DOM，验证相同字幕节点复用（含 ruby 注音）、ruby/rt 元素生成及单行更新、消失状态
 subtitle-store.test.mjs: 驱动真实字幕存储，验证同轨并发请求合并、切集后缓存失效以及 subtitleParser 多行字幕单行化折叠

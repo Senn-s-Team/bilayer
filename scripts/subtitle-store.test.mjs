@@ -17,13 +17,13 @@ function createStore() {
   const window = {
     location: { origin: "https://www.netflix.com" },
     addEventListener() {},
-    NetflixDualSubtitles: {
+    Bilayer: {
       parseSubtitle(text) { return [{ startMs: 1000, endMs: 2000, text }]; }
     }
   };
   const browser = { runtime: { sendMessage(message, callback) { requests.push(callback); } } };
   runInNewContext(source, { window, browser, setTimeout, clearTimeout }, { filename: "subtitleStore.js" });
-  return { store: window.NetflixDualSubtitles.createSubtitleStore(), requests };
+  return { store: window.Bilayer.createSubtitleStore(), requests };
 }
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -56,7 +56,7 @@ test("subtitleParser collapses multi-line subtitles into single line unless dial
   const parserSource = readFileSync(new URL("../extension/src/content/subtitleParser.js", import.meta.url), "utf8");
   const window = {};
   runInNewContext(parserSource, { window }, { filename: "subtitleParser.js" });
-  const parse = window.NetflixDualSubtitles.parseSubtitle;
+  const parse = window.Bilayer.parseSubtitle;
 
   const vtt = `WEBVTT
 
@@ -84,7 +84,7 @@ test("subtitleParser strips &lrm;, &rlm; and invisible BiDi marks from subtitles
   const parserSource = readFileSync(new URL("../extension/src/content/subtitleParser.js", import.meta.url), "utf8");
   const window = {};
   runInNewContext(parserSource, { window }, { filename: "subtitleParser.js" });
-  const parse = window.NetflixDualSubtitles.parseSubtitle;
+  const parse = window.Bilayer.parseSubtitle;
 
   const vtt = `WEBVTT
 

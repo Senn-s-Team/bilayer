@@ -1,11 +1,11 @@
 /**
  * [INPUT]: 依赖已解析的 Netflix cue 时间轴与注入的批量翻译请求
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 createTranslationScheduler，支持当前句优先、预取双上限、可调邻句、预算与逐请求耗时日志，并输出日文源字幕 ruby 注音回填能力 annotateSource
+ * [OUTPUT]: 对 window.Bilayer 提供 createTranslationScheduler，支持当前句优先、预取双上限、可调邻句、预算与逐请求耗时日志，并输出日文源字幕 ruby 注音回填能力 annotateSource
  * [POS]: content 的纯调度层，不接触密钥、提供商协议或字幕原文日志
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-window.NetflixDualSubtitles ??= {};
-window.NetflixDualSubtitles.createTranslationScheduler = function createTranslationScheduler({ translate, onUpdate }) {
+window.Bilayer ??= {};
+window.Bilayer.createTranslationScheduler = function createTranslationScheduler({ translate, onUpdate }) {
   const MAX_REQUESTS = 80;
   const MAX_CHARACTERS = 40000;
   const MAX_BATCH_ITEMS = 12;
@@ -263,7 +263,7 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
 };
 
 function collapseLines(text) {
-  const helper = window.NetflixDualSubtitles?.collapseSubtitleLines;
+  const helper = window.Bilayer?.collapseSubtitleLines;
   if (typeof helper === "function") return helper(text);
   return collapseSubtitleLinesLocal(text);
 }

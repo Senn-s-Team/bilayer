@@ -514,7 +514,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
 
       const providersToSave = existingProviders.filter((p) => p.id !== testId).concat(candidateProvider);
       runtime.storage.local.set({ providers: providersToSave }, () => {
-        runtime.runtime.sendMessage({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: testId }, (result) => {
+        runtime.runtime.sendMessage({ type: "BILAYER_TEST_PROVIDER", providerId: testId }, (result) => {
           btnRunTest.disabled = false;
           if (runtime.runtime.lastError || !result?.ok) {
             const errors = {
