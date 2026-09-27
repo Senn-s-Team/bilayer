@@ -20,6 +20,7 @@ const LOCALE_PATTERN = /^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/;
 const MODEL_PATTERN = /^[^\s\x00-\x1f]{1,120}$/;
 const PROVIDER_PATTERN = /^[\w-]{1,48}$/;
 const DIAGNOSTICS_PAGE = "src/diagnostics/diagnostics.html";
+const ONBOARDING_PAGE = "src/onboarding/onboarding.html";
 const rawDiagnostics = [];
 const MAX_RAW_DIAGNOSTICS = 20;
 let rawDiagnosticsVersion = 0;
@@ -28,6 +29,7 @@ let rawDiagnosticSequence = 0;
 
 
 const DEFAULT_SETTINGS = {
+  onboardingCompleted: false,
   enabled: true,
   hideNativeSubtitles: true,
   primaryTrackKey: "",
@@ -81,7 +83,7 @@ const DEFAULT_PROVIDERS = {
 
 // 一次性把单服务时代的 aiModel/aiEndpoint/aiCredential 迁移进默认 provider；
 // 之后旧键不再参与请求，存储只保留一套 provider 事实。
-runtime.runtime.onInstalled.addListener(() => {
+runtime.runtime.onInstalled.addListener((details) => {
   runtime.storage.local.get({ ...DEFAULT_SETTINGS, ...DEFAULT_PROVIDERS }, (stored) => {
     const providers = Array.isArray(stored.providers) && stored.providers.length
       ? stored.providers
@@ -102,9 +104,11 @@ runtime.runtime.onInstalled.addListener(() => {
       aiEndpoint: undefined,
       aiCredential: undefined
     });
+    if (details?.reason === "install" && !stored.onboardingCompleted) {
+      runtime.tabs?.create?.({ url: runtime.runtime.getURL(ONBOARDING_PAGE) });
+    }
   });
 });
-
 runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === TRANSLATE_MESSAGE) {
     void translateBatch(message, sender)
@@ -120,7 +124,7 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === "NETFLIX_DUAL_SUBTITLES_LIST_MODELS") {
-    void listProviderModels(message.providerId, sender)
+    void listProviderModels(message, sender)
       .then(sendResponse)
       .catch(() => sendResponse({ ok: false, errorCode: "unavailable" }));
     return true;
@@ -393,9 +397,7 @@ function parseTranslationJson(content, compatible) {
 }
 
 async function testProviderConnection(providerId, sender) {
-  if (sender?.id !== runtime.runtime.id || sender.tab ||
-      sender.url !== runtime.runtime.getURL("src/popup/popup.html") ||
-      typeof providerId !== "string" || !PROVIDER_PATTERN.test(providerId)) {
+  if (!isAllowedTestSender(sender) || typeof providerId !== "string" || !PROVIDER_PATTERN.test(providerId)) {
     return { ok: false, errorCode: "configuration" };
   }
   const result = await translateBatch({
@@ -408,22 +410,33 @@ async function testProviderConnection(providerId, sender) {
   return result.ok ? { ok: true } : result;
 }
 
-async function listProviderModels(providerId, sender) {
-  if (sender?.id !== runtime.runtime.id || sender.tab || sender.url !== runtime.runtime.getURL("src/popup/popup.html") ||
-      typeof providerId !== "string" || !PROVIDER_PATTERN.test(providerId)) return { ok: false, errorCode: "configuration" };
-  let stored;
-  try {
-    stored = await new Promise((resolve, reject) => runtime.storage.local.get({ providers: [] }, (value) => {
-      if (runtime.runtime.lastError) reject(new Error("storage unavailable")); else resolve(value);
-    }));
-  } catch { return { ok: false, errorCode: "configuration" }; }
-  const provider = pickProvider(stored.providers, providerId);
-  if (!provider || typeof provider.credential !== "string" || !provider.credential.trim() ||
-      typeof provider.endpoint !== "string" || (provider.endpoint && !isValidEndpoint(provider.endpoint))) {
-    return { ok: false, errorCode: "configuration" };
+async function listProviderModels(message, sender) {
+  if (!isAllowedTestSender(sender)) return { ok: false, errorCode: "configuration" };
+  const providerId = typeof message === "string" ? message : message?.providerId;
+  let credential = typeof message === "object" ? (message.credential ?? "") : "";
+  let endpoint = typeof message === "object" ? (message.endpoint ?? "") : "";
+
+  if ((!credential || !credential.trim()) && typeof providerId === "string" && PROVIDER_PATTERN.test(providerId)) {
+    let stored;
+    try {
+      stored = await new Promise((resolve, reject) => runtime.storage.local.get({ providers: [] }, (value) => {
+        if (runtime.runtime.lastError) reject(new Error("storage unavailable")); else resolve(value);
+      }));
+    } catch { return { ok: false, errorCode: "configuration" }; }
+    const provider = pickProvider(stored.providers, providerId);
+    if (!provider || typeof provider.credential !== "string" || !provider.credential.trim() ||
+        typeof provider.endpoint !== "string" || (provider.endpoint && !isValidEndpoint(provider.endpoint))) {
+      return { ok: false, errorCode: "configuration" };
+    }
+    credential = provider.credential;
+    endpoint = provider.endpoint;
   }
-  const endpoint = provider.endpoint || OPENAI_ENDPOINT;
-  if (provider.endpoint) {
+
+  if (typeof credential !== "string") return { ok: false, errorCode: "configuration" };
+  endpoint = endpoint || OPENAI_ENDPOINT;
+  if (!isValidEndpoint(endpoint)) return { ok: false, errorCode: "configuration" };
+
+  if (endpoint !== OPENAI_ENDPOINT) {
     const url = new URL(endpoint);
     const origin = `${url.protocol}//${url.hostname}/*`;
     const granted = await new Promise((resolve) => {
@@ -437,8 +450,11 @@ async function listProviderModels(providerId, sender) {
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
     const response = await fetch(modelsUrl, { method: "GET", credentials: "omit", redirect: "error", signal: controller.signal,
-      headers: { Authorization: `Bearer ${provider.credential}` } });
-    if (!response.ok) return { ok: false, errorCode: await classifyProviderError(response) };
+      headers: { Authorization: `Bearer ${credential}` } });
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      return { ok: false, errorCode: classifyProviderError(response.status, errorBody) };
+    }
     const body = await response.text();
     if (new TextEncoder().encode(body).length > MAX_RESPONSE_BYTES) return { ok: false, errorCode: "invalid_response" };
     const data = JSON.parse(body);
@@ -467,6 +483,15 @@ function pickProvider(providers, providerId) {
   return providers.find((item) => item && typeof item === "object" &&
     typeof item.id === "string" && PROVIDER_PATTERN.test(item.id) && item.id === providerId) ?? null;
 }
+function isAllowedTestSender(sender) {
+  if (sender?.id !== runtime.runtime.id) return false;
+  const popupUrl = runtime.runtime.getURL("src/popup/popup.html");
+  const onboardingUrl = runtime.runtime.getURL(ONBOARDING_PAGE);
+  if (sender.url === popupUrl && !sender.tab) return true;
+  if (sender.url === onboardingUrl) return true;
+  return false;
+}
+
 function isDiagnosticsSender(sender) {
   return sender?.id === runtime.runtime.id && sender.url === runtime.runtime.getURL(DIAGNOSTICS_PAGE);
 }

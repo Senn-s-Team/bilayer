@@ -1,0 +1,219 @@
+<!--
+  [INPUT]: 依赖 browser/chrome storage 与 tabs API，支持向 background 发送连通性测试请求
+  [OUTPUT]: 提供三步新手引导界面，输出用户选择的字幕模式、AI 服务配置与外观初始值并持久化
+  [POS]: src/onboarding 的核心页面，衔接首次安装与 popup 设置面板，具备完整实机与离线回落能力
+  [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+-->
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Netflix 双字幕 · 新手引导</title>
+  <link rel="stylesheet" href="./onboarding.css">
+</head>
+<body>
+  <main class="onboarding-window">
+    <header class="header">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 128 128">
+          <rect width="128" height="128" rx="26" fill="#101010"/>
+          <path d="M28 29h72a12 12 0 0 1 12 12v46a12 12 0 0 1-12 12H28a12 12 0 0 1-12-12V41a12 12 0 0 1 12-12Z" fill="#e50914"/>
+          <path d="M31 46h66v10H31V46Zm0 25h30v10H31V71Zm39 0h27v10H70V71Z" fill="#fff"/>
+          <path d="M26 105h76" stroke="#fff" stroke-width="8" stroke-linecap="round" opacity=".9"/>
+        </svg>
+        <span>Netflix 双字幕设置向导</span>
+      </div>
+
+      <nav class="stepper" aria-label="向导步骤">
+        <div class="step-item is-active" id="stepItem1">
+          <span class="step-bar"></span>
+          <span>1. 环境</span>
+        </div>
+        <div class="step-item" id="stepItem2">
+          <span class="step-bar"></span>
+          <span>2. 模式</span>
+        </div>
+        <div class="step-item" id="stepItem3">
+          <span class="step-bar"></span>
+          <span>3. 视效</span>
+        </div>
+      </nav>
+    </header>
+
+    <div class="step-viewport">
+      <!-- 步骤 1: 权限与环境检测 -->
+      <section class="step-pane is-active" id="pane1">
+        <div>
+          <h1 class="pane-title">检查 Netflix 环境就绪</h1>
+          <p class="pane-subtitle">扩展需要 Safari 授予 netflix.com 运行权限，并建议在开启影片后开始使用。</p>
+        </div>
+
+        <div class="env-status">
+          <div class="env-info">
+            <span class="status-dot" id="envDot" data-state="ready"></span>
+            <span id="envMessage">已探测到 Netflix 播放页面，字幕引擎就绪</span>
+          </div>
+          <button type="button" class="btn btn-outline" id="btnOpenNetflix" style="display: none;">打开 Netflix ↗</button>
+        </div>
+
+        <div class="card-grid">
+          <div class="select-card" style="cursor: default;">
+            <strong>Safari 权限配置</strong>
+            <span>在 Safari 设置 → 扩展中勾选“在每个网站上始终允许”或“在 netflix.com 上始终允许”。</span>
+          </div>
+          <div class="select-card" style="cursor: default;">
+            <strong>独立 Web App 用户</strong>
+            <span>若在“添加到程序坞”的独立 Netflix 窗口使用，需在该窗口的设置菜单内单独启用扩展。</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 步骤 2: 字幕模式选择与 AI 渐进展开 -->
+      <section class="step-pane" id="pane2">
+        <div>
+          <h1 class="pane-title">选择双字幕呈现模式</h1>
+          <p class="pane-subtitle">双原生适合已有官方多语轨的影片；AI 翻译可在原声基础上获得量身定制的口语译文。</p>
+        </div>
+
+        <div class="card-grid">
+          <button type="button" class="select-card is-selected" id="optNative">
+            <span class="card-badge">推荐</span>
+            <strong>双原生字幕</strong>
+            <span>极速稳定，直接叠加 Netflix 官方第二语言字幕轨道，零等待、零额外开销。</span>
+          </button>
+          <button type="button" class="select-card" id="optAi">
+            <span class="card-badge">BYOK</span>
+            <strong>AI 智能翻译</strong>
+            <span>接入大语言模型，依据影片前后文生成生动口语译文，支持预翻译与模型切换。</span>
+          </button>
+        </div>
+
+        <!-- AI 配置展开抽屉 -->
+        <div class="ai-drawer" id="aiDrawer">
+          <div class="preset-header">
+            <span class="form-label">常用服务预设</span>
+            <span style="font-size: 11px; color: var(--text-muted);">密钥仅留存在本地 Safari 存储</span>
+          </div>
+
+          <div class="preset-pill-group" role="group" aria-label="常用服务预设">
+            <button type="button" class="preset-chip is-active" data-preset="openai">OpenAI 官方</button>
+            <button type="button" class="preset-chip" data-preset="deepseek">DeepSeek</button>
+            <button type="button" class="preset-chip" data-preset="openrouter">OpenRouter</button>
+            <button type="button" class="preset-chip" data-preset="groq">Groq</button>
+            <button type="button" class="preset-chip" data-preset="siliconflow">硅基流动</button>
+            <button type="button" class="preset-chip" data-preset="ollama">Ollama 本地</button>
+            <button type="button" class="preset-chip" data-preset="custom">自定义端点</button>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label" for="inputApiKey">API 密钥 (API Key)</label>
+              <input type="password" id="inputApiKey" class="text-input" placeholder="sk-..." autocomplete="off">
+              <div class="input-actions">
+                <button type="button" class="icon-btn" id="toggleKeyVisibility" title="切换明文显示">👁</button>
+              </div>
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="selectTargetLang">目标语言</label>
+              <select id="selectTargetLang" class="select-input">
+                <option value="zh-Hans">简体中文</option>
+                <option value="zh-Hant">繁體中文</option>
+                <option value="ja">日本語</option>
+                <option value="en">English</option>
+                <option value="ko">한국어</option>
+                <option value="es">Español</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-grid" id="configRow">
+            <div class="form-field">
+              <label class="form-label" for="inputBaseUrl">Base URL 端点</label>
+              <input type="url" id="inputBaseUrl" class="text-input" placeholder="留空使用 OpenAI 官方接口">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="inputModel">模型 ID</label>
+              <input type="text" id="inputModel" list="onboardingModelList" class="text-input" placeholder="gpt-4o-mini" value="gpt-4o-mini">
+              <datalist id="onboardingModelList">
+                <option value="gpt-4o-mini">
+                <option value="gpt-4o">
+                <option value="gpt-4.1-mini">
+                <option value="gpt-4.1">
+                <option value="chatgpt-4o-latest">
+              </datalist>
+            </div>
+          </div>
+
+          <div class="test-row">
+            <div class="test-status">
+              <span class="status-dot" id="testDot"></span>
+              <span id="testFeedback">点击右侧按钮测试端点连通性</span>
+            </div>
+            <button type="button" class="btn btn-outline" id="btnRunTest">测试连通性</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 步骤 3: 视效与外观微调 -->
+      <section class="step-pane" id="pane3">
+        <div>
+          <h1 class="pane-title">实机视效校准</h1>
+          <p class="pane-subtitle" id="pane3Subtitle">两行字幕已就绪，可在下方预览屏幕叠放与实时排版。</p>
+        </div>
+
+        <div class="preview-stage" id="previewStage">
+          <div class="stage-badge" id="previewBadge" style="display: none;">
+            <span class="stage-badge-dot"></span>
+            <span>AI 实时翻译流</span>
+          </div>
+          <div class="subtitle-line primary" id="previewPrimary">Never tell me the odds.</div>
+          <div class="subtitle-line secondary" id="previewSecondary">永远别跟我提胜率。</div>
+        </div>
+
+        <div class="field" style="margin-top: 4px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span class="form-label">排版预设 (与外观同步)</span>
+            <div class="preset-pill-group" role="group" aria-label="排版预设">
+              <button type="button" class="preset-chip" data-onboarding-layout="compact">紧凑</button>
+              <button type="button" class="preset-chip is-active" data-onboarding-layout="balanced">标准</button>
+              <button type="button" class="preset-chip" data-onboarding-layout="spacious">舒展</button>
+              <button type="button" class="preset-chip" data-onboarding-layout="free">自由</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="preview-tuning">
+          <div class="tuning-field">
+            <div class="tuning-header">
+              <div style="display: inline-flex; gap: 6px; align-items: center;">
+                <button type="button" class="preset-chip is-active" id="btnRolePrimary" style="padding: 2px 8px; font-size: 11px;">第一字幕</button>
+                <button type="button" class="preset-chip" id="btnRoleSecondary" style="padding: 2px 8px; font-size: 11px;">第二字幕</button>
+              </div>
+              <span id="fontSizeDisplay">26 px</span>
+            </div>
+            <input type="range" id="sliderFontSize" min="18" max="44" value="26">
+          </div>
+          <div class="tuning-field">
+            <div class="tuning-header">
+              <span>垂直位置偏移</span>
+              <span id="offsetDisplay">26%</span>
+            </div>
+            <input type="range" id="sliderOffset" min="8" max="42" value="26">
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="footer">
+      <button type="button" class="btn btn-quiet" id="btnBack" style="visibility: hidden;">上一步</button>
+      <div style="display: flex; gap: 10px;">
+        <button type="button" class="btn btn-quiet" id="btnSkip">跳过向导</button>
+        <button type="button" class="btn btn-primary" id="btnForward">下一步</button>
+      </div>
+    </footer>
+  </main>
+
+  <script src="./onboarding.js"></script>
+</body>
+</html>

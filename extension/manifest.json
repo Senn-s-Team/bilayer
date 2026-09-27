@@ -1,5 +1,5 @@
 {
-  "manifest_version": 4,
+  "manifest_version": 3,
   "name": "Netflix Dual Subtitles Safari",
   "version": "0.2.0",
   "description": "Show a second subtitle track on Netflix Web in Safari.",

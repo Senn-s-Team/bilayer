@@ -248,3 +248,33 @@ test("raw diagnostic page sees exact request and malformed response without leak
   assert.equal((await worker({ type: "NETFLIX_DUAL_SUBTITLES_CLEAR_RAW_DIAGNOSTICS" }, page)).ok, true);
   assert.equal((await get()).records.length, 0);
 });
+
+test("onboarding page is authorized to run provider connectivity test and rejects unauthorized senders", async () => {
+  let sent;
+  const worker = createWorker(async (url, options) => {
+    sent = { url, options };
+    return Response.json({ choices: [{ finish_reason: "stop", message: {
+      content: JSON.stringify({ items: [{ id: "connection", text: "OK" }] })
+    } }] });
+  }, {
+    aiProviderId: "openai",
+    providers: [{ id: "openai", name: "OpenAI 官方", endpoint: "", model: "gpt-4o-mini", credential: "key1" }]
+  });
+
+  const onboardingSender = {
+    id: "extension-id",
+    url: "extension://src/onboarding/onboarding.html",
+    tab: { id: 10, url: "extension://src/onboarding/onboarding.html" }
+  };
+  const result = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "openai" }, onboardingSender);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: true });
+  assert.equal(sent.options.headers.Authorization, "Bearer key1");
+
+  const maliciousSender = {
+    id: "extension-id",
+    url: "https://evil.com",
+    tab: { id: 11, url: "https://evil.com" }
+  };
+  const deniedResult = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "openai" }, maliciousSender);
+  assert.equal(deniedResult.ok, false);
+});
