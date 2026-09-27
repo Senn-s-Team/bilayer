@@ -23,7 +23,7 @@ function createWorker(fetcher, stored = {}, permissionGranted = true) {
   const runtime = {
     storage: { local: {
       get(defaults, callback) { callback({ ...defaults, aiRole: "secondary", providers: [{ id: "openai", name: "OpenAI 官方", endpoint: "", model: "gpt-4o-mini", credential: "private-key" }], aiProviderId: "openai", ...stored }); },
-      set() {}
+      set(_data, callback) { if (typeof callback === "function") callback(); }
     } },
     permissions: { contains(_query, callback) { callback(permissionGranted); } },
     runtime: { id: "extension-id", getURL(path) { return `extension://${path}`; }, onInstalled: { addListener() {} }, onMessage: { addListener(callback) { listener = callback; } } }
@@ -229,7 +229,7 @@ test("popup provider connectivity test uses the selected provider and returns on
   const result = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "custom" }, {
     id: "extension-id", url: "extension://src/popup/popup.html"
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: true, jsonMode: "json_schema" });
   assert.equal(JSON.parse(sent.options.body).model, "c1");
   assert.equal(sent.options.headers.Authorization, "Bearer key2");
 });
@@ -283,7 +283,7 @@ test("onboarding page is authorized to run provider connectivity test and reject
     tab: { id: 10, url: "extension://src/onboarding/onboarding.html" }
   };
   const result = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "openai" }, onboardingSender);
-  assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: true, jsonMode: "json_schema" });
   assert.equal(sent.options.headers.Authorization, "Bearer key1");
 
   const maliciousSender = {
@@ -488,4 +488,57 @@ test("all collected real-world diagnostic cases in cases/ parse and validate suc
     assert.equal(result.ok, true, `Case ${file} failed with: ${result.errorCode}`);
     assert.equal(result.items.length, caseData.expectedItems.length);
   }
+});
+
+test("connectivity probe falls back to json_object and none when json_schema is rejected with 400", async () => {
+  const calls = [];
+  const worker = createWorker(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push(body.response_format);
+    // If json_schema, simulate 400 rejection from proxy
+    if (body.response_format?.type === "json_schema") {
+      return new Response(JSON.stringify({ error: { message: "unrecognized parameter: json_schema" } }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+    // If json_object, simulate 200 success
+    if (body.response_format?.type === "json_object") {
+      return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ items: [{ id: "connection", text: "OK" }] }) } }] });
+    }
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ items: [{ id: "connection", text: "OK" }] }) } }] });
+  }, {
+    aiProviderId: "deepseek",
+    providers: [{ id: "deepseek", name: "DeepSeek", endpoint: "https://api.deepseek.com/v1/chat/completions", model: "deepseek-chat", credential: "key" }]
+  });
+
+  const result = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "deepseek" }, {
+    id: "extension-id", url: "extension://src/popup/popup.html"
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.jsonMode, "json_object");
+  assert.equal(calls[0]?.type, "json_schema");
+  assert.equal(calls[1]?.type, "json_object");
+});
+
+test("connectivity probe marks jsonMode as none and warns when both json_schema and json_object fail", async () => {
+  const calls = [];
+  const worker = createWorker(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push(body.response_format);
+    // Reject both schema and object formats with 400
+    if (body.response_format) {
+      return new Response(JSON.stringify({ error: { message: "unsupported response_format" } }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ items: [{ id: "connection", text: "OK" }] }) } }] });
+  }, {
+    aiProviderId: "legacy",
+    providers: [{ id: "legacy", name: "Legacy", endpoint: "https://legacy.example/v1/chat/completions", model: "legacy-v1", credential: "key" }]
+  });
+
+  const result = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "legacy" }, {
+    id: "extension-id", url: "extension://src/popup/popup.html"
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.jsonMode, "none");
+  assert.equal(result.warning, "unsupported_json_mode");
+  assert.equal(calls.length, 3);
+  assert.equal(calls[2], undefined);
 });

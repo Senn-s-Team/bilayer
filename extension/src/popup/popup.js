@@ -782,6 +782,21 @@ function writeProviderControls() {
         return opt;
       }));
     }
+    if (selected.jsonMode) {
+      if (selected.jsonMode === "json_schema") {
+        elements.providerTestStatus.dataset.state = "success";
+        elements.providerTestStatus.textContent = "支持 JSON Schema (严格模式)";
+      } else if (selected.jsonMode === "json_object") {
+        elements.providerTestStatus.dataset.state = "success";
+        elements.providerTestStatus.textContent = "支持 JSON Object 约束";
+      } else if (selected.jsonMode === "none") {
+        elements.providerTestStatus.dataset.state = "warning";
+        elements.providerTestStatus.textContent = "⚠️ 不支持结构化 JSON：可能出现解析错误或 AI 字幕不显示";
+      }
+    } else {
+      elements.providerTestStatus.dataset.state = "";
+      elements.providerTestStatus.textContent = "";
+    }
     readCredentialStatus();
   }
 }
@@ -967,9 +982,19 @@ async function testProviderConnection() {
           permission_denied: "未授权服务域名", configuration: "请先填写有效模型、端点和密钥",
           unavailable: "服务不可达", invalid_response: "服务返回格式有误"
         };
+        elements.providerTestStatus.dataset.state = "error";
         elements.providerTestStatus.textContent = `失败：${errors[result?.errorCode] ?? "请求失败"}`;
       } else {
-        elements.providerTestStatus.textContent = "连接成功";
+        if (result.jsonMode === "json_schema") {
+          elements.providerTestStatus.dataset.state = "success";
+          elements.providerTestStatus.textContent = "连接成功 · 支持 JSON Schema (严格模式)";
+        } else if (result.jsonMode === "json_object") {
+          elements.providerTestStatus.dataset.state = "success";
+          elements.providerTestStatus.textContent = "连接成功 · 支持 JSON Object 约束";
+        } else {
+          elements.providerTestStatus.dataset.state = "warning";
+          elements.providerTestStatus.textContent = "连接成功，但模型不支持结构化 JSON。可能出现解析错误导致 AI 字幕丢失";
+        }
       }
       resolve();
     });

@@ -525,8 +525,14 @@ const runtime = globalThis.browser ?? globalThis.chrome;
             testDot.dataset.state = "error";
             testFeedback.textContent = `失败：${errors[result?.errorCode] ?? "连接失败"}`;
           } else {
-            testDot.dataset.state = "ready";
-            testFeedback.textContent = "连通正常 · 验证通过";
+            testDot.dataset.state = result.jsonMode === "none" ? "warning" : "ready";
+            if (result.jsonMode === "json_schema") {
+              testFeedback.textContent = "连通正常 · 支持 JSON Schema 严格模式";
+            } else if (result.jsonMode === "json_object") {
+              testFeedback.textContent = "连通正常 · 支持 JSON Object 约束";
+            } else {
+              testFeedback.textContent = "连通成功，但该模型不支持结构化 JSON，可能出现解析错误导致 AI 字幕不显示";
+            }
           }
         });
       });

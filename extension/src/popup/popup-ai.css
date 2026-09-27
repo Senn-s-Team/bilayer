@@ -460,6 +460,20 @@
   padding-top: 12px;
 }
 
+.ai-credential-status[data-state="warning"] {
+  color: #d97706;
+  font-weight: 560;
+}
+
+.ai-credential-status[data-state="success"] {
+  color: var(--success);
+  font-weight: 560;
+}
+
+.ai-credential-status[data-state="error"] {
+  color: var(--danger);
+  font-weight: 560;
+}
 @media (prefers-color-scheme: dark) {
   .ai-button:hover:not(:disabled) {
     border-color: #557ca7;

@@ -362,6 +362,11 @@
       animation: pulse 1s infinite alternate;
     }
 
+    .status-dot[data-state="warning"] {
+      background: #ff9f0a;
+      box-shadow: 0 0 8px #ff9f0a;
+    }
+
     .status-dot[data-state="error"] {
       background: #ff453a;
       box-shadow: 0 0 8px #ff453a;

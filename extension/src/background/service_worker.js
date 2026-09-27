@@ -299,39 +299,50 @@ async function translateBatch(message, sender, testProviderId = "") {
       body: JSON.stringify({
         model: provider.model,
         temperature: 0.2,
-        ...(endpoint === OPENAI_ENDPOINT ? { response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "subtitle_translations",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                items: {
-                  type: "array",
-                  items: {
+        ...(() => {
+          const activeJsonMode = provider.jsonMode ?? (endpoint === OPENAI_ENDPOINT ? "json_schema" : "none");
+          if (activeJsonMode === "json_schema") {
+            return {
+              response_format: {
+                type: "json_schema",
+                json_schema: {
+                  name: "subtitle_translations",
+                  strict: true,
+                  schema: {
                     type: "object",
-                    properties: ((isJapanese(message.sourceLanguage) || isJapanese(message.targetLanguage)) && (message.japaneseRuby !== undefined ? Boolean(message.japaneseRuby) : (settings.aiJapaneseRuby !== false))) ? {
-                      id: { type: "string" },
-                      text: { type: "string" },
-                      readings: {
-                        type: "object",
-                        additionalProperties: { type: "string" }
+                    properties: {
+                      items: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: ((isJapanese(message.sourceLanguage) || isJapanese(message.targetLanguage)) && (message.japaneseRuby !== undefined ? Boolean(message.japaneseRuby) : (settings.aiJapaneseRuby !== false))) ? {
+                            id: { type: "string" },
+                            text: { type: "string" },
+                            readings: {
+                              type: "object",
+                              additionalProperties: { type: "string" }
+                            }
+                          } : {
+                            id: { type: "string" },
+                            text: { type: "string" }
+                          },
+                          required: ((isJapanese(message.sourceLanguage) || isJapanese(message.targetLanguage)) && (message.japaneseRuby !== undefined ? Boolean(message.japaneseRuby) : (settings.aiJapaneseRuby !== false))) ? ["id", "text", "readings"] : ["id", "text"],
+                          additionalProperties: false
+                        }
                       }
-                    } : {
-                      id: { type: "string" },
-                      text: { type: "string" }
                     },
-                    required: ((isJapanese(message.sourceLanguage) || isJapanese(message.targetLanguage)) && (message.japaneseRuby !== undefined ? Boolean(message.japaneseRuby) : (settings.aiJapaneseRuby !== false))) ? ["id", "text", "readings"] : ["id", "text"],
+                    required: ["items"],
                     additionalProperties: false
                   }
                 }
-              },
-              required: ["items"],
-              additionalProperties: false
-            }
+              }
+            };
           }
-        } } : {}),
+          if (activeJsonMode === "json_object") {
+            return { response_format: { type: "json_object" } };
+          }
+          return {};
+        })(),
         messages: [
           {
             role: "system",
@@ -533,14 +544,85 @@ async function testProviderConnection(providerId, sender) {
   if (!isAllowedTestSender(sender) || typeof providerId !== "string" || !PROVIDER_PATTERN.test(providerId)) {
     return { ok: false, errorCode: "configuration" };
   }
-  const result = await translateBatch({
+
+  let stored;
+  try {
+    stored = await new Promise((resolve, reject) => {
+      runtime.storage.local.get({ providers: [] }, (val) => {
+        if (runtime.runtime.lastError) reject(new Error("storage unavailable"));
+        else resolve(val);
+      });
+    });
+  } catch {
+    return { ok: false, errorCode: "configuration" };
+  }
+
+  const provider = pickProvider(stored.providers, providerId);
+  if (!provider) return { ok: false, errorCode: "configuration" };
+
+  const testBatch = {
     sourceLanguage: "en",
     targetLanguage: "zh-Hans",
     items: [{ id: "connection", text: "Hello" }],
     contextBefore: [],
     contextAfter: []
-  }, sender, providerId);
-  return result.ok ? { ok: true } : result;
+  };
+
+  if (!provider.endpoint || provider.endpoint === OPENAI_ENDPOINT) {
+    const res = await translateBatch(testBatch, sender, providerId);
+    if (!res.ok) return res;
+    await saveProviderJsonMode(stored.providers, providerId, "json_schema");
+    return { ok: true, jsonMode: "json_schema" };
+  }
+
+  // Probe 1: json_schema
+  provider.jsonMode = "json_schema";
+  let probe = await translateBatch(testBatch, sender, providerId);
+  if (probe.ok) {
+    await saveProviderJsonMode(stored.providers, providerId, "json_schema");
+    return { ok: true, jsonMode: "json_schema" };
+  }
+
+  if (probe.errorCode === "auth" || probe.errorCode === "quota" || probe.errorCode === "permission_denied" || probe.errorCode === "unavailable") {
+    return probe;
+  }
+
+  // Probe 2: json_object
+  provider.jsonMode = "json_object";
+  probe = await translateBatch(testBatch, sender, providerId);
+  if (probe.ok) {
+    await saveProviderJsonMode(stored.providers, providerId, "json_object");
+    return { ok: true, jsonMode: "json_object" };
+  }
+
+  if (probe.errorCode === "auth" || probe.errorCode === "quota" || probe.errorCode === "permission_denied" || probe.errorCode === "unavailable") {
+    return probe;
+  }
+
+  // Probe 3: standard prompt (none)
+  provider.jsonMode = "none";
+  probe = await translateBatch(testBatch, sender, providerId);
+  if (probe.ok) {
+    await saveProviderJsonMode(stored.providers, providerId, "none");
+    return { ok: true, jsonMode: "none", warning: "unsupported_json_mode" };
+  }
+
+  return probe;
+}
+
+function saveProviderJsonMode(providers, providerId, jsonMode) {
+  if (!Array.isArray(providers)) return Promise.resolve();
+  const updated = providers.map((item) => item.id === providerId ? { ...item, jsonMode } : item);
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    try {
+      runtime.storage.local.set({ providers: updated }, finish);
+    } catch {
+      finish();
+    }
+    setTimeout(finish, 0);
+  });
 }
 
 async function listProviderModels(message, sender) {
