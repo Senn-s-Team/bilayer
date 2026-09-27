@@ -212,5 +212,8 @@ function decodeEntities(text) {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;/g, "'")
+    .replace(/&(?:lrm|rlm);/gi, "")
+    .replace(/&#(?:x200[ef]|820[67]);/gi, "")
+    .replace(/[\u200E\u200F\u200B-\u200D\uFEFF]/g, "");
 }

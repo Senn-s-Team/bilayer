@@ -79,3 +79,20 @@ what you said earlier.
   assert.equal(cues[1].text, "I was thinking about what you said earlier.");
   assert.equal(cues[2].text, "- Who is it?\n- It's me.");
 });
+
+test("subtitleParser strips &lrm;, &rlm; and invisible BiDi marks from subtitles", () => {
+  const parserSource = readFileSync(new URL("../extension/src/content/subtitleParser.js", import.meta.url), "utf8");
+  const window = {};
+  runInNewContext(parserSource, { window }, { filename: "subtitleParser.js" });
+  const parse = window.NetflixDualSubtitles.parseSubtitle;
+
+  const vtt = `WEBVTT
+
+00:00:01.000 --> 00:00:03.000
+&lrm;（コナン：小五郎の声）&lrm; そしてもう1人
+`;
+
+  const cues = parse(vtt);
+  assert.equal(cues.length, 1);
+  assert.equal(cues[0].text, "（コナン：小五郎の声） そしてもう1人");
+});
