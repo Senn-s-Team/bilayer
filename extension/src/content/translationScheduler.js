@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖已解析的 Netflix cue 时间轴与注入的批量翻译请求
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 createTranslationScheduler，支持当前句优先、预取双上限、可调邻句、预算与逐请求耗时日志
+ * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 createTranslationScheduler，支持当前句优先、预取双上限、可调邻句、预算与逐请求耗时日志，并输出日文源字幕 ruby 注音回填能力 annotateSource
  * [POS]: content 的纯调度层，不接触密钥、提供商协议或字幕原文日志
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -24,9 +24,11 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
   let leadMs = 60000;
   let prefetchCount = 10;
   let contextCount = 2;
+  let japaneseRuby = true;
   let urgentSeek = false;
   let failure = "";
   let translations = new Map();
+  let rubies = new Map();
   let cueIds = new WeakMap();
   let pending = new Set();
   let failed = new Set();
@@ -54,6 +56,7 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
       ? source.prefetchCount : 10;
     contextCount = Number.isInteger(source.contextCount) && source.contextCount >= 0 && source.contextCount <= 4
       ? source.contextCount : 2;
+    japaneseRuby = source.japaneseRuby !== false;
     if (source.identity === identity && source.cues === cues) return;
     const cancelledRequests = inFlight;
     generation++;
@@ -70,7 +73,7 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
     cueIds = new WeakMap(cues.map((cue, index) => [cue, String(index)]));
     groups = buildGroups(cues);
     translations = new Map();
-    pending = new Set();
+    rubies = new Map();
     failed = new Set();
     inFlight = 0;
     failure = "";
@@ -85,9 +88,10 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
     identity = "";
     cues = [];
     groups = [];
+    japaneseRuby = true;
     cueIds = new WeakMap();
     translations.clear();
-    pending.clear();
+    rubies.clear();
     failed.clear();
     inFlight = 0;
     failure = "";
@@ -148,7 +152,7 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
       inFlight++;
       for (const group of selected) pending.add(group);
       const requestGeneration = generation;
-      const batch = { sourceLanguage, targetLanguage, items, contextBefore: before, contextAfter: after };
+      const batch = { sourceLanguage, targetLanguage, items, contextBefore: before, contextAfter: after, japaneseRuby };
       const requestStartedAt = Date.now();
       addLog("request_sent", "正在请求字幕翻译", { request: requestNumber, cueIds: items.map(({ id }) => id), characters: totalCharacters });
       notify();
@@ -159,10 +163,14 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
         }
         const received = response?.ok ? response.items : null;
         const byId = new Map(Array.isArray(received) ? received.map((entry) => [entry.id, entry.text]) : []);
+        const byRuby = new Map(Array.isArray(received) ? received.filter((entry) => typeof entry.ruby === "string").map((entry) => [entry.id, entry.ruby]) : []);
         const valid = Array.isArray(received) && received.length === items.length
           && byId.size === items.length && items.every(({ id }) => typeof byId.get(id) === "string" && byId.get(id).trim());
         if (valid) {
-          for (const { id } of items) translations.set(id, byId.get(id));
+          for (const { id } of items) {
+            translations.set(id, collapseLines(byId.get(id)));
+            if (byRuby.has(id)) rubies.set(id, collapseLines(byRuby.get(id)));
+          }
           failure = "";
           addLog("request_succeeded", "字幕翻译完成", { request: requestNumber, cueIds: items.map(({ id }) => id), durationMs: Date.now() - requestStartedAt });
         } else {
@@ -196,17 +204,71 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
     return !group || group.ids.every((id) => translations.has(id));
   }
 
+  const isJp = (lang) => /^(ja|jp)($|[-_])/i.test(String(lang ?? "").trim());
+
   function translatedFor(activeCues) {
     const result = [];
+    const targetIsJp = isJp(targetLanguage);
     for (const cue of activeCues) {
-      const text = translations.get(cueIds.get(cue));
-      if (text !== undefined) result.push({ startMs: cue.startMs, endMs: cue.endMs, text });
+      const id = cueIds.get(cue);
+      const text = id !== undefined ? translations.get(id) : undefined;
+      const ruby = (japaneseRuby && targetIsJp && id !== undefined) ? rubies.get(id) : undefined;
+      if (text !== undefined) {
+        result.push({ startMs: cue.startMs, endMs: cue.endMs, text, ...(ruby ? { ruby } : {}) });
+      }
     }
     return result;
   }
 
-  return { setSource, clear, observe, readyAt, translatedFor, status };
+  function annotateSource(activeCues) {
+    const sourceIsJp = isJp(sourceLanguage);
+    if (!japaneseRuby || !sourceIsJp || rubies.size === 0 || !Array.isArray(activeCues)) return activeCues;
+    return activeCues.map((cue) => {
+      let id = cueIds.get(cue);
+      if (id === undefined) {
+        const found = cues.findIndex((candidate) => Math.abs(candidate.startMs - cue.startMs) < 200 && candidate.text === cue.text);
+        if (found >= 0) id = String(found);
+      }
+      const ruby = id !== undefined ? rubies.get(id) : undefined;
+      return ruby ? { ...cue, ruby } : cue;
+    });
+  }
+
+  return { setSource, clear, observe, readyAt, translatedFor, annotateSource, status };
 };
+
+function collapseLines(text) {
+  const helper = window.NetflixDualSubtitles?.collapseSubtitleLines;
+  if (typeof helper === "function") return helper(text);
+  return collapseSubtitleLinesLocal(text);
+}
+
+function collapseSubtitleLinesLocal(text) {
+  if (!text || typeof text !== "string") return "";
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length <= 1) return lines[0] ?? "";
+  const result = [lines[0]];
+  const dialogueDashPattern = /^[-–—―・]\s*/;
+  const cjkCharPattern = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/;
+  for (let index = 1; index < lines.length; index++) {
+    const prevLine = result[result.length - 1];
+    const currLine = lines[index];
+    if (dialogueDashPattern.test(currLine)) {
+      result.push(currLine);
+      continue;
+    }
+    const prevPlain = prevLine.replace(/\{[^|{}]+\|[^|{}]+\}/g, (match) => match.slice(1, match.indexOf("|")));
+    const currPlain = currLine.replace(/\{[^|{}]+\|[^|{}]+\}/g, (match) => match.slice(1, match.indexOf("|")));
+    const prevLastChar = prevPlain.slice(-1);
+    const currFirstChar = currPlain.slice(0, 1);
+    if (cjkCharPattern.test(prevLastChar) && cjkCharPattern.test(currFirstChar)) {
+      result[result.length - 1] = prevLine + currLine;
+    } else {
+      result[result.length - 1] = prevLine + " " + currLine;
+    }
+  }
+  return result.join("\n");
+}
 
 function buildGroups(cues) {
   const groups = [];

@@ -34,10 +34,9 @@
     }
 
     .onboarding-window {
-      width: 720px;
-      min-height: 600px;
-      background: var(--window-bg);
-      backdrop-filter: var(--surface-blur);
+      width: 740px;
+      min-height: 640px;
+      max-height: 92vh;
       -webkit-backdrop-filter: var(--surface-blur);
       border: 1px solid var(--card-border);
       border-radius: 22px;
@@ -376,8 +375,8 @@
     /* 播放器预览视口 */
     .preview-stage {
       width: 100%;
-      height: 220px;
-      background: radial-gradient(circle at 50% 60%, #1e1e24 0%, #08080a 90%);
+      height: 125px;
+      min-height: 125px;
       border: 1px solid var(--card-border);
       border-radius: 14px;
       position: relative;
@@ -435,15 +434,76 @@
       margin-top: 6px;
     }
 
-    /* 快速微调滑块 */
-    .preview-tuning {
+    /* 视觉外观微调区 */
+    .visual-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: -4px;
+    }
+
+    .role-selector {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tuning-scroll-area {
+      max-height: 220px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .tuning-scroll-area::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    .tuning-scroll-area::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 3px;
+    }
+
+    .preview-tuning-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 16px;
+      gap: 12px;
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--card-border);
       border-radius: 12px;
       padding: 12px 18px;
+    }
+
+    .color-picker-row {
+      display: flex;
+      align-items: center;
+    }
+
+    .color-input {
+      -webkit-appearance: none;
+      appearance: none;
+      border: 1px solid var(--card-border);
+      width: 100%;
+      height: 28px;
+      border-radius: 6px;
+      padding: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .color-input::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+
+    .color-input::-webkit-color-swatch {
+      border: none;
+      border-radius: 5px;
+    }
+
+    .select-input-sm {
+      height: 28px;
+      padding: 2px 10px;
+      font-size: 12px;
     }
 
     .tuning-field {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node.js test/vm 与扩展 content.js 源码，使用可控浏览器消息和字幕加载器
- * [OUTPUT]: 验证凭证隔离、独立 AI 源、provider 重译、预取变更不丢译文、上下文变更重译及脱敏日志
+ * [OUTPUT]: 验证凭证隔离、独立 AI 源、日文源字幕 ruby 注音回填、provider 重译、预取变更不丢译文、上下文变更重译及脱敏日志
  * [POS]: scripts 的内容脚本行为回归检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -396,4 +396,29 @@ test("switching providers retranslates the same active source cue", async () => 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(page.translationMessages.length, 2);
   assert.equal(page.translationMessages[1].message.items[0].text, "Hello");
+});
+
+test("AI Japanese translation annotates original Japanese subtitle row with ruby furigana", async () => {
+  const page = await createPage({
+    primaryTrackKey: "ja",
+    aiSourceTrackKey: "ja",
+    aiRole: "secondary"
+  });
+  page.loads.set("ja", deferred());
+  page.announce([{ key: "ja", language: "ja", label: "Japanese" }]);
+  page.loads.get("ja").resolve([{ startMs: 1000, endMs: 2000, text: "私は田中です" }]);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(page.translationMessages.length, 1);
+  assert.equal(page.translationMessages[0].message.sourceLanguage, "ja");
+  page.translationMessages[0].callback({
+    ok: true,
+    items: [{ id: "0", text: "我是田中", ruby: "{私|わたし}は{田中|たなか}です" }]
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const latestFrame = page.frames.at(-1);
+  assert.equal(latestFrame?.secondaryCues?.[0]?.text, "我是田中");
+  assert.equal(latestFrame?.primaryCues?.[0]?.text, "私は田中です");
+  assert.equal(latestFrame?.primaryCues?.[0]?.ruby, "{私|わたし}は{田中|たなか}です");
 });

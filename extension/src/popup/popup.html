@@ -182,6 +182,15 @@
             <span class="field-label">全局风格指导（不属于单个服务）</span>
             <textarea id="aiStyleGuide" rows="3" maxlength="1000" placeholder="保持原意和人物语气，使用自然口语。"></textarea>
           </label>
+          <div class="settings-list ai-toggle-list" id="aiJapaneseRubyRow" hidden>
+            <label class="setting-row" for="aiJapaneseRuby">
+              <span><strong id="aiJapaneseRubyTitle">日语字幕注音 (振假名)</strong><small id="aiJapaneseRubyDesc">为字幕中的日文汉字标注平假名读音</small></span>
+              <span class="toggle">
+                <input id="aiJapaneseRuby" type="checkbox" aria-label="日语字幕注音">
+                <span class="toggle-track" aria-hidden="true"></span>
+              </span>
+            </label>
+          </div>
           <button id="openProviderSettings" class="inline-link section-link" type="button">配置翻译服务 →</button>
         </section>
       </section>

@@ -466,3 +466,9 @@
     background: #34465d;
   }
 }
+
+.ai-toggle-list {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 4px;
+}

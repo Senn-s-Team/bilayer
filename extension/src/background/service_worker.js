@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 browser/chrome storage、permissions API 与 host_permissions/optional_host_permissions 的跨域 fetch 能力
- * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译、兼容服务对象序列规范化、诊断、连通性测试与旧键迁移
+ * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译（支持日文源字幕 ruby 振假名输出）、兼容服务对象序列规范化、诊断、连通性测试与旧键迁移
  * [POS]: background 生命周期入口；凭证仅存于 provider 条目且只在 worker 内读取，兼容服务必须通过端点校验与运行时域名授权
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -24,7 +24,7 @@ const ONBOARDING_PAGE = "src/onboarding/onboarding.html";
 const rawDiagnostics = [];
 const MAX_RAW_DIAGNOSTICS = 20;
 let rawDiagnosticsVersion = 0;
-let rawCaptureEnabled = false;
+let rawCaptureEnabled = true;
 let rawDiagnosticSequence = 0;
 
 
@@ -72,7 +72,8 @@ const DEFAULT_SETTINGS = {
   aiProviderId: DEFAULT_PROVIDER_ID,
   aiPrefetchCount: 10,
   aiContextCount: 2,
-  aiStyleGuide: ""
+  aiStyleGuide: "",
+  aiJapaneseRuby: true
 };
 
 const DEFAULT_PROVIDERS = {
@@ -273,8 +274,15 @@ async function translateBatch(message, sender, testProviderId = "") {
                   type: "array",
                   items: {
                     type: "object",
-                    properties: { id: { type: "string" }, text: { type: "string" } },
-                    required: ["id", "text"],
+                    properties: ((isJapanese(message.sourceLanguage) || isJapanese(message.targetLanguage)) && (message.japaneseRuby !== undefined ? Boolean(message.japaneseRuby) : (settings.aiJapaneseRuby !== false))) ? {
+                      id: { type: "string" },
+                      text: { type: "string" },
+                      ruby: { type: "string" }
+                    } : {
+                      id: { type: "string" },
+                      text: { type: "string" }
+                    },
+                    required: ((isJapanese(message.sourceLanguage) || isJapanese(message.targetLanguage)) && (message.japaneseRuby !== undefined ? Boolean(message.japaneseRuby) : (settings.aiJapaneseRuby !== false))) ? ["id", "text", "ruby"] : ["id", "text"],
                     additionalProperties: false
                   }
                 }
@@ -290,8 +298,9 @@ async function translateBatch(message, sender, testProviderId = "") {
             content: "你是一位专业的影视字幕翻译员，也是目标语言的母语使用者。" +
               "只翻译 items[].text；contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。" +
               "保持每个 id、数量和顺序完全一致，不合并、不拆分、不遗漏字幕。" +
-              "只返回 JSON 对象 {\"items\":[{\"id\":\"原字幕 id\",\"text\":\"译文\"}]}，items 包含本次请求的全部字幕。" +
+              buildRubyPromptSection(message, settings) +
               "保留人名、专有名词和既有译名；结合上下文处理代词、时态、人物关系和语气。" +
+              (isJapanese(message.sourceLanguage) ? buildKatakanaGuide() : "") +
               "使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、注释、时间戳或额外字段。" +
               `源语言：${message.sourceLanguage}；目标语言：${message.targetLanguage}。` +
               `上下文只用于消歧。${customStyleGuide ? `自定义风格要求：${customStyleGuide}` : ""}`
@@ -385,15 +394,59 @@ function normalizeMessageContent(content) {
 }
 
 function parseTranslationJson(content, compatible) {
+  if (typeof content !== "string") throw new Error("content_not_string");
   const trimmed = content.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  const candidate = fenced ? fenced[1].trim() : trimmed;
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  let candidate = fenced ? fenced[1].trim() : trimmed;
+
+  if (!candidate.startsWith("{") && !candidate.startsWith("[")) {
+    const firstBrace = candidate.indexOf("{");
+    const lastBrace = candidate.lastIndexOf("}");
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      candidate = candidate.slice(firstBrace, lastBrace + 1).trim();
+    }
+  }
+
+  let parsed;
   try {
-    return JSON.parse(candidate);
+    parsed = JSON.parse(candidate);
   } catch (error) {
     if (!compatible || !candidate.startsWith("{")) throw error;
-    return { items: JSON.parse(`[${candidate}]`) };
+    try {
+      parsed = { items: JSON.parse(`[${candidate}]`) };
+    } catch {
+      throw error;
+    }
   }
+  return normalizeTranslationPayload(parsed);
+}
+
+function normalizeTranslationPayload(data) {
+  if (!data || typeof data !== "object") return data;
+  if (Array.isArray(data.items)) {
+    data.items = data.items.map(normalizeTranslationItem);
+  } else if (data.id !== undefined || data["id/"] !== undefined) {
+    return normalizeTranslationItem(data);
+  }
+  return data;
+}
+
+function normalizeTranslationItem(item) {
+  if (!item || typeof item !== "object") return item;
+  const normalized = {};
+  for (const [key, value] of Object.entries(item)) {
+    const clean = key.replace(/[\W_]+/g, "").toLowerCase();
+    if (clean === "id") {
+      normalized.id = typeof value === "number" ? String(value) : String(value ?? "").trim();
+    } else if (clean === "text" || clean === "translation" || clean === "content") {
+      normalized.text = typeof value === "string" ? value : String(value ?? "");
+    } else if (clean === "ruby" || clean === "furigana") {
+      normalized.ruby = typeof value === "string" ? value : String(value ?? "");
+    } else {
+      normalized[key] = value;
+    }
+  }
+  return normalized;
 }
 
 async function testProviderConnection(providerId, sender) {
@@ -547,12 +600,58 @@ function isValidTranslation(data, sourceItems) {
   const expected = new Set(sourceItems.map((item) => item.id));
   let bytes = 0;
   for (const item of data.items) {
-    if (!item || Object.keys(item).length !== 2 || typeof item.id !== "string" ||
-        !expected.delete(item.id) || !isSubtitleText(item.text)) return false;
+    if (!item || typeof item.id !== "string" || !expected.delete(item.id) ||
+        !isSubtitleText(item.text)) return false;
+    const keys = Object.keys(item);
+    if (keys.length === 2) {
+      if (!keys.includes("id") || !keys.includes("text")) return false;
+    } else if (keys.length === 3) {
+      if (!keys.includes("id") || !keys.includes("text") || !keys.includes("ruby")) return false;
+      if (typeof item.ruby !== "string") return false;
+      bytes += new TextEncoder().encode(item.ruby).length;
+    } else {
+      return false;
+    }
     bytes += new TextEncoder().encode(item.text).length;
     if (bytes > MAX_PAYLOAD_BYTES) return false;
   }
   return expected.size === 0;
+}
+
+function isJapanese(lang) {
+  return /^(ja|jp)($|[-_])/i.test(String(lang ?? "").trim());
+}
+
+function buildRubyPromptSection(message, settings) {
+  const isSourceJp = isJapanese(message.sourceLanguage);
+  const isTargetJp = isJapanese(message.targetLanguage);
+  const hasJp = isSourceJp || isTargetJp;
+  const rubyEnabled = hasJp && (message.japaneseRuby !== undefined
+    ? Boolean(message.japaneseRuby)
+    : (settings.aiJapaneseRuby !== false));
+
+  if (!rubyEnabled) {
+    return "只返回 JSON 对象 {\"items\":[{\"id\":\"原字幕 id\",\"text\":\"译文\"}]}，items 包含本次请求的全部字幕。";
+  }
+
+  if (isTargetJp) {
+    return "目标语言为日语，已开启振假名注音功能。请在 text 字段输出纯文本译文，同时在 ruby 字段输出带振假名注音的日文译文。" +
+      "ruby 格式规则：严格仅为日文汉字标注平假名读音，格式必须是 {汉字|平假名}（例如「{私|わたし}の{名前|なまえ}は{田中|たなか}です」）。" +
+      "保真铁律：原本就是假名、英文、符号的词句（如「この」），绝对不要加花括号，严禁输出没有竖线的孤立花括号如 {この}。" +
+      "只返回 JSON 对象 {\"items\":[{\"id\":\"原字幕 id\",\"text\":\"纯文本日文译文\",\"ruby\":\"带注音的日文译文\"}]}，items 包含本次请求的全部字幕。";
+  }
+
+  return "源语言为日语，已开启振假名注音功能。除了翻译 items[].text 为目标语言外，还必须为每个 item 的原文字幕提供逐字振假名注音，返回在 ruby 字段中。" +
+    "ruby 格式规则：严格仅为日文汉字标注平假名读音，格式必须是 {汉字|平假名}（例如「{私|わたし}の{名前|なまえ}は{田中|たなか}です」）。" +
+    "保真铁律：ruby 必须与原文字幕（items[].text）完全逐字对应，绝对严禁删改说话人标签（如「（コナン：小五郎の声）」）、各类括号、标点或非对话内容；原本就是假名、英文、符号的词句（如「这个」或「この」），绝对不要加花括号，严禁输出没有竖线的孤立花括号如 {この}。" +
+    "只返回 JSON 对象 {\"items\":[{\"id\":\"原字幕 id\",\"text\":\"译文\",\"ruby\":\"带注音的日文原文字幕\"}]}，items 包含本次请求的全部字幕。";
+}
+
+function buildKatakanaGuide() {
+  return "【片假名与外来语翻译准则】" +
+    "1. 语境意译优先：日常外来词（如「ウルトラ」「サービス」「チャンス」「トラブル」等）必须结合上下文意译为地道中文（例如「ウルトラ」作形容词/前缀时意译为“超级/极致/特级/终极”，严禁脱离语境盲目音译为“奥特”等特定影视IP名称）。" +
+    "2. 专有名词严谨：人名、地名与知名IP采用公认既有译名；剧情独创概念或科技代号结合设定意译，无公认译名时不生造怪异中文音译，可保留原文或英文代号。" +
+    "3. 口语强调还原：以片假名书写的日语口语强调词（如「マジ」「ダメ」「ウソ」等）按实际对话口吻自然意译。";
 }
 
 function classifyProviderError(status, content) {

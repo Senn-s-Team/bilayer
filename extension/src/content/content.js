@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖轨道归一化、subtitleStore 与 translationScheduler、overlay、fullscreenMount 及 page bridge 播放器查询
- * [OUTPUT]: 提供互斥双原生/AI 翻译、独立 AI 源轨道、默认 10 组预取和可调上下文、首句等待、切集隔离及脱敏页面状态
+ * [INPUT]: 依赖轨道归一化、subtitleStore 与 translationScheduler（含 ruby 标注能力）、overlay、fullscreenMount 及 page bridge 播放器查询
+ * [OUTPUT]: 提供互斥双原生/AI 翻译、独立 AI 源轨道（支持日文源字幕 ruby 振假名回填展示）、默认 10 组预取和可调上下文、首句等待、切集隔离及脱敏页面状态
  * [POS]: content 入口；只协调播放与视图，AI provider 配置和密钥由 background 从扩展存储读取
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -20,8 +20,7 @@ const SUBTITLE_TRACK_SETTING_KEYS = new Set([
   "aiSourceTrackPreference",
   "aiSourceLanguage"
 ]);
-const AI_SETTING_KEYS = new Set(["aiRole", "aiTargetLanguage", "aiProviderId", "aiStyleGuide", "aiContextCount", "aiSourceTrackKey", "aiSourceTrackPreference", "aiSourceLanguage"]);
-
+const AI_SETTING_KEYS = new Set(["aiRole", "aiTargetLanguage", "aiProviderId", "aiStyleGuide", "aiContextCount", "aiSourceTrackKey", "aiSourceTrackPreference", "aiSourceLanguage", "aiJapaneseRuby"]);
 const DEFAULT_SETTINGS = {
   enabled: true,
   hideNativeSubtitles: true,
@@ -40,6 +39,7 @@ const DEFAULT_SETTINGS = {
   aiPrefetchCount: 10,
   aiContextCount: 2,
   aiStyleGuide: DEFAULT_TRANSLATION_PROMPT,
+  aiJapaneseRuby: true,
   primaryFontSize: 26,
   secondaryFontSize: 28,
   primaryVerticalOffset: 26,
@@ -410,8 +410,8 @@ function renderForCurrentTime() {
     const translated = translator.translatedFor(source);
     const nativeFallback = state.selectedTrackKeys[role] !== state.selectedTrackKeys.aiSource;
     if (translated.length > 0) {
-      if (role === "primary") overlay.render({ primaryCues: translated, secondaryCues });
-      else overlay.render({ primaryCues, secondaryCues: translated });
+      if (role === "primary") overlay.render({ primaryCues: translated, secondaryCues: translator.annotateSource(secondaryCues) });
+      else overlay.render({ primaryCues: translator.annotateSource(primaryCues), secondaryCues: translated });
       return;
     }
     if (!nativeFallback) {
@@ -419,7 +419,10 @@ function renderForCurrentTime() {
       else secondaryCues.length = 0;
     }
   }
-  overlay.render({ primaryCues, secondaryCues });
+  overlay.render({
+    primaryCues: translator.annotateSource(primaryCues),
+    secondaryCues: translator.annotateSource(secondaryCues)
+  });
 }
 
 function syncTranslator() {
@@ -441,9 +444,15 @@ function syncTranslator() {
     return;
   }
 
+  const isSourceJp = isJapanese(sourceTrack.language);
+  const isTargetJp = isJapanese(state.settings.aiTargetLanguage);
+  const hasJp = isSourceJp || isTargetJp;
+  const rubyEnabled = hasJp && (state.settings.aiJapaneseRuby !== false);
+
   const identity = JSON.stringify([
     state.watchId, state.subtitleEpoch, sourceTrack.key, role,
-    state.settings.aiTargetLanguage, state.settings.aiProviderId, state.settings.aiStyleGuide, state.settings.aiContextCount
+    state.settings.aiTargetLanguage, state.settings.aiProviderId, state.settings.aiStyleGuide,
+    state.settings.aiContextCount, rubyEnabled
   ]);
   translator.setSource({
     identity,
@@ -452,7 +461,8 @@ function syncTranslator() {
     sourceLanguage: sourceTrack.language,
     targetLanguage: state.settings.aiTargetLanguage,
     prefetchCount: state.settings.aiPrefetchCount,
-    contextCount: state.settings.aiContextCount
+    contextCount: state.settings.aiContextCount,
+    japaneseRuby: rubyEnabled
   });
   if (state.video) {
     translator.observe(currentTimeMs(), state.video.playbackRate || 1);
@@ -717,4 +727,8 @@ function normalizeSettings(stored) {
   }
 
   return settings;
+}
+
+function isJapanese(lang) {
+  return /^(ja|jp)($|[-_])/i.test(String(lang ?? "").trim());
 }

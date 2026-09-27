@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 DOM/Shadow DOM 渲染能力、字幕样式设置与 subtitleParser 输出的 cue 数组、fullscreenMount 的挂载点选择；host 使用 layout/style/paint containment 抑制 transform 动画期的 30-60ms 拖影
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供双字幕布局与独立视觉样式；逐帧复用未变化的字幕节点并通过 mount() 接入全屏挂载
+ * [INPUT]: 依赖 DOM/Shadow DOM 渲染能力、字幕样式设置与 subtitleParser 输出的 cue 数组（支持带 ruby 的日文注音）、fullscreenMount 的挂载点选择
+ * [OUTPUT]: 对 window.NetflixDualSubtitles 提供双字幕布局与独立视觉样式；逐帧复用未变化的字幕节点（包含 ruby 标记）、渲染假名注音并通过 mount() 接入全屏挂载
  * [POS]: content 的显示层，被 content.js 按播放时间驱动；mount() 由 fullscreenMount 接管挂载点
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -125,6 +125,20 @@ window.NetflixDualSubtitles.createSubtitleOverlay = function createSubtitleOverl
         paint-order: stroke fill;
         text-shadow: 0 2px 2px rgba(0, 0, 0, 0.72);
       }
+
+      .line ruby {
+        ruby-align: center;
+        ruby-position: over;
+      }
+
+      .line rt {
+        font-size: 0.52em;
+        font-weight: 600;
+        line-height: 1;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+        -webkit-text-stroke: 0;
+        user-select: none;
+      }
     </style>
     <div class="subtitle-stack">
       <div class="subtitle" data-role="primary" aria-live="off" hidden></div>
@@ -207,19 +221,73 @@ function renderLines(container, cues) {
   let changed = children.length !== cues.length;
   if (!changed) {
     for (let index = 0; index < cues.length; index++) {
-      if (children[index].textContent !== cues[index].text) {
+      const cue = cues[index];
+      const expected = (typeof cue === "object" && cue?.ruby) ? cue.ruby : (cue?.text ?? cue);
+      const current = children[index].__rawText ?? children[index].textContent;
+      if (current !== expected) {
         changed = true;
         break;
       }
     }
   }
-  if (changed) container.replaceChildren(...cues.map((cue) => createLine(cue.text)));
+  if (changed) container.replaceChildren(...cues.map((cue) => createLine(cue)));
   if (container.hidden !== (cues.length === 0)) container.hidden = cues.length === 0;
 }
 
-function createLine(text) {
+function createLine(cue) {
+  const text = typeof cue === "string" ? cue : cue?.text ?? "";
+  const ruby = typeof cue === "object" ? cue?.ruby : "";
   const line = document.createElement("div");
   line.className = "line";
-  line.textContent = text;
+  line.__rawText = ruby || text;
+  if (ruby && typeof ruby === "string") {
+    renderRubyText(line, ruby);
+  } else {
+    line.textContent = text;
+  }
   return line;
+}
+
+function renderRubyText(container, rawText) {
+  let text = rawText.replace(/<ruby>\s*([^<]+?)\s*<rt>\s*([^<]+?)\s*<\/rt>\s*<\/ruby>/gi, "{$1|$2}");
+  text = text.replace(/\{([一-龯々〆ヵヶ]+)[(（]([ぁ-ん]+)[)）]\}/g, "{$1|$2}");
+  text = text.replace(/\{([^{}|]+)\}/g, "$1");
+  const rubyPattern = /\{([^|{}]+)\|([^|{}]+)\}/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = rubyPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      appendSafeText(container, text.slice(lastIndex, match.index));
+    }
+    const rubyEl = document.createElement("ruby");
+    appendSafeText(rubyEl, match[1]);
+    const rtEl = document.createElement("rt");
+    rtEl.textContent = match[2];
+    appendChildNode(rubyEl, rtEl);
+    appendChildNode(container, rubyEl);
+    lastIndex = rubyPattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    appendSafeText(container, text.slice(lastIndex));
+  }
+}
+
+function appendSafeText(container, string) {
+  if (!string) return;
+  if (typeof document.createTextNode === "function") {
+    appendChildNode(container, document.createTextNode(string));
+  } else {
+    appendChildNode(container, string);
+  }
+}
+
+function appendChildNode(container, nodeOrText) {
+  if (typeof container.append === "function") {
+    container.append(nodeOrText);
+  } else if (typeof container.appendChild === "function" && typeof nodeOrText === "object" && nodeOrText !== null) {
+    container.appendChild(nodeOrText);
+  } else if (typeof nodeOrText === "string") {
+    container.textContent = (container.textContent ?? "") + nodeOrText;
+  }
 }

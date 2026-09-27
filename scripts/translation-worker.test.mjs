@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node.js test/vm 与真实 service_worker.js，模拟多 provider 扩展存储和 Chat Completions 响应
- * [OUTPUT]: 验证 provider 切换、兼容服务单字幕和逗号分隔对象序列、多字幕及 ID 校验、权限/错误和原始报文秘密边界
+ * [OUTPUT]: 验证 provider 切换、日文源语言 ruby 振假名 Schema 与提示词生成、兼容服务单字幕和逗号分隔对象序列、多字幕及 ID 校验、权限/错误和原始报文秘密边界
  * [POS]: scripts 的后台请求行为检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -147,6 +147,22 @@ test("compatible providers may return fenced JSON or text content parts", async 
   assert.deepEqual(JSON.parse(JSON.stringify(await worker())), { ok: true, items: [{ id: "0", text: "你好" }] });
 });
 
+test("compatible providers with key typos like id/ or leading markdown are normalized and validated", async () => {
+  const rawContent = '*```json\n{"items":[{"id/":"1482","text":"工厂便化为了密室","ruby":"{工場|こうじょう}は{密室|みっしつ}となった"}]}\n```';
+  const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: rawContent
+  } }] }), {
+    providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "gemini-3.5-flash-lite", credential: "private-key" }],
+    aiProviderId: "custom"
+  });
+  const batch = { ...message, items: [{ id: "1482", text: "工場は密室となった" }] };
+  const result = await worker(batch);
+  assert.equal(result.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{
+    id: "1482", text: "工厂便化为了密室", ruby: "{工場|こうじょう}は{密室|みっしつ}となった"
+  }]);
+});
+
 test("a revoked provider permission or unsafe endpoint never receives a key", async () => {
   let requests = 0;
   const fetcher = async () => { requests++; throw new Error("must not send"); };
@@ -277,4 +293,104 @@ test("onboarding page is authorized to run provider connectivity test and reject
   };
   const deniedResult = await worker({ type: "NETFLIX_DUAL_SUBTITLES_TEST_PROVIDER", providerId: "openai" }, maliciousSender);
   assert.equal(deniedResult.ok, false);
+});
+
+test("Japanese source language requests ruby furigana in schema and validates ruby response", async () => {
+  let sent;
+  const worker = createWorker(async (url, options) => {
+    sent = { url, options };
+    return Response.json({ choices: [{ finish_reason: "stop", message: {
+      content: JSON.stringify({ items: [{ id: "0", text: "你好", ruby: "{私|わたし}は" }] })
+    } }] });
+  });
+
+  const jpMessage = {
+    ...message,
+    sourceLanguage: "ja",
+    targetLanguage: "zh-Hans",
+    items: [{ id: "0", text: "私は" }]
+  };
+
+  const result = await worker(jpMessage);
+  assert.equal(result.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "你好", ruby: "{私|わたし}は" }]);
+
+  const body = JSON.parse(sent.options.body);
+  assert.match(body.messages[0].content, /振假名/);
+  assert.match(body.messages[0].content, /ruby/);
+  assert.deepEqual(body.response_format.json_schema.schema.properties.items.items.required, ["id", "text", "ruby"]);
+});
+
+test("Japanese source language omits ruby when aiJapaneseRuby is disabled", async () => {
+  let sent;
+  const worker = createWorker(async (url, options) => {
+    sent = { url, options };
+    return Response.json({ choices: [{ finish_reason: "stop", message: {
+      content: JSON.stringify({ items: [{ id: "0", text: "你好" }] })
+    } }] });
+  }, { aiJapaneseRuby: false });
+
+  const jpMessage = {
+    ...message,
+    sourceLanguage: "ja",
+    targetLanguage: "zh-Hans",
+    items: [{ id: "0", text: "私は" }]
+  };
+
+  const result = await worker(jpMessage);
+  assert.equal(result.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "你好" }]);
+
+  const body = JSON.parse(sent.options.body);
+  assert.doesNotMatch(body.messages[0].content, /振假名/);
+  assert.deepEqual(body.response_format.json_schema.schema.properties.items.items.required, ["id", "text"]);
+});
+
+test("Japanese target language requests ruby for translation in schema and prompt", async () => {
+  let sent;
+  const worker = createWorker(async (url, options) => {
+    sent = { url, options };
+    return Response.json({ choices: [{ finish_reason: "stop", message: {
+      content: JSON.stringify({ items: [{ id: "0", text: "私は学生です", ruby: "{私|わたし}は{学生|がくせい}です" }] })
+    } }] });
+  });
+
+  const enToJaMessage = {
+    ...message,
+    sourceLanguage: "en",
+    targetLanguage: "ja",
+    items: [{ id: "0", text: "I am a student." }]
+  };
+
+  const result = await worker(enToJaMessage);
+  assert.equal(result.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "私は学生です", ruby: "{私|わたし}は{学生|がくせい}です" }]);
+
+  const body = JSON.parse(sent.options.body);
+  assert.match(body.messages[0].content, /目标语言为日语/);
+  assert.match(body.messages[0].content, /振假名/);
+  assert.deepEqual(body.response_format.json_schema.schema.properties.items.items.required, ["id", "text", "ruby"]);
+});
+
+test("Japanese source language includes Katakana translation guidelines in prompt", async () => {
+  let sent;
+  const worker = createWorker(async (url, options) => {
+    sent = { url, options };
+    return Response.json({ choices: [{ finish_reason: "stop", message: {
+      content: JSON.stringify({ items: [{ id: "0", text: "超级" }] })
+    } }] });
+  });
+
+  const jpMessage = {
+    ...message,
+    sourceLanguage: "ja",
+    targetLanguage: "zh-Hans",
+    items: [{ id: "0", text: "ウルトラ" }]
+  };
+
+  await worker(jpMessage);
+  const body = JSON.parse(sent.options.body);
+  assert.match(body.messages[0].content, /片假名与外来语翻译准则/);
+  assert.match(body.messages[0].content, /ウルトラ/);
+  assert.match(body.messages[0].content, /奥特/);
 });

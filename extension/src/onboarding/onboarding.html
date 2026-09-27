@@ -171,35 +171,115 @@
           <div class="subtitle-line secondary" id="previewSecondary">永远别跟我提胜率。</div>
         </div>
 
-        <div class="field" style="margin-top: 4px;">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <span class="form-label">排版预设 (与外观同步)</span>
-            <div class="preset-pill-group" role="group" aria-label="排版预设">
-              <button type="button" class="preset-chip" data-onboarding-layout="compact">紧凑</button>
-              <button type="button" class="preset-chip is-active" data-onboarding-layout="balanced">标准</button>
-              <button type="button" class="preset-chip" data-onboarding-layout="spacious">舒展</button>
-              <button type="button" class="preset-chip" data-onboarding-layout="free">自由</button>
-            </div>
+        <div class="visual-toolbar">
+          <div class="role-selector" role="group" aria-label="正在编辑的字幕">
+            <button type="button" class="preset-chip is-active" id="btnRolePrimary">第一字幕</button>
+            <button type="button" class="preset-chip" id="btnRoleSecondary">第二字幕</button>
+            <button type="button" class="preset-chip" id="btnResetStyles" title="恢复当前字幕默认外观">重置默认</button>
+          </div>
+          <div class="preset-pill-group" role="group" aria-label="排版预设">
+            <button type="button" class="preset-chip" data-onboarding-layout="compact">紧凑</button>
+            <button type="button" class="preset-chip is-active" data-onboarding-layout="balanced">标准</button>
+            <button type="button" class="preset-chip" data-onboarding-layout="spacious">舒展</button>
+            <button type="button" class="preset-chip" data-onboarding-layout="free">自由</button>
           </div>
         </div>
 
-        <div class="preview-tuning">
-          <div class="tuning-field">
-            <div class="tuning-header">
-              <div style="display: inline-flex; gap: 6px; align-items: center;">
-                <button type="button" class="preset-chip is-active" id="btnRolePrimary" style="padding: 2px 8px; font-size: 11px;">第一字幕</button>
-                <button type="button" class="preset-chip" id="btnRoleSecondary" style="padding: 2px 8px; font-size: 11px;">第二字幕</button>
+        <div class="tuning-scroll-area">
+          <div class="preview-tuning-grid">
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span>字号</span>
+                <span id="fontSizeDisplay">26 px</span>
               </div>
-              <span id="fontSizeDisplay">26 px</span>
+              <input type="range" id="sliderFontSize" min="18" max="44" value="26">
             </div>
-            <input type="range" id="sliderFontSize" min="18" max="44" value="26">
-          </div>
-          <div class="tuning-field">
-            <div class="tuning-header">
-              <span>垂直位置偏移</span>
-              <span id="offsetDisplay">26%</span>
+
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span>自由垂直位置</span>
+                <span id="offsetDisplay">26%</span>
+              </div>
+              <input type="range" id="sliderOffset" min="8" max="42" value="26">
             </div>
-            <input type="range" id="sliderOffset" min="8" max="42" value="26">
+
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span>文字颜色</span>
+                <span id="textColorDisplay">#FFFFFF</span>
+              </div>
+              <div class="color-picker-row">
+                <input type="color" id="inputTextColor" value="#ffffff" class="color-input">
+              </div>
+            </div>
+
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span>文字透明度</span>
+                <span id="textOpacityDisplay">100%</span>
+              </div>
+              <input type="range" id="sliderTextOpacity" min="40" max="100" step="5" value="100">
+            </div>
+
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span>背景颜色</span>
+                <span id="bgColorDisplay">#000000</span>
+              </div>
+              <div class="color-picker-row">
+                <input type="color" id="inputBgColor" value="#000000" class="color-input">
+              </div>
+            </div>
+
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span>背景透明度</span>
+                <span id="bgOpacityDisplay">64%</span>
+              </div>
+              <input type="range" id="sliderBgOpacity" min="0" max="100" step="5" value="64">
+            </div>
+
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span>描边颜色</span>
+                <span id="strokeColorDisplay">#000000</span>
+              </div>
+              <div class="color-picker-row">
+                <input type="color" id="inputStrokeColor" value="#000000" class="color-input">
+              </div>
+            </div>
+
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span>描边宽度</span>
+                <span id="strokeWidthDisplay">1 px</span>
+              </div>
+              <input type="range" id="sliderStrokeWidth" min="0" max="4" step="0.5" value="1">
+            </div>
+
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span>字体</span>
+              </div>
+              <select id="selectFontFamily" class="select-input select-input-sm">
+                <option value="system">系统</option>
+                <option value="sans">无衬线</option>
+                <option value="serif">衬线</option>
+                <option value="rounded">圆体</option>
+              </select>
+            </div>
+
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span>字重</span>
+              </div>
+              <select id="selectFontWeight" class="select-input select-input-sm">
+                <option value="500">中等</option>
+                <option value="600">半粗</option>
+                <option value="700">粗体</option>
+                <option value="800">特粗</option>
+              </select>
+            </div>
           </div>
         </div>
       </section>

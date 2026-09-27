@@ -60,12 +60,14 @@
             </details>
             <div class="payload-toolbar">
               <nav class="payload-tabs" aria-label="报文内容">
-                <button class="payload-tab is-active" type="button" data-payload="request">请求体</button>
-                <button class="payload-tab" type="button" data-payload="response">响应体</button>
+                <button class="payload-tab is-active" type="button" data-payload="response">响应体</button>
+                <button class="payload-tab" type="button" data-payload="request">请求体</button>
+                <button class="payload-tab" type="button" data-payload="ui">渲染为 UI</button>
               </nav>
               <div class="payload-view-actions">
                 <span id="payloadShape" class="payload-shape" aria-live="polite"></span>
-                <button id="toggleRaw" class="payload-format" type="button" aria-pressed="false">查看原文</button>
+                <button id="copyPayload" class="payload-format" type="button">复制报文</button>
+                <button id="toggleRaw" class="payload-format" type="button" aria-pressed="false">切换折叠树</button>
               </div>
             </div>
             <div id="jsonTools" class="json-tools" hidden>

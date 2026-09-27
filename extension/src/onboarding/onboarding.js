@@ -145,13 +145,46 @@ const runtime = globalThis.browser ?? globalThis.chrome;
 
     const btnRolePrimary = document.querySelector("#btnRolePrimary");
     const btnRoleSecondary = document.querySelector("#btnRoleSecondary");
+    const btnResetStyles = document.querySelector("#btnResetStyles");
     const layoutChips = document.querySelectorAll("[data-onboarding-layout]");
+
+    const inputTextColor = document.querySelector("#inputTextColor");
+    const textColorDisplay = document.querySelector("#textColorDisplay");
+    const sliderTextOpacity = document.querySelector("#sliderTextOpacity");
+    const textOpacityDisplay = document.querySelector("#textOpacityDisplay");
+    const inputBgColor = document.querySelector("#inputBgColor");
+    const bgColorDisplay = document.querySelector("#bgColorDisplay");
+    const sliderBgOpacity = document.querySelector("#sliderBgOpacity");
+    const bgOpacityDisplay = document.querySelector("#bgOpacityDisplay");
+    const inputStrokeColor = document.querySelector("#inputStrokeColor");
+    const strokeColorDisplay = document.querySelector("#strokeColorDisplay");
+    const sliderStrokeWidth = document.querySelector("#sliderStrokeWidth");
+    const strokeWidthDisplay = document.querySelector("#strokeWidthDisplay");
+    const selectFontFamily = document.querySelector("#selectFontFamily");
+    const selectFontWeight = document.querySelector("#selectFontWeight");
 
     if (btnRolePrimary && btnRoleSecondary) {
       btnRolePrimary.onclick = () => switchVisualRole("primary");
       btnRoleSecondary.onclick = () => switchVisualRole("secondary");
     }
 
+    if (btnResetStyles) {
+      btnResetStyles.onclick = () => {
+        const isPrimary = activeVisualRole === "primary";
+        visualSettings[`${activeVisualRole}FontSize`] = isPrimary ? 26 : 28;
+        visualSettings[`${activeVisualRole}VerticalOffset`] = isPrimary ? 26 : 18;
+        visualSettings[`${activeVisualRole}TextColor`] = "#FFFFFF";
+        visualSettings[`${activeVisualRole}TextOpacity`] = 100;
+        visualSettings[`${activeVisualRole}BackgroundColor`] = "#000000";
+        visualSettings[`${activeVisualRole}BackgroundOpacity`] = 64;
+        visualSettings[`${activeVisualRole}StrokeColor`] = "#000000";
+        visualSettings[`${activeVisualRole}StrokeWidth`] = 1;
+        visualSettings[`${activeVisualRole}FontFamily`] = "system";
+        visualSettings[`${activeVisualRole}FontWeight`] = 700;
+        switchVisualRole(activeVisualRole);
+        renderVisualPreview();
+      };
+    }
     layoutChips.forEach((chip) => {
       chip.onclick = () => {
         const layout = chip.dataset.onboardingLayout;
@@ -166,7 +199,8 @@ const runtime = globalThis.browser ?? globalThis.chrome;
       const isFree = visualSettings.subtitleLayoutPreset === "free";
       if (sliderOffset) {
         sliderOffset.disabled = !isFree;
-        sliderOffset.parentElement.style.opacity = isFree ? "1" : "0.5";
+        const container = sliderOffset.closest(".tuning-field");
+        if (container) container.style.opacity = isFree ? "1" : "0.45";
       }
     }
 
@@ -175,8 +209,17 @@ const runtime = globalThis.browser ?? globalThis.chrome;
       if (btnRolePrimary) btnRolePrimary.classList.toggle("is-active", role === "primary");
       if (btnRoleSecondary) btnRoleSecondary.classList.toggle("is-active", role === "secondary");
 
-      const fs = visualSettings[`${role}FontSize`] || 26;
-      const vo = visualSettings[`${role}VerticalOffset`] || 26;
+      const fs = visualSettings[`${role}FontSize`] || (role === "primary" ? 26 : 28);
+      const vo = visualSettings[`${role}VerticalOffset`] || (role === "primary" ? 26 : 18);
+      const tc = visualSettings[`${role}TextColor`] || "#FFFFFF";
+      const to = visualSettings[`${role}TextOpacity`] ?? 100;
+      const bc = visualSettings[`${role}BackgroundColor`] || "#000000";
+      const bo = visualSettings[`${role}BackgroundOpacity`] ?? 64;
+      const sc = visualSettings[`${role}StrokeColor`] || "#000000";
+      const sw = visualSettings[`${role}StrokeWidth`] ?? 1;
+      const ff = visualSettings[`${role}FontFamily`] || "system";
+      const fw = visualSettings[`${role}FontWeight`] || 700;
+
       if (sliderFontSize) {
         sliderFontSize.value = fs;
         fontSizeDisplay.textContent = `${fs} px`;
@@ -185,6 +228,33 @@ const runtime = globalThis.browser ?? globalThis.chrome;
         sliderOffset.value = vo;
         offsetDisplay.textContent = `${vo}%`;
       }
+      if (inputTextColor) {
+        inputTextColor.value = tc;
+        textColorDisplay.textContent = tc.toUpperCase();
+      }
+      if (sliderTextOpacity) {
+        sliderTextOpacity.value = to;
+        textOpacityDisplay.textContent = `${to}%`;
+      }
+      if (inputBgColor) {
+        inputBgColor.value = bc;
+        bgColorDisplay.textContent = bc.toUpperCase();
+      }
+      if (sliderBgOpacity) {
+        sliderBgOpacity.value = bo;
+        bgOpacityDisplay.textContent = `${bo}%`;
+      }
+      if (inputStrokeColor) {
+        inputStrokeColor.value = sc;
+        strokeColorDisplay.textContent = sc.toUpperCase();
+      }
+      if (sliderStrokeWidth) {
+        sliderStrokeWidth.value = sw;
+        strokeWidthDisplay.textContent = `${sw} px`;
+      }
+      if (selectFontFamily) selectFontFamily.value = ff;
+      if (selectFontWeight) selectFontWeight.value = String(fw);
+
       updateVisualDisabled();
     }
 
@@ -462,19 +532,91 @@ const runtime = globalThis.browser ?? globalThis.chrome;
       });
     };
 
-    sliderFontSize.oninput = (e) => {
-      const val = Number(e.target.value);
-      visualSettings[`${activeVisualRole}FontSize`] = val;
-      fontSizeDisplay.textContent = `${val} px`;
-      renderVisualPreview();
-    };
+    if (sliderFontSize) {
+      sliderFontSize.oninput = (e) => {
+        const val = Number(e.target.value);
+        visualSettings[`${activeVisualRole}FontSize`] = val;
+        fontSizeDisplay.textContent = `${val} px`;
+        renderVisualPreview();
+      };
+    }
 
-    sliderOffset.oninput = (e) => {
-      const val = Number(e.target.value);
-      visualSettings[`${activeVisualRole}VerticalOffset`] = val;
-      offsetDisplay.textContent = `${val}%`;
-      renderVisualPreview();
-    };
+    if (sliderOffset) {
+      sliderOffset.oninput = (e) => {
+        const val = Number(e.target.value);
+        visualSettings[`${activeVisualRole}VerticalOffset`] = val;
+        offsetDisplay.textContent = `${val}%`;
+        renderVisualPreview();
+      };
+    }
+
+    if (inputTextColor) {
+      inputTextColor.oninput = (e) => {
+        const val = e.target.value;
+        visualSettings[`${activeVisualRole}TextColor`] = val;
+        textColorDisplay.textContent = val.toUpperCase();
+        renderVisualPreview();
+      };
+    }
+
+    if (sliderTextOpacity) {
+      sliderTextOpacity.oninput = (e) => {
+        const val = Number(e.target.value);
+        visualSettings[`${activeVisualRole}TextOpacity`] = val;
+        textOpacityDisplay.textContent = `${val}%`;
+        renderVisualPreview();
+      };
+    }
+
+    if (inputBgColor) {
+      inputBgColor.oninput = (e) => {
+        const val = e.target.value;
+        visualSettings[`${activeVisualRole}BackgroundColor`] = val;
+        bgColorDisplay.textContent = val.toUpperCase();
+        renderVisualPreview();
+      };
+    }
+
+    if (sliderBgOpacity) {
+      sliderBgOpacity.oninput = (e) => {
+        const val = Number(e.target.value);
+        visualSettings[`${activeVisualRole}BackgroundOpacity`] = val;
+        bgOpacityDisplay.textContent = `${val}%`;
+        renderVisualPreview();
+      };
+    }
+
+    if (inputStrokeColor) {
+      inputStrokeColor.oninput = (e) => {
+        const val = e.target.value;
+        visualSettings[`${activeVisualRole}StrokeColor`] = val;
+        strokeColorDisplay.textContent = val.toUpperCase();
+        renderVisualPreview();
+      };
+    }
+
+    if (sliderStrokeWidth) {
+      sliderStrokeWidth.oninput = (e) => {
+        const val = Number(e.target.value);
+        visualSettings[`${activeVisualRole}StrokeWidth`] = val;
+        strokeWidthDisplay.textContent = `${val} px`;
+        renderVisualPreview();
+      };
+    }
+
+    if (selectFontFamily) {
+      selectFontFamily.onchange = (e) => {
+        visualSettings[`${activeVisualRole}FontFamily`] = e.target.value;
+        renderVisualPreview();
+      };
+    }
+
+    if (selectFontWeight) {
+      selectFontWeight.onchange = (e) => {
+        visualSettings[`${activeVisualRole}FontWeight`] = Number(e.target.value);
+        renderVisualPreview();
+      };
+    }
 
     function renderVisualPreview() {
       applyOnboardingStyle(previewPrimary, "primary");

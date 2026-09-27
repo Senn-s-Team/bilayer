@@ -70,6 +70,7 @@ const DEFAULT_SETTINGS = {
   aiPrefetchCount: 10,
   aiContextCount: 2,
   aiStyleGuide: DEFAULT_TRANSLATION_PROMPT,
+  aiJapaneseRuby: true,
   primaryFontSize: 26,
   secondaryFontSize: 28,
   primaryVerticalOffset: 26,
@@ -152,7 +153,8 @@ const aiControls = {
   aiTargetLanguage: document.querySelector("#aiTargetLanguage"),
   aiPrefetchCount: document.querySelector("#aiPrefetchCount"),
   aiContextCount: document.querySelector("#aiContextCount"),
-  aiStyleGuide: document.querySelector("#aiStyleGuide")
+  aiStyleGuide: document.querySelector("#aiStyleGuide"),
+  aiJapaneseRuby: document.querySelector("#aiJapaneseRuby")
 };
 const providerControls = {
   masterList: document.querySelector("#providerMasterList"),
@@ -381,6 +383,7 @@ function bindControls() {
     };
     Object.assign(currentSettings, update);
     void writeSettings(update);
+    updateJapaneseRubyVisibility();
     scheduleStatePoll(0);
   });
 
@@ -390,6 +393,7 @@ function bindControls() {
       aiControls[key].value = value;
       currentSettings[key] = value;
       void writeSettings({ [key]: value });
+      if (key === "aiTargetLanguage") updateJapaneseRubyVisibility();
       if (currentSettings.aiRole !== "off") scheduleStatePoll(0);
     });
   }
@@ -404,6 +408,13 @@ function bindControls() {
       void writeSettings({ [key]: count });
     });
   }
+
+  aiControls.aiJapaneseRuby?.addEventListener("change", () => {
+    const value = Boolean(aiControls.aiJapaneseRuby.checked);
+    currentSettings.aiJapaneseRuby = value;
+    void writeSettings({ aiJapaneseRuby: value });
+    if (currentSettings.aiRole !== "off") scheduleStatePoll(0);
+  });
 
   elements.saveAiCredential.addEventListener("click", () => void saveCredential());
   elements.deleteAiCredential.addEventListener("click", () => void deleteCredential());
@@ -677,8 +688,8 @@ function populateTrackSelects() {
   providerControls.source.replaceChildren(createOption("", "请选择源语言字幕"), ...currentTracks.map(trackToOption));
   providerControls.source.value = source?.key ?? "";
   providerControls.source.disabled = currentTracks.length === 0;
+  updateJapaneseRubyVisibility();
 }
-
 function populateTrackSelect(role) {
   const select = controls[`${role}TrackKey`];
   if (currentSettings.aiRole === role) {
@@ -708,13 +719,17 @@ function writeControls() {
   controls.hideNativeSubtitles.checked = currentSettings.hideNativeSubtitles;
   populateTrackSelects();
   writeModeControls();
-  for (const [key, control] of Object.entries(aiControls)) control.value = currentSettings[key];
+  for (const [key, control] of Object.entries(aiControls)) {
+    if (!control) continue;
+    if (control.type === "checkbox") control.checked = Boolean(currentSettings[key]);
+    else control.value = currentSettings[key];
+  }
   writeProviderControls();
   controls.timingOffsetMs.value = currentSettings.timingOffsetMs;
   writeLayoutPreset();
   writeAdvancedControls();
+  updateJapaneseRubyVisibility();
 }
-
 function selectedProvider() {
   return currentProviders.find((provider) => provider.id === currentSettings.aiProviderId) ?? null;
 }
@@ -1428,5 +1443,40 @@ function isNetflixUrl(url) {
     return parsed.protocol === "https:" && (parsed.hostname === "netflix.com" || parsed.hostname === "www.netflix.com");
   } catch {
     return false;
+  }
+}
+
+function isJapanese(lang) {
+  return /^(ja|jp)($|[-_])/i.test(String(lang ?? "").trim());
+}
+
+function updateJapaneseRubyVisibility() {
+  const row = document.querySelector("#aiJapaneseRubyRow");
+  if (!row) return;
+
+  const sourceTrack = currentTracks.find((track) => track.key === currentSettings.aiSourceTrackKey)
+    ?? currentTracks.find((track) => track.key === providerControls.source?.value);
+  const sourceLang = sourceTrack?.language || currentSettings.aiSourceLanguage || "";
+  const targetLang = currentSettings.aiTargetLanguage || "";
+
+  const isSourceJp = isJapanese(sourceLang);
+  const isTargetJp = isJapanese(targetLang);
+  const hasJp = isSourceJp || isTargetJp;
+
+  row.hidden = !hasJp;
+
+  const title = document.querySelector("#aiJapaneseRubyTitle");
+  const desc = document.querySelector("#aiJapaneseRubyDesc");
+  if (title && desc) {
+    if (isTargetJp && !isSourceJp) {
+      title.textContent = "日语译文字幕注音 (振假名)";
+      desc.textContent = "为 AI 翻译生成的日文译文字幕汉字标注平假名读音";
+    } else if (isSourceJp && !isTargetJp) {
+      title.textContent = "日语原字幕注音 (振假名)";
+      desc.textContent = "源语言为日语时，为原声字幕汉字标注平假名读音";
+    } else {
+      title.textContent = "日语字幕注音 (振假名)";
+      desc.textContent = "为字幕中的日文汉字标注平假名读音";
+    }
   }
 }

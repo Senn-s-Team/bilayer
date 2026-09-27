@@ -1,11 +1,12 @@
 /**
  * [INPUT]: 依赖浏览器 DOMParser 与字幕文本载荷
- * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 parseSubtitle 函数，输出统一 {startMs,endMs,text} cue
- * [POS]: content 的格式解析层，被 subtitleStore 调用
+ * [OUTPUT]: 对 window.NetflixDualSubtitles 提供 parseSubtitle 函数（输出统一 {startMs,endMs,text} cue）与 collapseSubtitleLines
+ * [POS]: content 的格式解析层，被 subtitleStore 调用并规范化单句换行
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
 window.NetflixDualSubtitles ??= {};
+window.NetflixDualSubtitles.collapseSubtitleLines = collapseSubtitleLines;
 window.NetflixDualSubtitles.parseSubtitle = function parseSubtitle(text, contentType = "") {
   const trimmed = text.trim();
   if (!trimmed) return [];
@@ -160,10 +161,43 @@ function normalizeCueText(text) {
 }
 
 function cleanCueText(text) {
-  return decodeEntities(stripCueMarkup(String(text ?? "")))
+  const cleaned = decodeEntities(stripCueMarkup(String(text ?? "")))
     .replace(/[ \t\f\v]+/g, " ")
-    .replace(/\s*\n\s*/g, "\n")
     .trim();
+  return collapseSubtitleLines(cleaned);
+}
+
+function collapseSubtitleLines(text) {
+  if (!text || typeof text !== "string") return "";
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length <= 1) return lines[0] ?? "";
+
+  const result = [lines[0]];
+  const dialogueDashPattern = /^[-–—―・]\s*/;
+  const cjkCharPattern = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/;
+
+  for (let index = 1; index < lines.length; index++) {
+    const prevLine = result[result.length - 1];
+    const currLine = lines[index];
+
+    if (dialogueDashPattern.test(currLine)) {
+      result.push(currLine);
+      continue;
+    }
+
+    const prevPlain = prevLine.replace(/\{[^|{}]+\|[^|{}]+\}/g, (match) => match.slice(1, match.indexOf("|")));
+    const currPlain = currLine.replace(/\{[^|{}]+\|[^|{}]+\}/g, (match) => match.slice(1, match.indexOf("|")));
+    const prevLastChar = prevPlain.slice(-1);
+    const currFirstChar = currPlain.slice(0, 1);
+
+    if (cjkCharPattern.test(prevLastChar) && cjkCharPattern.test(currFirstChar)) {
+      result[result.length - 1] = prevLine + currLine;
+    } else {
+      result[result.length - 1] = prevLine + " " + currLine;
+    }
+  }
+
+  return result.join("\n");
 }
 
 function stripCueMarkup(text) {

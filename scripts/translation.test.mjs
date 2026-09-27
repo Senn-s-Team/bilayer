@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node.js test/vm 与 translationScheduler.js，注入可控翻译请求
- * [OUTPUT]: 验证首句优先、预取条数/时间双上限、邻句数量、seek、预算、译文对齐及请求成功/失败的端到端耗时
+ * [OUTPUT]: 验证首句优先、预取条数/时间双上限、邻句数量、seek、预算、译文对齐、日文源 ruby 注音回填与多行译文单行化折叠
  * [POS]: scripts 的翻译调度行为回归检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -282,4 +282,68 @@ test("switching provider within an episode preserves the prior request chain", a
   await flush();
   assert.deepEqual(JSON.parse(JSON.stringify(scheduler.status().logs.filter(({ event }) => event === "provider_stage")
     .map(({ request }) => request))), [1, 2]);
+});
+
+test("scheduler annotates source cues with ruby when translation completes", async () => {
+  const jpCues = [
+    { startMs: 1000, endMs: 2500, text: "私は田中です。" }
+  ];
+  const scheduler = create(async (batch) => ({
+    ok: true,
+    items: batch.items.map(({ id }) => ({ id, text: "我是田中。", ruby: "{私|わたし}は{田中|たなか}です。" }))
+  }));
+  scheduler.setSource({ identity: "jp-source", cues: jpCues, sourceLanguage: "ja", targetLanguage: "zh-Hans" });
+  scheduler.observe(1100);
+  await flush();
+
+  const annotated = scheduler.annotateSource(jpCues);
+  assert.equal(annotated.length, 1);
+  assert.equal(annotated[0].ruby, "{私|わたし}は{田中|たなか}です。");
+  assert.equal(annotated[0].text, "私は田中です。");
+});
+
+test("scheduler collapses multiline translations into single line without spurious spaces in CJK", async () => {
+  const testCues = [
+    { startMs: 1000, endMs: 2500, text: "Line 0" },
+    { startMs: 3000, endMs: 4500, text: "Line 1" },
+    { startMs: 5000, endMs: 6500, text: "Line 2" }
+  ];
+  const scheduler = create(async () => ({
+    ok: true,
+    items: [
+      { id: "0", text: "你好，\n世界！" },
+      { id: "1", text: "Hello,\nworld!" },
+      { id: "2", text: "- Who is it?\n- It's me." }
+    ]
+  }));
+  scheduler.setSource({ identity: "multiline", cues: testCues, sourceLanguage: "en", targetLanguage: "zh-Hans" });
+  scheduler.observe(1100);
+  await flush();
+
+  const translated = scheduler.translatedFor(testCues);
+  assert.equal(translated[0].text, "你好，世界！");
+  assert.equal(translated[1].text, "Hello, world!");
+  assert.equal(translated[2].text, "- Who is it?\n- It's me.");
+});
+
+test("scheduler attaches ruby to translated cues when targetLanguage is Japanese", async () => {
+  const enCues = [
+    { startMs: 1000, endMs: 2500, text: "I am Tanaka." }
+  ];
+  const scheduler = create(async (batch) => ({
+    ok: true,
+    items: batch.items.map(({ id }) => ({ id, text: "私は田中です。", ruby: "{私|わたし}は{田中|たなか}です。" }))
+  }));
+  scheduler.setSource({ identity: "en-to-ja", cues: enCues, sourceLanguage: "en", targetLanguage: "ja", japaneseRuby: true });
+  scheduler.observe(1100);
+  await flush();
+
+  const translated = scheduler.translatedFor(enCues);
+  assert.equal(translated.length, 1);
+  assert.equal(translated[0].text, "私は田中です。");
+  assert.equal(translated[0].ruby, "{私|わたし}は{田中|たなか}です。");
+
+  // And native English cues should not receive ruby
+  const annotatedNative = scheduler.annotateSource(enCues);
+  assert.equal(annotatedNative[0].ruby, undefined);
 });

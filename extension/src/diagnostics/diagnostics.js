@@ -33,13 +33,14 @@ const elements = {
   collapseTree: document.querySelector("#collapseTree"),
   jsonPath: document.querySelector("#jsonPath"),
   jsonPathValue: document.querySelector("#jsonPathValue"),
-  toggleRaw: document.querySelector("#toggleRaw")
+  toggleRaw: document.querySelector("#toggleRaw"),
+  copyPayload: document.querySelector("#copyPayload")
 };
 
 let records = [];
 let selectedId = null;
-let payloadKind = "request";
-let showRaw = false;
+let payloadKind = "response";
+let showTree = false;
 let version = -1;
 let renderedPayload = null;
 let searchMatches = [];
@@ -55,9 +56,6 @@ async function init() {
   }
   await send({ type: "NETFLIX_DUAL_SUBTITLES_SET_RAW_DIAGNOSTICS", enabled: true });
   await refresh();
-  window.addEventListener("pagehide", () => {
-    void send({ type: "NETFLIX_DUAL_SUBTITLES_SET_RAW_DIAGNOSTICS", enabled: false });
-  });
   window.setInterval(refresh, 1000);
 }
 
@@ -105,10 +103,26 @@ function bindControls() {
     });
   });
   elements.toggleRaw.addEventListener("click", () => {
-    showRaw = !showRaw;
-    elements.toggleRaw.textContent = showRaw ? "查看格式化 JSON" : "查看原文";
-    elements.toggleRaw.setAttribute("aria-pressed", String(showRaw));
+    showTree = !showTree;
+    elements.toggleRaw.textContent = showTree ? "格式化文本" : "切换折叠树";
+    elements.toggleRaw.setAttribute("aria-pressed", String(showTree));
     renderDetail();
+  });
+  elements.copyPayload?.addEventListener("click", async () => {
+    const text = getActivePayloadText();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      elements.copyPayload.textContent = "已复制 ✓";
+      setTimeout(() => {
+        elements.copyPayload.textContent = "复制报文";
+      }, 1500);
+    } catch {
+      elements.copyPayload.textContent = "复制失败";
+      setTimeout(() => {
+        elements.copyPayload.textContent = "复制报文";
+      }, 1500);
+    }
   });
   elements.jsonSearch.addEventListener("input", updateSearch);
   elements.jsonSearch.addEventListener("keydown", (event) => {
@@ -221,25 +235,62 @@ function renderDetail() {
 
 function renderPayload(recordId, text) {
   if (renderedPayload?.recordId === recordId && renderedPayload.text === text &&
-      renderedPayload.kind === payloadKind && renderedPayload.raw === showRaw) return;
-  renderedPayload = { recordId, text, kind: payloadKind, raw: showRaw };
+      renderedPayload.kind === payloadKind && renderedPayload.showTree === showTree) return;
+  renderedPayload = { recordId, text, kind: payloadKind, showTree };
   elements.payloadView.replaceChildren();
-  elements.jsonPathValue.textContent = "$";
-  const parsed = showRaw ? null : parseFormattedJson(text);
-  elements.jsonPath.hidden = !parsed;
-  elements.jsonTools.hidden = !parsed;
-  elements.payloadShape.textContent = showRaw ? "原始文本" : parsed ? describeJson(parsed.value) : "纯文本";
-  if (parsed) {
+
+  if (payloadKind === "ui") {
+    elements.jsonPath.hidden = true;
+    elements.jsonTools.hidden = true;
+    elements.toggleRaw.hidden = true;
+    elements.payloadShape.textContent = "字幕视效 UI";
+    const record = records.find((item) => item.id === recordId);
+    if (record) elements.payloadView.append(renderUiPreview(record));
+    return;
+  }
+
+  elements.toggleRaw.hidden = false;
+  elements.toggleRaw.textContent = showTree ? "格式化文本" : "切换折叠树";
+  elements.toggleRaw.setAttribute("aria-pressed", String(showTree));
+
+  const parsed = parseFormattedJson(text);
+
+  if (showTree && parsed) {
+    elements.jsonPath.hidden = false;
+    elements.jsonTools.hidden = false;
+    elements.jsonPathValue.textContent = "$";
+    elements.payloadShape.textContent = describeJson(parsed.value);
     elements.payloadView.append(createJsonNode(parsed.value, "$", "$", 0));
     updateSearch();
   } else {
+    elements.jsonPath.hidden = true;
+    elements.jsonTools.hidden = true;
     searchMatches = [];
     activeMatch = -1;
+    elements.payloadShape.textContent = parsed ? `格式化 JSON · ${describeJson(parsed.value)}` : "原始文本";
+
+    const formattedText = parsed ? JSON.stringify(parsed.value, null, 2) : text;
     const raw = document.createElement("pre");
     raw.className = "payload-raw";
-    raw.textContent = text;
+    raw.textContent = formattedText;
     elements.payloadView.append(raw);
   }
+}
+
+function getActivePayloadText() {
+  const record = records.find((item) => item.id === selectedId);
+  if (!record) return "";
+  if (payloadKind === "ui") {
+    const resParsed = tryParseJson(record.response?.body);
+    const choice = resParsed?.choices?.[0];
+    const resData = tryParseJson(choice?.message?.content);
+    const items = Array.isArray(resData?.items) ? resData.items : [];
+    return items.map((item) => `[#${item.id}]\n原文: ${item.ruby || item.text}\n译文: ${item.text}`).join("\n\n");
+  }
+  const text = payloadKind === "request" ? record.request?.body : record.response?.body;
+  if (!text) return "";
+  const parsed = parseFormattedJson(text);
+  return parsed ? JSON.stringify(parsed.value, null, 2) : text;
 }
 
 function describeJson(value) {
@@ -269,9 +320,211 @@ function parseFormattedJson(value) {
 }
 
 function parseEmbeddedJson(content) {
-  try { return JSON.parse(content); } catch {
-    if (!content.trimStart().startsWith("{")) return content;
-    try { return JSON.parse(`[${content}]`); } catch { return content; }
+  if (typeof content !== "string") return content;
+  const trimmed = content.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  let candidate = fenced ? fenced[1].trim() : trimmed;
+
+  if (!candidate.startsWith("{") && !candidate.startsWith("[")) {
+    const firstBrace = candidate.indexOf("{");
+    const lastBrace = candidate.lastIndexOf("}");
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      candidate = candidate.slice(firstBrace, lastBrace + 1).trim();
+    }
+  }
+
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    if (!candidate.startsWith("{")) return content;
+    try {
+      return JSON.parse(`[${candidate}]`);
+    } catch {
+      return content;
+    }
+  }
+}
+
+function tryParseJson(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  try {
+    return parseEmbeddedJson(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTranslationPayload(data) {
+  if (!data || typeof data !== "object") return data;
+  if (Array.isArray(data)) {
+    return { items: data.map(normalizeTranslationItem) };
+  }
+  if (Array.isArray(data.items)) {
+    data.items = data.items.map(normalizeTranslationItem);
+    return data;
+  }
+  if (data.id !== undefined || data["id/"] !== undefined) {
+    return { items: [normalizeTranslationItem(data)] };
+  }
+  return data;
+}
+
+function normalizeTranslationItem(item) {
+  if (!item || typeof item !== "object") return item;
+  const normalized = {};
+  for (const [key, value] of Object.entries(item)) {
+    const clean = key.replace(/[\W_]+/g, "").toLowerCase();
+    if (clean === "id") {
+      normalized.id = typeof value === "number" ? String(value) : String(value ?? "").trim();
+    } else if (clean === "text" || clean === "translation" || clean === "content") {
+      normalized.text = typeof value === "string" ? value : String(value ?? "");
+    } else if (clean === "ruby" || clean === "furigana") {
+      normalized.ruby = typeof value === "string" ? value : String(value ?? "");
+    } else {
+      normalized[key] = value;
+    }
+  }
+  return normalized;
+}
+
+function renderUiPreview(record) {
+  const container = document.createElement("div");
+  container.className = "ui-preview-container";
+
+  const reqParsed = tryParseJson(record.request?.body);
+  const userMsg = reqParsed?.messages?.find((m) => m.role === "user");
+  const userData = tryParseJson(userMsg?.content);
+  const sourceLang = userData?.sourceLanguage || "ja";
+  const targetLang = userData?.targetLanguage || "zh-Hans";
+  const requestItems = Array.isArray(userData?.items) ? userData.items : [];
+  const reqMap = new Map(requestItems.map((item) => [String(item.id), item.text]));
+
+  const resParsed = tryParseJson(record.response?.body);
+  const choice = resParsed?.choices?.[0];
+  const choiceContent = choice?.message?.content;
+  const rawResData = tryParseJson(choiceContent) ?? resParsed;
+  const resData = normalizeTranslationPayload(rawResData);
+  const responseItems = Array.isArray(resData?.items) ? resData.items : [];
+
+  for (let index = 0; index < responseItems.length; index++) {
+    const item = responseItems[index];
+    if ((!item.id || item.id === "undefined") && requestItems[index]) {
+      item.id = String(requestItems[index].id);
+    }
+  }
+  const resMap = new Map(responseItems.filter((i) => i.id && i.id !== "undefined").map((item) => [String(item.id), item]));
+
+  const banner = document.createElement("div");
+  banner.className = "ui-preview-banner";
+  const model = reqParsed?.model || requestModel(record.request?.body);
+  const duration = record.completedAt && record.at ? `${record.completedAt - record.at} ms` : "-";
+  const statusBadge = record.validated
+    ? "校验通过 ✓"
+    : (record.failure ? `校验失败 (${record.failure.reason || record.failure})` : (record.error || "进行中"));
+
+  const bannerTitle = document.createElement("div");
+  bannerTitle.className = "ui-banner-title";
+  bannerTitle.innerHTML = `
+    <strong>双语字幕视效预览</strong>
+    <span class="ui-banner-tag">${escapeHtml(sourceLang)} → ${escapeHtml(targetLang)}</span>
+    <span class="ui-banner-badge ${record.validated ? 'is-valid' : 'is-error'}">${escapeHtml(statusBadge)}</span>
+  `;
+
+  const bannerMeta = document.createElement("div");
+  bannerMeta.className = "ui-banner-meta";
+  bannerMeta.textContent = `模型: ${model} · 耗时: ${duration} · 共 ${responseItems.length || requestItems.length} 句字幕`;
+
+  banner.append(bannerTitle, bannerMeta);
+  container.append(banner);
+
+  const list = document.createElement("div");
+  list.className = "ui-card-list";
+
+  const allIds = [...new Set([...requestItems.map((i) => String(i.id)), ...responseItems.map((i) => String(i.id))])];
+  if (allIds.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "ui-empty-msg";
+    empty.textContent = "未能解析出结构化字幕条目。请切换至「响应体」查看报文文本。";
+    list.append(empty);
+  } else {
+    for (const id of allIds) {
+      const sourceText = reqMap.get(id);
+      const resItem = resMap.get(id);
+      const targetText = resItem?.text;
+      const rubyText = resItem?.ruby;
+
+      const card = document.createElement("div");
+      card.className = "ui-sub-card";
+
+      const cardHeader = document.createElement("div");
+      cardHeader.className = "ui-card-header";
+      cardHeader.innerHTML = `<span class="ui-card-id">#${escapeHtml(id)}</span>`;
+      if (!resItem) {
+        cardHeader.innerHTML += `<span class="ui-card-missing">未返回译文</span>`;
+      }
+      card.append(cardHeader);
+
+      if (rubyText || sourceText) {
+        const rubyRow = document.createElement("div");
+        rubyRow.className = "ui-ruby-row";
+        if (rubyText) {
+          renderRubyTextTo(rubyRow, rubyText);
+        } else {
+          rubyRow.textContent = sourceText;
+        }
+        card.append(rubyRow);
+      }
+
+      if (targetText) {
+        const transRow = document.createElement("div");
+        transRow.className = "ui-trans-row";
+        transRow.textContent = targetText;
+        card.append(transRow);
+      }
+
+      if (sourceText && rubyText) {
+        const cleanRuby = rubyText.replace(/\{([^|{}]+)\|[^|{}]+\}/g, "$1");
+        if (cleanRuby !== sourceText) {
+          const srcRow = document.createElement("div");
+          srcRow.className = "ui-source-hint";
+          srcRow.textContent = `原文参照: ${sourceText}`;
+          card.append(srcRow);
+        }
+      }
+
+      list.append(card);
+    }
+  }
+
+  container.append(list);
+  return container;
+}
+
+
+function renderRubyTextTo(container, rawText) {
+  let text = String(rawText ?? "").replace(/<ruby>\s*([^<]+?)\s*<rt>\s*([^<]+?)\s*<\/rt>\s*<\/ruby>/gi, "{$1|$2}");
+  text = text.replace(/\{([一-龯々〆ヵヶ]+)[(（]([ぁ-ん]+)[)）]\}/g, "{$1|$2}");
+  text = text.replace(/\{([^{}|]+)\}/g, "$1");
+  const rubyPattern = /\{([^|{}]+)\|([^|{}]+)\}/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = rubyPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      container.append(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
+    const rubyEl = document.createElement("ruby");
+    rubyEl.append(document.createTextNode(match[1]));
+    const rtEl = document.createElement("rt");
+    rtEl.textContent = match[2];
+    rubyEl.append(rtEl);
+    container.append(rubyEl);
+    lastIndex = rubyPattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    container.append(document.createTextNode(text.slice(lastIndex)));
   }
 }
 function createJsonNode(value, label, path, depth) {
