@@ -396,7 +396,7 @@ async function translateBatch(message, sender, testProviderId = "") {
     const messageContent = normalizeMessageContent(choice?.message?.content);
     record("parsed", { responseBytes, finishReason: ["stop", "length", "content_filter", "tool_calls"].includes(choice?.finish_reason)
       ? choice.finish_reason : "other",
-      contentKind: typeof choice?.message?.content === "string" ? "text" : Array.isArray(choice?.message?.content) ? "parts" : "missing" });
+      contentKind: typeof choice?.message?.content === "string" ? "text" : Array.isArray(choice?.message?.content) ? "parts" : typeof choice?.message?.content === "object" ? "object" : "missing" });
     if (choice?.message?.refusal) return reject("invalid_response", "rejected", { reason: "refusal" });
     if (choice?.finish_reason !== "stop") return reject("invalid_response", "rejected", { reason: "finish_reason" });
     if (messageContent == null) return reject("invalid_response", "rejected", { reason: "content_missing" });
@@ -431,6 +431,9 @@ async function translateBatch(message, sender, testProviderId = "") {
 
 function normalizeMessageContent(content) {
   if (typeof content === "string") return content;
+  if (typeof content === "object" && content !== null && !Array.isArray(content)) {
+    return JSON.stringify(content);
+  }
   if (!Array.isArray(content)) return null;
   const text = content.filter((part) => part && part.type === "text" && typeof part.text === "string")
     .map((part) => part.text).join("\n");
@@ -438,6 +441,9 @@ function normalizeMessageContent(content) {
 }
 
 function parseTranslationJson(content, compatible) {
+  if (typeof content === "object" && content !== null) {
+    return normalizeTranslationPayload(content);
+  }
   if (typeof content !== "string") throw new Error("content_not_string");
   const trimmed = content.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);

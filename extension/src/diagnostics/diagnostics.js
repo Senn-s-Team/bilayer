@@ -34,7 +34,8 @@ const elements = {
   jsonPath: document.querySelector("#jsonPath"),
   jsonPathValue: document.querySelector("#jsonPathValue"),
   toggleRaw: document.querySelector("#toggleRaw"),
-  copyPayload: document.querySelector("#copyPayload")
+  copyPayload: document.querySelector("#copyPayload"),
+  exportCases: document.querySelector("#exportCases")
 };
 
 let records = [];
@@ -124,6 +125,21 @@ function bindControls() {
       }, 1500);
     }
   });
+  elements.exportCases?.addEventListener("click", () => {
+    if (!records.length) {
+      alert("当前没有可导出的报文记录。请在 Netflix 播放片刻生成字幕翻译后再导出。");
+      return;
+    }
+    const dateStr = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    const filename = `netflix-subtitles-cases-${dateStr}.json`;
+    const blob = new Blob([JSON.stringify(records, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
   elements.jsonSearch.addEventListener("input", updateSearch);
   elements.jsonSearch.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
@@ -176,7 +192,7 @@ function render() {
     button.className = `record-item${record.id === selectedId ? " is-active" : ""}`;
     button.setAttribute("aria-current", String(record.id === selectedId));
     button.dataset.state = record.validated ? "success" : record.failure || record.error ? "error" : "loading";
-    const status = record.validated ? "成功" : record.failure?.errorCode ?? record.error ?? "处理中";
+    const status = formatFailureStatus(record);
     const duration = record.completedAt && record.at ? `${record.completedAt - record.at} ms` : "进行中";
     const request = record.request ?? {};
     button.title = request.url ?? "";
@@ -213,7 +229,7 @@ function renderDetail() {
 
   const request = record.request ?? {};
   const response = record.response;
-  const status = record.validated ? "成功" : record.failure?.errorCode ?? record.error ?? (response ? "已返回，未完成校验" : "请求中");
+  const status = formatFailureStatus(record);
   elements.detailMeta.textContent = new Date(record.at ?? Date.now()).toLocaleString();
   elements.detailTitle.textContent = `请求 ${record.id}`;
   elements.detailResult.textContent = status;
@@ -748,4 +764,19 @@ function send(message) {
   return new Promise((resolve) => {
     runtime.runtime.sendMessage(message, (response) => resolve(runtime.runtime.lastError ? { ok: false } : response));
   });
+}
+
+function formatFailureStatus(record) {
+  if (record.validated) return "成功";
+  if (record.failure) {
+    const code = record.failure.errorCode || "失败";
+    const reason = record.failure.reason;
+    if (reason === "items_mismatch") {
+      return `${code} (条数不符: 期望${record.failure.expectedCount || "?"}条/实收${record.failure.receivedCount ?? 0}条)`;
+    }
+    if (reason) return `${code} (${reason})`;
+    return code;
+  }
+  if (record.error) return `失败: ${record.error}`;
+  return record.response ? "已返回，未完成校验" : "请求中";
 }

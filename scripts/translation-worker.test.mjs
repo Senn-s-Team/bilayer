@@ -4,7 +4,7 @@
  * [POS]: scripts 的后台请求行为检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -429,4 +429,63 @@ test("model returning malformed trailing characters like ]5} is healed and valid
   assert.equal(result.items[0].id, "1547");
   assert.equal(result.items[0].text, "（高木）啊 为了防止伪造");
   assert.equal(result.items[0].readings["偽造"], "ぎぞう");
+});
+
+test("model returning message.content as an object is parsed and validated successfully", async () => {
+  const objectContent = {
+    items: [
+      { id: "1585", text: "尽管如此", readings: {} },
+      { id: "1586", text: "却被国家抛弃了", readings: { "国": "くに" } },
+      { id: "1587", text: "明明是我被抛弃了", readings: { "私": "わたし" } },
+      { id: "1588", text: "我本该创作的艺术品却流传到了日本各地！ ", readings: { "私": "わたし", "作": "つく" } },
+      { id: "1589", text: "而且还是技术比我拙劣的作品", readings: { "私": "わたし", "劣": "おと" } }
+    ]
+  };
+  const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    role: "assistant",
+    content: objectContent
+  } }] }), {
+    providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "gemini-3.1-flash-lite", credential: "private-key" }],
+    aiProviderId: "custom"
+  });
+  const batch = {
+    ...message,
+    sourceLanguage: "ja",
+    targetLanguage: "zh-Hans",
+    items: [
+      { id: "1585", text: "..." },
+      { id: "1586", text: "..." },
+      { id: "1587", text: "..." },
+      { id: "1588", text: "..." },
+      { id: "1589", text: "..." }
+    ]
+  };
+  const result = await worker(batch);
+  assert.equal(result.ok, true);
+  assert.equal(result.items.length, 5);
+  assert.equal(result.items[0].id, "1585");
+  assert.equal(result.items[0].text, "尽管如此");
+});
+
+test("all collected real-world diagnostic cases in cases/ parse and validate successfully", async () => {
+  const casesDir = new URL("../cases", import.meta.url);
+  const files = readdirSync(casesDir).filter((file) => file.endsWith(".json"));
+  assert.ok(files.length >= 3);
+
+  for (const file of files) {
+    const caseData = JSON.parse(readFileSync(new URL(`../cases/${file}`, import.meta.url), "utf8"));
+    const worker = createWorker(async () => Response.json(caseData.response), {
+      providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: caseData.response.model || "gemini", credential: "private-key" }],
+      aiProviderId: "custom"
+    });
+    const batch = {
+      ...message,
+      sourceLanguage: "ja",
+      targetLanguage: "zh-Hans",
+      items: caseData.expectedItems.map((item) => ({ id: item.id, text: "源文本" }))
+    };
+    const result = await worker(batch);
+    assert.equal(result.ok, true, `Case ${file} failed with: ${result.errorCode}`);
+    assert.equal(result.items.length, caseData.expectedItems.length);
+  }
 });

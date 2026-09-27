@@ -1,0 +1,77 @@
+{
+  "description": "Gemini-3.1-flash-lite 返回的真实 Request 8 案例：网关直接将 content 作为已解析对象返回，且包含 readings 为空的边缘情况",
+  "response": {
+    "id": "1cG4ave6Od3jrfcPu8nkiAk",
+    "object": "chat.completion",
+    "created": 0,
+    "model": "gemini-3.1-flash-lite",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": {
+            "items": [
+              {
+                "id": "1585",
+                "text": "尽管如此",
+                "readings": {}
+              },
+              {
+                "id": "1586",
+                "text": "却被国家抛弃了",
+                "readings": {
+                  "国": "くに"
+                }
+              },
+              {
+                "id": "1587",
+                "text": "明明是我被抛弃了",
+                "readings": {
+                  "私": "わたし"
+                }
+              },
+              {
+                "id": "1588",
+                "text": "我本该创作的艺术品却流传到了日本各地！",
+                "readings": {
+                  "私": "わたし",
+                  "作": "つく",
+                  "芸術品": "げいじゅつひん",
+                  "日本中": "にほんじゅう",
+                  "出回": "でまわ"
+                }
+              },
+              {
+                "id": "1589",
+                "text": "而且还是技术比我拙劣的作品",
+                "readings": {
+                  "私": "わたし",
+                  "劣": "おと",
+                  "技術": "ぎじゅつ",
+                  "作品": "さくひん"
+                }
+              }
+            ]
+          },
+          "reasoning_content": null,
+          "tool_calls": null
+        },
+        "finish_reason": "stop",
+        "native_finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "completion_tokens": 179,
+      "total_tokens": 753,
+      "prompt_tokens": 574
+    }
+  },
+  "expectedItems": [
+    { "id": "1585", "text": "尽管如此" },
+    { "id": "1586", "text": "却被国家抛弃了" },
+    { "id": "1587", "text": "明明是我被抛弃了" },
+    { "id": "1588", "text": "我本该创作的艺术品却流传到了日本各地！" },
+    { "id": "1589", "text": "而且还是技术比我拙劣的作品" }
+  ]
+}

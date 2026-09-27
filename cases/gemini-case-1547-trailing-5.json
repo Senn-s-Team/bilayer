@@ -1,0 +1,32 @@
+{
+  "description": "Gemini-3.5-flash-lite 返回的真实案例：在数组和外层闭合大括号间插入杂质字符 ]5} 导致 JSON 语法破坏",
+  "response": {
+    "id": "j7-4ar24N9202roP9snawAo",
+    "object": "chat.completion",
+    "created": 0,
+    "model": "gemini-3.5-flash-lite",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "```json\n{\"items\":[{\"id\":\"1547\",\"text\":\"（高木）啊 为了防止伪造\",\"readings\":{\"高木\":\"たかぎ\",\"偽造\":\"ぎぞう\",\"防止\":\"ぼうし\"}},{\"id\":\"1548\",\"text\":\"（北村）在原本的设计中没有的微缩文字\",\"readings\":{\"北村\":\"きたむら\",\"文字\":\"もじ\"}},{\"id\":\"1549\",\"text\":\"我将其雕刻在了东都塔内部\",\"readings\":{\"東都\":\"とうと\",\"中\":\"なか\"}}]5}\n```",
+          "reasoning_content": "",
+          "tool_calls": null
+        },
+        "finish_reason": "stop",
+        "native_finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "completion_tokens": 127,
+      "total_tokens": 760,
+      "prompt_tokens": 633
+    }
+  },
+  "expectedItems": [
+    { "id": "1547", "text": "（高木）啊 为了防止伪造" },
+    { "id": "1548", "text": "（北村）在原本的设计中没有的微缩文字" },
+    { "id": "1549", "text": "我将其雕刻在了东都塔内部" }
+  ]
+}
