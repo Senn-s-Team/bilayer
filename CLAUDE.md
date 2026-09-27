@@ -26,7 +26,11 @@ package.json - 项目命令入口，保持零依赖检查链路；版本必须�
 </config>
 
 <config>
-README.md - 安装、开发、转换 Safari 工程的操作地图
+README.md - 安装、开发、转换 Safari 工程的操作地图（英文主版）
+</config>
+
+<config>
+README_cn.md - README 的简体中文版，两版章节结构必须逐节对应
 </config>
 
 <config>
@@ -86,4 +90,5 @@ Safari 工程由 `scripts/create-safari-project.sh` 从 WebExtension 源码生�
 2026-09-27: 发布 0.2.2 补丁版，同步 WebExtension 与 Safari 工程版本；包含兼容服务日文注音响应修复、模型目录下拉发现及诊断报文导出修复。
 2026-09-27: 品牌更名为 Bilayer（原 Netflix Dual Subtitles Safari），移除 Netflix 商标与品牌红以免 App Review 5.2.1/2.3.x 拒审；协议常量改名 bilayer-bridge/bilayer-host/BILAYER_*/window.Bilayer，bundle id 保持不变以保留已安装用户数据；图标改为双层语义（蓝 #4C8DFF 原文层 + 琥珀 #FFB020 译文层），新增 scripts/build-icons.sh 派生 16/32/48/96/128/256/512 全套并接入 npm run icons；版本 0.3.0。
 2026-09-27: 开源化加固：新增 MIT LICENSE、CONTRIBUTING/SECURITY/CODE_OF_CONDUCT/CHANGELOG、.editorconfig 与 GitHub Actions CI（Node 22/24）；package.json 补齐 license/engines/repository/keywords；check.mjs 改用 fileURLToPath 修正含空格路径并对 manifest↔package 版本做一致性断言；抽取 scripts/sign-app.sh 统一签名与注册，消除 install-app.sh 与 update-app.sh 的重复并移除其中的个人证书、邮箱与绝对路径；新增 scripts/patch-safari-project.mjs 在生成后剥离 appex 内的内部文档与测试文件（含 Extension target 脚本沙盒关闭）；cases/ 与 translation-worker.test.mjs 中的真实影视对白替换为合成内容并保留原有结构畸形；删除未使用的 .env。
+2026-09-27: 新增 README_cn.md 作为 README 的简体中文版，两版顶部互加语言切换链接，章节结构逐节对应。
 法则: 极简·稳定·导航·版本精确

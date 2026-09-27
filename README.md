@@ -1,5 +1,7 @@
 # Bilayer
 
+English · [简体中文](README_cn.md)
+
 macOS Safari Web Extension for two subtitle lines on streaming video pages, with optional AI translation through OpenAI or an OpenAI-compatible Chat Completions service.
 
 ## Status
