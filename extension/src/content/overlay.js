@@ -222,7 +222,9 @@ function renderLines(container, cues) {
   if (!changed) {
     for (let index = 0; index < cues.length; index++) {
       const cue = cues[index];
-      const expected = (typeof cue === "object" && cue?.ruby) ? cue.ruby : (cue?.text ?? cue);
+      const expected = (typeof cue === "object" && cue?.readings)
+        ? JSON.stringify({ text: cue.text, readings: cue.readings })
+        : (cue?.ruby || cue?.text || cue);
       const current = children[index].__rawText ?? children[index].textContent;
       if (current !== expected) {
         changed = true;
@@ -236,16 +238,77 @@ function renderLines(container, cues) {
 
 function createLine(cue) {
   const text = typeof cue === "string" ? cue : cue?.text ?? "";
+  const readings = typeof cue === "object" ? cue?.readings : null;
   const ruby = typeof cue === "object" ? cue?.ruby : "";
   const line = document.createElement("div");
   line.className = "line";
-  line.__rawText = ruby || text;
-  if (ruby && typeof ruby === "string") {
+
+  if (readings && typeof readings === "object" && Object.keys(readings).length > 0) {
+    line.__rawText = JSON.stringify({ text, readings });
+    renderReadingsTo(line, text, readings);
+  } else if (ruby && typeof ruby === "string") {
+    line.__rawText = ruby;
     renderRubyText(line, ruby);
   } else {
+    line.__rawText = text;
     line.textContent = text;
   }
   return line;
+}
+
+function renderReadingsTo(container, text, readings) {
+  const tokens = createRubyTokens(text, readings);
+  for (const token of tokens) {
+    if (token.type === "ruby") {
+      const rubyEl = document.createElement("ruby");
+      appendSafeText(rubyEl, token.kanji);
+      const rtEl = document.createElement("rt");
+      rtEl.textContent = token.kana;
+      appendChildNode(rubyEl, rtEl);
+      appendChildNode(container, rubyEl);
+    } else {
+      appendSafeText(container, token.value);
+    }
+  }
+}
+
+function createRubyTokens(text, readings) {
+  if (!text) return [];
+  if (!readings || typeof readings !== "object" || Object.keys(readings).length === 0) {
+    return [{ type: "text", value: text }];
+  }
+
+  const validEntries = Object.entries(readings)
+    .filter(([kanji, kana]) => kanji && kana && typeof kanji === "string" && typeof kana === "string" && text.includes(kanji))
+    .sort((a, b) => b[0].length - a[0].length);
+
+  if (validEntries.length === 0) return [{ type: "text", value: text }];
+
+  const pattern = new RegExp(validEntries.map(([k]) => escapeRegex(k)).join("|"), "g");
+  const tokens = [];
+  let lastIndex = 0;
+  let match;
+  const readingMap = new Map(validEntries);
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push({ type: "text", value: text.slice(lastIndex, match.index) });
+    }
+    const kanji = match[0];
+    const kana = readingMap.get(kanji);
+    tokens.push({ type: "ruby", kanji, kana });
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    tokens.push({ type: "text", value: text.slice(lastIndex) });
+  }
+
+  return tokens;
+}
+
+function escapeRegex(str) {
+  return String(str ?? "").replace(/[/\-\\^$*+?.()|[\]{}]/g, "\\$&");
 }
 
 function renderRubyText(container, rawText) {

@@ -159,7 +159,7 @@ test("compatible providers with key typos like id/ or leading markdown are norma
   const result = await worker(batch);
   assert.equal(result.ok, true);
   assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{
-    id: "1482", text: "工厂便化为了密室", ruby: "{工場|こうじょう}は{密室|みっしつ}となった"
+    id: "1482", text: "工厂便化为了密室", ruby: "{工場|こうじょう}は{密室|みっしつ}となった", readings: { "密室": "みっしつ", "工場": "こうじょう" }
   }]);
 });
 
@@ -313,12 +313,12 @@ test("Japanese source language requests ruby furigana in schema and validates ru
 
   const result = await worker(jpMessage);
   assert.equal(result.ok, true);
-  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "你好", ruby: "{私|わたし}は" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "你好", ruby: "{私|わたし}は", readings: { "私": "わたし" } }]);
 
   const body = JSON.parse(sent.options.body);
   assert.match(body.messages[0].content, /振假名/);
-  assert.match(body.messages[0].content, /ruby/);
-  assert.deepEqual(body.response_format.json_schema.schema.properties.items.items.required, ["id", "text", "ruby"]);
+  assert.match(body.messages[0].content, /readings/);
+  assert.deepEqual(body.response_format.json_schema.schema.properties.items.items.required, ["id", "text", "readings"]);
 });
 
 test("Japanese source language omits ruby when aiJapaneseRuby is disabled", async () => {
@@ -364,12 +364,12 @@ test("Japanese target language requests ruby for translation in schema and promp
 
   const result = await worker(enToJaMessage);
   assert.equal(result.ok, true);
-  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "私は学生です", ruby: "{私|わたし}は{学生|がくせい}です" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "私は学生です", ruby: "{私|わたし}は{学生|がくせい}です", readings: { "学生": "がくせい", "私": "わたし" } }]);
 
   const body = JSON.parse(sent.options.body);
   assert.match(body.messages[0].content, /目标语言为日语/);
   assert.match(body.messages[0].content, /振假名/);
-  assert.deepEqual(body.response_format.json_schema.schema.properties.items.items.required, ["id", "text", "ruby"]);
+  assert.deepEqual(body.response_format.json_schema.schema.properties.items.items.required, ["id", "text", "readings"]);
 });
 
 test("Japanese source language includes Katakana translation guidelines in prompt", async () => {
@@ -390,7 +390,17 @@ test("Japanese source language includes Katakana translation guidelines in promp
 
   await worker(jpMessage);
   const body = JSON.parse(sent.options.body);
-  assert.match(body.messages[0].content, /片假名与外来语翻译准则/);
-  assert.match(body.messages[0].content, /ウルトラ/);
-  assert.match(body.messages[0].content, /奥特/);
+  assert.match(body.messages[0].content, /外来语本地化准则/);
+  assert.match(body.messages[0].content, /语境意译优先/);
+  assert.match(body.messages[0].content, /专有名词严谨/);
+});
+
+test("model returning clean readings map without ruby string is validated and normalized", async () => {
+  const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ items: [{ id: "0", text: "你好", readings: { "私": "わたし" } }] })
+  } }] }));
+  const jpMessage = { ...message, sourceLanguage: "ja", targetLanguage: "zh-Hans", items: [{ id: "0", text: "私は" }] };
+  const result = await worker(jpMessage);
+  assert.equal(result.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "你好", readings: { "私": "わたし" } }]);
 });

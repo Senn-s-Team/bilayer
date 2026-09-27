@@ -28,6 +28,7 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
   let urgentSeek = false;
   let failure = "";
   let translations = new Map();
+  let readingsMap = new Map();
   let rubies = new Map();
   let cueIds = new WeakMap();
   let pending = new Set();
@@ -73,6 +74,7 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
     cueIds = new WeakMap(cues.map((cue, index) => [cue, String(index)]));
     groups = buildGroups(cues);
     translations = new Map();
+    readingsMap = new Map();
     rubies = new Map();
     failed = new Set();
     inFlight = 0;
@@ -91,6 +93,7 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
     japaneseRuby = true;
     cueIds = new WeakMap();
     translations.clear();
+    readingsMap.clear();
     rubies.clear();
     failed.clear();
     inFlight = 0;
@@ -163,15 +166,20 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
         }
         const received = response?.ok ? response.items : null;
         const byId = new Map(Array.isArray(received) ? received.map((entry) => [entry.id, entry.text]) : []);
-        const byRuby = new Map(Array.isArray(received) ? received.filter((entry) => typeof entry.ruby === "string").map((entry) => [entry.id, entry.ruby]) : []);
+        const byReadings = new Map(Array.isArray(received)
+          ? received.filter((entry) => entry.readings && typeof entry.readings === "object").map((entry) => [entry.id, entry.readings])
+          : []);
+        const byRuby = new Map(Array.isArray(received)
+          ? received.filter((entry) => typeof entry.ruby === "string").map((entry) => [entry.id, entry.ruby])
+          : []);
         const valid = Array.isArray(received) && received.length === items.length
           && byId.size === items.length && items.every(({ id }) => typeof byId.get(id) === "string" && byId.get(id).trim());
         if (valid) {
           for (const { id } of items) {
             translations.set(id, collapseLines(byId.get(id)));
+            if (byReadings.has(id)) readingsMap.set(id, byReadings.get(id));
             if (byRuby.has(id)) rubies.set(id, collapseLines(byRuby.get(id)));
           }
-          failure = "";
           addLog("request_succeeded", "字幕翻译完成", { request: requestNumber, cueIds: items.map(({ id }) => id), durationMs: Date.now() - requestStartedAt });
         } else {
           for (const group of selected) failed.add(group);
@@ -212,9 +220,16 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
     for (const cue of activeCues) {
       const id = cueIds.get(cue);
       const text = id !== undefined ? translations.get(id) : undefined;
+      const readings = (japaneseRuby && targetIsJp && id !== undefined) ? readingsMap.get(id) : undefined;
       const ruby = (japaneseRuby && targetIsJp && id !== undefined) ? rubies.get(id) : undefined;
       if (text !== undefined) {
-        result.push({ startMs: cue.startMs, endMs: cue.endMs, text, ...(ruby ? { ruby } : {}) });
+        result.push({
+          startMs: cue.startMs,
+          endMs: cue.endMs,
+          text,
+          ...(readings ? { readings } : {}),
+          ...(ruby ? { ruby } : {})
+        });
       }
     }
     return result;
@@ -222,15 +237,25 @@ window.NetflixDualSubtitles.createTranslationScheduler = function createTranslat
 
   function annotateSource(activeCues) {
     const sourceIsJp = isJp(sourceLanguage);
-    if (!japaneseRuby || !sourceIsJp || rubies.size === 0 || !Array.isArray(activeCues)) return activeCues;
+    if (!japaneseRuby || !sourceIsJp || (readingsMap.size === 0 && rubies.size === 0) || !Array.isArray(activeCues)) {
+      return activeCues;
+    }
     return activeCues.map((cue) => {
       let id = cueIds.get(cue);
       if (id === undefined) {
         const found = cues.findIndex((candidate) => Math.abs(candidate.startMs - cue.startMs) < 200 && candidate.text === cue.text);
         if (found >= 0) id = String(found);
       }
+      const readings = id !== undefined ? readingsMap.get(id) : undefined;
       const ruby = id !== undefined ? rubies.get(id) : undefined;
-      return ruby ? { ...cue, ruby } : cue;
+      if (readings || ruby) {
+        return {
+          ...cue,
+          ...(readings ? { readings } : {}),
+          ...(ruby ? { ruby } : {})
+        };
+      }
+      return cue;
     });
   }
 

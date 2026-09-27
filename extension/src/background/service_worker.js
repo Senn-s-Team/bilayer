@@ -277,12 +277,15 @@ async function translateBatch(message, sender, testProviderId = "") {
                     properties: ((isJapanese(message.sourceLanguage) || isJapanese(message.targetLanguage)) && (message.japaneseRuby !== undefined ? Boolean(message.japaneseRuby) : (settings.aiJapaneseRuby !== false))) ? {
                       id: { type: "string" },
                       text: { type: "string" },
-                      ruby: { type: "string" }
+                      readings: {
+                        type: "object",
+                        additionalProperties: { type: "string" }
+                      }
                     } : {
                       id: { type: "string" },
                       text: { type: "string" }
                     },
-                    required: ((isJapanese(message.sourceLanguage) || isJapanese(message.targetLanguage)) && (message.japaneseRuby !== undefined ? Boolean(message.japaneseRuby) : (settings.aiJapaneseRuby !== false))) ? ["id", "text", "ruby"] : ["id", "text"],
+                    required: ((isJapanese(message.sourceLanguage) || isJapanese(message.targetLanguage)) && (message.japaneseRuby !== undefined ? Boolean(message.japaneseRuby) : (settings.aiJapaneseRuby !== false))) ? ["id", "text", "readings"] : ["id", "text"],
                     additionalProperties: false
                   }
                 }
@@ -440,12 +443,27 @@ function normalizeTranslationItem(item) {
       normalized.id = typeof value === "number" ? String(value) : String(value ?? "").trim();
     } else if (clean === "text" || clean === "translation" || clean === "content") {
       normalized.text = typeof value === "string" ? value : String(value ?? "");
-    } else if (clean === "ruby" || clean === "furigana") {
+    } else if (clean === "readings" || clean === "reading" || clean === "furigana") {
+      if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        normalized.readings = value;
+      }
+    } else if (clean === "ruby") {
       normalized.ruby = typeof value === "string" ? value : String(value ?? "");
     } else {
       normalized[key] = value;
     }
   }
+
+  if (!normalized.readings && typeof normalized.ruby === "string") {
+    const extracted = {};
+    for (const match of normalized.ruby.matchAll(/\{([^|{}]+)\|([ぁ-んァ-ヴー]+)\}/g)) {
+      extracted[match[1]] = match[2];
+    }
+    if (Object.keys(extracted).length > 0) {
+      normalized.readings = extracted;
+    }
+  }
+
   return normalized;
 }
 
@@ -602,15 +620,19 @@ function isValidTranslation(data, sourceItems) {
   for (const item of data.items) {
     if (!item || typeof item.id !== "string" || !expected.delete(item.id) ||
         !isSubtitleText(item.text)) return false;
-    const keys = Object.keys(item);
-    if (keys.length === 2) {
-      if (!keys.includes("id") || !keys.includes("text")) return false;
-    } else if (keys.length === 3) {
-      if (!keys.includes("id") || !keys.includes("text") || !keys.includes("ruby")) return false;
+    for (const key of Object.keys(item)) {
+      if (key !== "id" && key !== "text" && key !== "readings" && key !== "ruby") return false;
+    }
+    if (item.readings !== undefined) {
+      if (!item.readings || typeof item.readings !== "object" || Array.isArray(item.readings)) return false;
+      for (const [k, v] of Object.entries(item.readings)) {
+        if (typeof k !== "string" || typeof v !== "string") return false;
+        bytes += new TextEncoder().encode(k + v).length;
+      }
+    }
+    if (item.ruby !== undefined) {
       if (typeof item.ruby !== "string") return false;
       bytes += new TextEncoder().encode(item.ruby).length;
-    } else {
-      return false;
     }
     bytes += new TextEncoder().encode(item.text).length;
     if (bytes > MAX_PAYLOAD_BYTES) return false;
@@ -635,25 +657,23 @@ function buildRubyPromptSection(message, settings) {
   }
 
   if (isTargetJp) {
-    return "目标语言为日语，已开启振假名注音功能。请在 text 字段输出纯文本译文，同时在 ruby 字段输出带振假名注音的日文译文。" +
-      "ruby 格式规则：严格仅为日文汉字标注平假名读音，格式必须是 {汉字|平假名}（例如「{私|わたし}の{名前|なまえ}は{田中|たなか}です」），竖线右侧必须是纯平假名，绝对严禁在右侧出现汉字（如严禁输出「{1|人}」）！" +
-      "数字量词规则：若出现「1人」「2人」等数字加量词，请标注为「{1人|ひとり}」或「{2人|ふたり}」，绝对严禁拆成「{1|人}」！" +
-      "保真铁律：原本就是假名、英文、符号的词句（如「この」），绝对不要加花括号，严禁输出没有竖线的孤立花括号如 {这个} 或 {この}。" +
-      "只返回 JSON 对象 {\"items\":[{\"id\":\"原字幕 id\",\"text\":\"纯文本日文译文\",\"ruby\":\"带注音的日文译文\"}]}，items 包含本次请求的全部字幕。";
+    return "【注音契约】" +
+      "目标语言为日语，已开启振假名注音功能。请在 text 字段输出纯文本日文译文，并在 readings 字段输出该译文中所有日文汉字词汇（包含数字量词）到平假名读音的键值对字典（例如 {\"前歴\":\"ぜんれき\",\"指紋\":\"しもん\"}）。" +
+      "读音约束：readings 字典的值必须且严格只能是纯平假名，键必须是译文中完整出现的汉字词汇。" +
+      "只返回 JSON 对象 {\"items\":[{\"id\":\"原字幕 id\",\"text\":\"纯文本日文译文\",\"readings\":{\"汉字词\":\"平假名读音\"}}]}，items 包含本次请求的全部字幕。";
   }
 
-  return "源语言为日语，已开启振假名注音功能。除了翻译 items[].text 为目标语言外，还必须为每个 item 的原文字幕提供逐字振假名注音，返回在 ruby 字段中。" +
-    "ruby 格式规则：严格仅为日文汉字标注平假名读音，格式必须是 {汉字|平假名}（例如「{私|わたし}の{名前|なまえ}は{田中|たなか}です」），竖线右侧必须是纯平假名，绝对严禁在右侧出现汉字（如严禁输出「{1|人}」）！" +
-    "数字量词规则：若原文出现「1人」「2人」等数字加量词，请标注为「{1人|ひとり}」或「{2人|ふたり}」，绝对严禁拆成「{1|人}」！" +
-    "保真铁律：ruby 必须与原文字幕（items[].text）完全逐字对应，绝对严禁删改说话人标签（如「（コナン：小五郎の声）」）、各类括号、标点或非对话内容；原本就是假名、英文、符号的词句（如「这个」或「この」），绝对不要加花括号，严禁输出没有竖线的孤立花括号如 {这个} 或 {这个}。" +
-    "只返回 JSON 对象 {\"items\":[{\"id\":\"原字幕 id\",\"text\":\"译文\",\"ruby\":\"带注音的日文原文字幕\"}]}，items 包含本次请求的全部字幕。";
+  return "【注音契约】" +
+    "源语言为日语，已开启振假名注音功能。除了在 text 字段输出目标语言译文外，还必须在 readings 字段提供 items[].text 原文中所有日文汉字词汇（包含数字量词）到平假名读音的键值对字典（例如 {\"前歴\":\"ぜんれき\",\"指紋\":\"しもん\"}）。" +
+    "读音约束：readings 字典的值必须且严格只能是纯平假名，键必须是原文中完整出现的汉字词汇。" +
+    "只返回 JSON 对象 {\"items\":[{\"id\":\"原字幕 id\",\"text\":\"译文\",\"readings\":{\"汉字词\":\"平假名读音\"}}]}，items 包含本次请求的全部字幕。";
 }
 
 function buildKatakanaGuide() {
-  return "【片假名与外来语翻译准则】" +
-    "1. 语境意译优先：日常外来词（如「ウルトラ」「サービス」「チャンス」「トラブル」等）必须结合上下文意译为地道中文（例如「ウルトラ」作形容词/前缀时意译为“超级/极致/特级/终极”，严禁脱离语境盲目音译为“奥特”等特定影视IP名称）。" +
-    "2. 专有名词严谨：人名、地名与知名IP采用公认既有译名；剧情独创概念或科技代号结合设定意译，无公认译名时不生造怪异中文音译，可保留原文或英文代号。" +
-    "3. 口语强调还原：以片假名书写的日语口语强调词（如「マジ」「ダメ」「ウソ」等）按实际对话口吻自然意译。";
+  return "【外来语本地化准则】" +
+    "1. 语境意译优先：日常外来借词（片假名词汇）必须结合台词前后文语义及词性意译为自然地道的中文表达，严禁脱离语境盲目按特定影视 IP 专称进行机械音译。" +
+    "2. 专有名词严谨：人名、地名、知名 IP 采用公认行业规范译名；剧情独创虚构设定或代号结合剧情意译，无公认译名时保留原词或英文，不生造怪异中文假字。" +
+    "3. 对话语气还原：以片假名书写的日语口语语气词（如マジ、ダメ、ウソ等）按实际人物性格与情境口吻意译。";
 }
 
 function classifyProviderError(status, content) {

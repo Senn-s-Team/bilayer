@@ -465,10 +465,13 @@ function renderUiPreview(record) {
       }
       card.append(cardHeader);
 
-      if (rubyText || sourceText) {
+      const readings = resItem?.readings;
+      if (readings || rubyText || sourceText) {
         const rubyRow = document.createElement("div");
         rubyRow.className = "ui-ruby-row";
-        if (rubyText) {
+        if (readings && typeof readings === "object" && Object.keys(readings).length > 0) {
+          renderReadingsTo(rubyRow, sourceText || targetText || "", readings);
+        } else if (rubyText) {
           renderRubyTextTo(rubyRow, rubyText);
         } else {
           rubyRow.textContent = sourceText;
@@ -499,6 +502,61 @@ function renderUiPreview(record) {
 
   container.append(list);
   return container;
+}
+
+function renderReadingsTo(container, text, readings) {
+  const tokens = createRubyTokens(text, readings);
+  for (const token of tokens) {
+    if (token.type === "ruby") {
+      const rubyEl = document.createElement("ruby");
+      rubyEl.append(document.createTextNode(token.kanji));
+      const rtEl = document.createElement("rt");
+      rtEl.textContent = token.kana;
+      rubyEl.append(rtEl);
+      container.append(rubyEl);
+    } else {
+      container.append(document.createTextNode(token.value));
+    }
+  }
+}
+
+function createRubyTokens(text, readings) {
+  if (!text) return [];
+  if (!readings || typeof readings !== "object" || Object.keys(readings).length === 0) {
+    return [{ type: "text", value: text }];
+  }
+
+  const validEntries = Object.entries(readings)
+    .filter(([kanji, kana]) => kanji && kana && typeof kanji === "string" && typeof kana === "string" && text.includes(kanji))
+    .sort((a, b) => b[0].length - a[0].length);
+
+  if (validEntries.length === 0) return [{ type: "text", value: text }];
+
+  const pattern = new RegExp(validEntries.map(([k]) => escapeRegex(k)).join("|"), "g");
+  const tokens = [];
+  let lastIndex = 0;
+  let match;
+  const readingMap = new Map(validEntries);
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push({ type: "text", value: text.slice(lastIndex, match.index) });
+    }
+    const kanji = match[0];
+    const kana = readingMap.get(kanji);
+    tokens.push({ type: "ruby", kanji, kana });
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    tokens.push({ type: "text", value: text.slice(lastIndex) });
+  }
+
+  return tokens;
+}
+
+function escapeRegex(str) {
+  return String(str ?? "").replace(/[/\-\\^$*+?.()|[\]{}]/g, "\\$&");
 }
 
 

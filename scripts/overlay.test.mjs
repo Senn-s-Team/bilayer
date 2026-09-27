@@ -129,3 +129,21 @@ test("cues with invalid kanji in furigana position like {1|人} are healed to pl
   assert.equal(line.children[1].textContent, "指紋しもん");
   assert.equal(line.children[2].textContent, "付着ふちゃく");
 });
+
+test("cues with readings map preserve all punctuation and annotate kanji words", () => {
+  const { overlay, primary } = createOverlay();
+  const cue = {
+    text: "（コナン：小五郎の声）そしてもう1人、前歴のない指紋が付着していました",
+    readings: { "声": "こえ", "1人": "ひとり", "前歴": "ぜんれき", "指紋": "しもん", "付着": "ふちゃく" }
+  };
+  overlay.render({ primaryCues: [cue], secondaryCues: [] });
+  const line = primary.children[0];
+  assert.ok(line);
+  assert.equal(line.textContent.startsWith("（コナン：小五郎の声こえ）そしてもう1人ひとり、前歴ぜんれき"), true);
+  assert.equal(line.children.length, 5);
+  assert.equal(line.children[0].tagName, "RUBY");
+  assert.equal(line.children[0].children[0].tagName, "RT");
+  assert.equal(line.children[0].children[0].textContent, "こえ");
+  assert.equal(line.children[1].children[0].textContent, "ひとり");
+  assert.equal(line.children[2].children[0].textContent, "ぜんれき");
+});
