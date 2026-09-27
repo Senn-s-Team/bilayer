@@ -25,7 +25,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
 
     const presets = {
       openai: {
-        name: "OpenAI 官方",
+        name: i18n.t("presetOpenAI"),
         endpoint: "",
         model: "gpt-4o-mini",
         models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "chatgpt-4o-latest"],
@@ -53,21 +53,21 @@ const runtime = globalThis.browser ?? globalThis.chrome;
         requiresKey: true
       },
       siliconflow: {
-        name: "硅基流动",
+        name: i18n.t("presetSiliconFlow"),
         endpoint: "https://api.siliconflow.cn/v1/chat/completions",
         model: "deepseek-ai/DeepSeek-V3",
         models: ["deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1", "Qwen/Qwen2.5-7B-Instruct"],
         requiresKey: true
       },
       ollama: {
-        name: "Ollama 本地",
+        name: i18n.t("presetOllama"),
         endpoint: "http://localhost:11434/v1/chat/completions",
         model: "qwen2.5:7b",
         models: ["qwen2.5:7b", "llama3.2", "deepseek-r1:8b"],
         requiresKey: false
       },
       custom: {
-        name: "自定义端点",
+        name: i18n.t("presetCustomEndpoint"),
         endpoint: "",
         model: "",
         models: [],
@@ -75,13 +75,13 @@ const runtime = globalThis.browser ?? globalThis.chrome;
       }
     };
     const providerDrafts = {
-      openai: { endpoint: "", model: "gpt-4o-mini", key: "", id: "openai", name: "OpenAI 官方", saved: false },
+      openai: { endpoint: "", model: "gpt-4o-mini", key: "", id: "openai", name: i18n.t("presetOpenAI"), saved: false },
       deepseek: { endpoint: "https://api.deepseek.com/v1/chat/completions", model: "deepseek-chat", key: "", id: "deepseek", name: "DeepSeek", saved: false },
       openrouter: { endpoint: "https://openrouter.ai/api/v1/chat/completions", model: "google/gemini-2.5-flash", key: "", id: "openrouter", name: "OpenRouter", saved: false },
       groq: { endpoint: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile", key: "", id: "groq", name: "Groq", saved: false },
-      siliconflow: { endpoint: "https://api.siliconflow.cn/v1/chat/completions", model: "deepseek-ai/DeepSeek-V3", key: "", id: "siliconflow", name: "硅基流动", saved: false },
-      ollama: { endpoint: "http://localhost:11434/v1/chat/completions", model: "qwen2.5:7b", key: "", id: "ollama", name: "Ollama 本地", saved: false },
-      custom: { endpoint: "", model: "", key: "", id: "custom", name: "自定义端点", saved: false }
+      siliconflow: { endpoint: "https://api.siliconflow.cn/v1/chat/completions", model: "deepseek-ai/DeepSeek-V3", key: "", id: "siliconflow", name: i18n.t("presetSiliconFlow"), saved: false },
+      ollama: { endpoint: "http://localhost:11434/v1/chat/completions", model: "qwen2.5:7b", key: "", id: "ollama", name: i18n.t("presetOllama"), saved: false },
+      custom: { endpoint: "", model: "", key: "", id: "custom", name: i18n.t("presetCustomEndpoint"), saved: false }
     };
 
     const stepItems = [document.querySelector("#stepItem1"), document.querySelector("#stepItem2"), document.querySelector("#stepItem3")];
@@ -266,7 +266,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
         existingSettings = stored;
         existingProviders = Array.isArray(stored.providers) && stored.providers.length
           ? stored.providers
-          : [{ id: "openai", name: "OpenAI 官方", endpoint: "", model: "gpt-4o-mini", credential: "" }];
+          : [{ id: "openai", name: i18n.t("presetOpenAI"), endpoint: "", model: "gpt-4o-mini", credential: "" }];
         existingProviderId = stored.aiProviderId || existingProviders[0].id;
         const active = existingProviders.find((p) => p.id === existingProviderId) ?? existingProviders[0];
 
@@ -325,15 +325,15 @@ const runtime = globalThis.browser ?? globalThis.chrome;
           const hasNetflix = tabs && tabs.length > 0;
           if (hasWatch) {
             envDot.dataset.state = "ready";
-            envMessage.textContent = "已连接 Netflix 播放页面，字幕引擎就绪";
+            envMessage.textContent = i18n.t("onboardingEnvConnected");
             btnOpenNetflix.style.display = "none";
           } else if (hasNetflix) {
             envDot.dataset.state = "ready";
-            envMessage.textContent = "已检测到 Netflix 页面，开启影片播放即可就绪";
+            envMessage.textContent = i18n.t("onboardingEnvDetected");
             btnOpenNetflix.style.display = "none";
           } else {
             envDot.dataset.state = "testing";
-            envMessage.textContent = "未检测到 Netflix 页面；可点击右侧按钮开启";
+            envMessage.textContent = i18n.t("onboardingEnvMissing");
             btnOpenNetflix.style.display = "inline-flex";
           }
         });
@@ -356,7 +356,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
       panes.forEach((pane, index) => pane.classList.toggle("is-active", index + 1 === step));
 
       btnBack.style.visibility = step === 1 ? "hidden" : "visible";
-      btnForward.textContent = step === 3 ? "完成并开始观影" : "下一步";
+      btnForward.textContent = step === 3 ? i18n.t("onboardingFinish") : i18n.t("onboardingNext");
       btnForward.classList.toggle("btn-accent", step === 3);
       btnForward.classList.toggle("btn-primary", step !== 3);
 
@@ -366,13 +366,13 @@ const runtime = globalThis.browser ?? globalThis.chrome;
     function syncPreview() {
       if (state.mode === "ai") {
         previewBadge.style.display = "flex";
-        pane3Subtitle.textContent = "AI 翻译模式已就绪，主字幕播放时副字幕由所选大模型实时生成。";
-        previewSecondary.textContent = "不要告诉我几率是多少。";
+        pane3Subtitle.textContent = i18n.t("onboardingVisualSubtitleAi");
+        previewSecondary.textContent = i18n.t("sampleAi");
         previewSecondary.style.color = "#ffd60a";
       } else {
         previewBadge.style.display = "none";
-        pane3Subtitle.textContent = "双原生字幕已就绪，两行均由 Netflix 官方原声轨道驱动。";
-        previewSecondary.textContent = "永远别跟我提胜率。";
+        pane3Subtitle.textContent = i18n.t("onboardingVisualSubtitleNative");
+        previewSecondary.textContent = i18n.t("sampleNative");
         previewSecondary.style.color = "#4cd964";
       }
     }
@@ -416,15 +416,15 @@ const runtime = globalThis.browser ?? globalThis.chrome;
       inputApiKey.value = "";
 
       if (draft?.key) {
-        inputApiKey.placeholder = "已保存现有密钥 (输入新密钥以覆盖)";
+        inputApiKey.placeholder = i18n.t("providerSavedKeyPlaceholder");
       } else if (!chosen.requiresKey) {
-        inputApiKey.placeholder = "本地服务无需密钥，可留空";
+        inputApiKey.placeholder = i18n.t("providerLocalNoKey");
       } else {
-        inputApiKey.placeholder = "输入该服务的 API Key";
+        inputApiKey.placeholder = i18n.t("providerEnterKeyPlaceholder");
       }
 
       if (key === "openai") {
-        inputBaseUrl.placeholder = "留空使用 OpenAI 官方接口";
+        inputBaseUrl.placeholder = i18n.t("providerNewDraftEndpointPlaceholder");
       } else if (key === "custom") {
         inputBaseUrl.placeholder = "https://api.example.com/v1";
       }
@@ -457,7 +457,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
     btnRunTest.onclick = async () => {
       const key = inputApiKey.value.trim();
       testDot.dataset.state = "testing";
-      testFeedback.textContent = "正在测试端点连通性...";
+      testFeedback.textContent = i18n.t("providerTestRunning");
       btnRunTest.disabled = true;
 
       const endpoint = state.preset === "custom" ? normalizeEndpoint(inputBaseUrl.value) : presets[state.preset].endpoint;
@@ -466,7 +466,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
       if (!hasExtensionApi) {
         setTimeout(() => {
           testDot.dataset.state = "ready";
-          testFeedback.textContent = "连通正常 · 延迟 142ms · 模型响应成功";
+          testFeedback.textContent = i18n.t("providerTestMockOk");
           btnRunTest.disabled = false;
         }, 600);
         return;
@@ -480,13 +480,13 @@ const runtime = globalThis.browser ?? globalThis.chrome;
           const granted = await new Promise((res) => runtime.permissions.request({ origins: [origin] }, res));
           if (!granted) {
             testDot.dataset.state = "error";
-            testFeedback.textContent = "失败：未授权服务域名权限";
+            testFeedback.textContent = i18n.t("providerTestDenied");
             btnRunTest.disabled = false;
             return;
           }
         } catch {
           testDot.dataset.state = "error";
-          testFeedback.textContent = "失败：端点 URL 格式无效";
+          testFeedback.textContent = i18n.t("providerTestBadUrl");
           btnRunTest.disabled = false;
           return;
         }
@@ -499,14 +499,14 @@ const runtime = globalThis.browser ?? globalThis.chrome;
 
       if (!credential && presets[state.preset]?.requiresKey) {
         testDot.dataset.state = "error";
-        testFeedback.textContent = "请先填入有效 API 密钥后再测试";
+        testFeedback.textContent = i18n.t("providerTestNeedKey");
         btnRunTest.disabled = false;
         return;
       }
 
       const candidateProvider = {
         id: testId,
-        name: "测试服务",
+        name: i18n.t("providerTestServiceName"),
         endpoint,
         model,
         credential
@@ -518,20 +518,20 @@ const runtime = globalThis.browser ?? globalThis.chrome;
           btnRunTest.disabled = false;
           if (runtime.runtime.lastError || !result?.ok) {
             const errors = {
-              auth: "密钥无效", rate_limit: "请求过于频繁", quota: "额度不足",
-              permission_denied: "未授权服务域名", configuration: "请先填写有效模型、端点和密钥",
-              unavailable: "服务不可达", invalid_response: "服务返回格式有误"
+              auth: i18n.t("providerErrorAuth"), rate_limit: i18n.t("providerErrorRateLimit"), quota: i18n.t("providerErrorQuota"),
+              permission_denied: i18n.t("providerErrorPermissionDenied"), configuration: i18n.t("providerErrorConfiguration"),
+              unavailable: i18n.t("providerErrorUnavailable"), invalid_response: i18n.t("providerErrorInvalidResponse")
             };
             testDot.dataset.state = "error";
-            testFeedback.textContent = `失败：${errors[result?.errorCode] ?? "连接失败"}`;
+            testFeedback.textContent = i18n.t("providerFailPrefix", [errors[result?.errorCode] ?? i18n.t("providerConnectionFailed")]);
           } else {
             testDot.dataset.state = result.jsonMode === "none" ? "warning" : "ready";
             if (result.jsonMode === "json_schema") {
-              testFeedback.textContent = "连通正常 · 支持 JSON Schema 严格模式";
+              testFeedback.textContent = i18n.t("providerTestOkSchema");
             } else if (result.jsonMode === "json_object") {
-              testFeedback.textContent = "连通正常 · 支持 JSON Object 约束";
+              testFeedback.textContent = i18n.t("providerTestOkObject");
             } else {
-              testFeedback.textContent = "连通成功，但该模型不支持结构化 JSON，可能出现解析错误导致 AI 字幕不显示";
+              testFeedback.textContent = i18n.t("providerTestOkNone");
             }
           }
         });
@@ -703,7 +703,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
         aiProviderId: activeId
       };
 
-      btnForward.textContent = "保存就绪 ✓";
+      btnForward.textContent = i18n.t("onboardingSaved");
       btnForward.disabled = true;
 
       if (hasExtensionApi) {
@@ -737,7 +737,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
     };
 
     btnSkip.onclick = () => {
-      btnSkip.textContent = "已跳过...";
+      btnSkip.textContent = i18n.t("onboardingSkipped");
       btnSkip.disabled = true;
       if (hasExtensionApi) {
         runtime.storage.local.set({ onboardingCompleted: true }, () => {

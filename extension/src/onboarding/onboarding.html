@@ -5,11 +5,11 @@
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
 <!doctype html>
-<html lang="zh-Hans">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bilayer · 新手引导</title>
+  <title data-i18n="onboardingTitle">Bilayer · 新手引导</title>
   <link rel="stylesheet" href="./onboarding.css">
 </head>
 <body>
@@ -21,21 +21,21 @@
           <rect x="20" y="38" width="88" height="16" rx="8" fill="#4C8DFF"/>
           <rect x="20" y="74" width="64" height="16" rx="8" fill="#FFB020"/>
         </svg>
-        <span>Bilayer 设置向导</span>
+        <span data-i18n="onboardingBrand">Bilayer 设置向导</span>
       </div>
 
-      <nav class="stepper" aria-label="向导步骤">
+      <nav class="stepper" aria-label="向导步骤" data-i18n-aria-label="onboardingStepperAria">
         <div class="step-item is-active" id="stepItem1">
           <span class="step-bar"></span>
-          <span>1. 环境</span>
+          <span data-i18n="onboardingStepEnv">1. 环境</span>
         </div>
         <div class="step-item" id="stepItem2">
           <span class="step-bar"></span>
-          <span>2. 模式</span>
+          <span data-i18n="onboardingStepMode">2. 模式</span>
         </div>
         <div class="step-item" id="stepItem3">
           <span class="step-bar"></span>
-          <span>3. 视效</span>
+          <span data-i18n="onboardingStepVisual">3. 视效</span>
         </div>
       </nav>
     </header>
@@ -44,26 +44,26 @@
       <!-- 步骤 1: 权限与环境检测 -->
       <section class="step-pane is-active" id="pane1">
         <div>
-          <h1 class="pane-title">检查 Netflix 环境就绪</h1>
-          <p class="pane-subtitle">扩展需要 Safari 授予 netflix.com 运行权限，并建议在开启影片后开始使用。</p>
+          <h1 class="pane-title" data-i18n="onboardingEnvTitle">检查 Netflix 环境就绪</h1>
+          <p class="pane-subtitle" data-i18n="onboardingEnvSubtitle">扩展需要 Safari 授予 netflix.com 运行权限，并建议在开启影片后开始使用。</p>
         </div>
 
         <div class="env-status">
           <div class="env-info">
             <span class="status-dot" id="envDot" data-state="ready"></span>
-            <span id="envMessage">已探测到 Netflix 播放页面，字幕引擎就绪</span>
+            <span id="envMessage" data-i18n="onboardingEnvReady">已探测到 Netflix 播放页面，字幕引擎就绪</span>
           </div>
-          <button type="button" class="btn btn-outline" id="btnOpenNetflix" style="display: none;">打开 Netflix ↗</button>
+          <button type="button" class="btn btn-outline" id="btnOpenNetflix" style="display: none;" data-i18n="onboardingOpenNetflix">打开 Netflix ↗</button>
         </div>
 
         <div class="card-grid">
           <div class="select-card" style="cursor: default;">
-            <strong>Safari 权限配置</strong>
-            <span>在 Safari 设置 → 扩展中勾选“在每个网站上始终允许”或“在 netflix.com 上始终允许”。</span>
+            <strong data-i18n="onboardingPermissionTitle">Safari 权限配置</strong>
+            <span data-i18n="onboardingPermissionDesc">在 Safari 设置 → 扩展中勾选“在每个网站上始终允许”或“在 netflix.com 上始终允许”。</span>
           </div>
           <div class="select-card" style="cursor: default;">
-            <strong>独立 Web App 用户</strong>
-            <span>若在“添加到程序坞”的独立 Netflix 窗口使用，需在该窗口的设置菜单内单独启用扩展。</span>
+            <strong data-i18n="onboardingWebappTitle">独立 Web App 用户</strong>
+            <span data-i18n="onboardingWebappDesc">若在“添加到程序坞”的独立 Netflix 窗口使用，需在该窗口的设置菜单内单独启用扩展。</span>
           </div>
         </div>
       </section>
@@ -71,68 +71,68 @@
       <!-- 步骤 2: 字幕模式选择与 AI 渐进展开 -->
       <section class="step-pane" id="pane2">
         <div>
-          <h1 class="pane-title">选择双字幕呈现模式</h1>
-          <p class="pane-subtitle">双原生适合已有官方多语轨的影片；AI 翻译可在原声基础上获得量身定制的口语译文。</p>
+          <h1 class="pane-title" data-i18n="onboardingModeTitle">选择双字幕呈现模式</h1>
+          <p class="pane-subtitle" data-i18n="onboardingModeSubtitle">双原生适合已有官方多语轨的影片；AI 翻译可在原声基础上获得量身定制的口语译文。</p>
         </div>
 
         <div class="card-grid">
           <button type="button" class="select-card is-selected" id="optNative">
-            <span class="card-badge">推荐</span>
-            <strong>双原生字幕</strong>
-            <span>极速稳定，直接叠加 Netflix 官方第二语言字幕轨道，零等待、零额外开销。</span>
+            <span class="card-badge" data-i18n="modeRecommended">推荐</span>
+            <strong data-i18n="modeNativeTitle">双原生字幕</strong>
+            <span data-i18n="onboardingModeNativeDesc">极速稳定，直接叠加 Netflix 官方第二语言字幕轨道，零等待、零额外开销。</span>
           </button>
           <button type="button" class="select-card" id="optAi">
             <span class="card-badge">BYOK</span>
-            <strong>AI 智能翻译</strong>
-            <span>接入大语言模型，依据影片前后文生成生动口语译文，支持预翻译与模型切换。</span>
+            <strong data-i18n="modeAiTitle">AI 智能翻译</strong>
+            <span data-i18n="onboardingModeAiDesc">接入大语言模型，依据影片前后文生成生动口语译文，支持预翻译与模型切换。</span>
           </button>
         </div>
 
         <!-- AI 配置展开抽屉 -->
         <div class="ai-drawer" id="aiDrawer">
           <div class="preset-header">
-            <span class="form-label">常用服务预设</span>
-            <span style="font-size: 11px; color: var(--text-muted);">密钥仅留存在本地 Safari 存储</span>
+            <span class="form-label" data-i18n="onboardingPresetTitle">常用服务预设</span>
+            <span style="font-size: 11px; color: var(--text-muted);" data-i18n="onboardingPresetNote">密钥仅留存在本地 Safari 存储</span>
           </div>
 
-          <div class="preset-pill-group" role="group" aria-label="常用服务预设">
-            <button type="button" class="preset-chip is-active" data-preset="openai">OpenAI 官方</button>
+          <div class="preset-pill-group" role="group" aria-label="常用服务预设" data-i18n-aria-label="onboardingPresetTitle">
+            <button type="button" class="preset-chip is-active" data-preset="openai" data-i18n="presetOpenAI">OpenAI 官方</button>
             <button type="button" class="preset-chip" data-preset="deepseek">DeepSeek</button>
             <button type="button" class="preset-chip" data-preset="openrouter">OpenRouter</button>
             <button type="button" class="preset-chip" data-preset="groq">Groq</button>
-            <button type="button" class="preset-chip" data-preset="siliconflow">硅基流动</button>
-            <button type="button" class="preset-chip" data-preset="ollama">Ollama 本地</button>
-            <button type="button" class="preset-chip" data-preset="custom">自定义端点</button>
+            <button type="button" class="preset-chip" data-preset="siliconflow" data-i18n="presetSiliconFlow">硅基流动</button>
+            <button type="button" class="preset-chip" data-preset="ollama" data-i18n="presetOllama">Ollama 本地</button>
+            <button type="button" class="preset-chip" data-preset="custom" data-i18n="presetCustomEndpoint">自定义端点</button>
           </div>
 
           <div class="form-grid">
             <div class="form-field">
-              <label class="form-label" for="inputApiKey">API 密钥 (API Key)</label>
+              <label class="form-label" for="inputApiKey" data-i18n="providerNewDraftKey">API 密钥 (API Key)</label>
               <input type="password" id="inputApiKey" class="text-input" placeholder="sk-..." autocomplete="off">
               <div class="input-actions">
-                <button type="button" class="icon-btn" id="toggleKeyVisibility" title="切换明文显示">👁</button>
+                <button type="button" class="icon-btn" id="toggleKeyVisibility" title="切换明文显示" data-i18n-title="onboardingKeyToggle">👁</button>
               </div>
             </div>
             <div class="form-field">
-              <label class="form-label" for="selectTargetLang">目标语言</label>
+              <label class="form-label" for="selectTargetLang" data-i18n="aiTargetLanguage">目标语言</label>
               <select id="selectTargetLang" class="select-input">
-                <option value="zh-Hans">简体中文</option>
-                <option value="zh-Hant">繁體中文</option>
-                <option value="ja">日本語</option>
-                <option value="en">English</option>
-                <option value="ko">한국어</option>
-                <option value="es">Español</option>
+                <option value="zh-Hans" data-i18n="langZhHans">简体中文</option>
+                <option value="zh-Hant" data-i18n="langZhHant">繁體中文</option>
+                <option value="ja" data-i18n="langJa">日本語</option>
+                <option value="en" data-i18n="langEn">English</option>
+                <option value="ko" data-i18n="langKo">한국어</option>
+                <option value="es" data-i18n="langEs">Español</option>
               </select>
             </div>
           </div>
 
           <div class="form-grid" id="configRow">
             <div class="form-field">
-              <label class="form-label" for="inputBaseUrl">Base URL 端点</label>
-              <input type="url" id="inputBaseUrl" class="text-input" placeholder="留空使用 OpenAI 官方接口">
+              <label class="form-label" for="inputBaseUrl" data-i18n="onboardingBaseUrl">Base URL 端点</label>
+              <input type="url" id="inputBaseUrl" class="text-input" placeholder="留空使用 OpenAI 官方接口" data-i18n-placeholder="providerNewDraftEndpointPlaceholder">
             </div>
             <div class="form-field">
-              <label class="form-label" for="inputModel">模型 ID</label>
+              <label class="form-label" for="inputModel" data-i18n="providerModel">模型 ID</label>
               <input type="text" id="inputModel" list="onboardingModelList" class="text-input" placeholder="gpt-4o-mini" value="gpt-4o-mini">
               <datalist id="onboardingModelList">
                 <option value="gpt-4o-mini">
@@ -147,9 +147,9 @@
           <div class="test-row">
             <div class="test-status">
               <span class="status-dot" id="testDot"></span>
-              <span id="testFeedback">点击右侧按钮测试端点连通性</span>
+              <span id="testFeedback" data-i18n="providerTestIdle">点击右侧按钮测试端点连通性</span>
             </div>
-            <button type="button" class="btn btn-outline" id="btnRunTest">测试连通性</button>
+            <button type="button" class="btn btn-outline" id="btnRunTest" data-i18n="providerTest">测试连通性</button>
           </div>
         </div>
       </section>
@@ -157,30 +157,30 @@
       <!-- 步骤 3: 视效与外观微调 -->
       <section class="step-pane" id="pane3">
         <div>
-          <h1 class="pane-title">实机视效校准</h1>
-          <p class="pane-subtitle" id="pane3Subtitle">两行字幕已就绪，可在下方预览屏幕叠放与实时排版。</p>
+          <h1 class="pane-title" data-i18n="onboardingVisualTitle">实机视效校准</h1>
+          <p class="pane-subtitle" id="pane3Subtitle" data-i18n="onboardingVisualSubtitle">两行字幕已就绪，可在下方预览屏幕叠放与实时排版。</p>
         </div>
 
         <div class="preview-stage" id="previewStage">
           <div class="stage-badge" id="previewBadge" style="display: none;">
             <span class="stage-badge-dot"></span>
-            <span>AI 实时翻译流</span>
+            <span data-i18n="onboardingAiStream">AI 实时翻译流</span>
           </div>
           <div class="subtitle-line primary" id="previewPrimary">Never tell me the odds.</div>
-          <div class="subtitle-line secondary" id="previewSecondary">永远别跟我提胜率。</div>
+          <div class="subtitle-line secondary" id="previewSecondary" data-i18n="sampleNative">永远别跟我提胜率。</div>
         </div>
 
         <div class="visual-toolbar">
-          <div class="role-selector" role="group" aria-label="正在编辑的字幕">
-            <button type="button" class="preset-chip is-active" id="btnRolePrimary">第一字幕</button>
-            <button type="button" class="preset-chip" id="btnRoleSecondary">第二字幕</button>
-            <button type="button" class="preset-chip" id="btnResetStyles" title="恢复当前字幕默认外观">重置默认</button>
+          <div class="role-selector" role="group" aria-label="正在编辑的字幕" data-i18n-aria-label="styleRoleAria">
+            <button type="button" class="preset-chip is-active" id="btnRolePrimary" data-i18n="stylePrimary">第一字幕</button>
+            <button type="button" class="preset-chip" id="btnRoleSecondary" data-i18n="styleSecondary">第二字幕</button>
+            <button type="button" class="preset-chip" id="btnResetStyles" title="恢复当前字幕默认外观" data-i18n-title="styleResetOnboarding" data-i18n="styleResetShort">重置默认</button>
           </div>
-          <div class="preset-pill-group" role="group" aria-label="排版预设">
-            <button type="button" class="preset-chip" data-onboarding-layout="compact">紧凑</button>
-            <button type="button" class="preset-chip is-active" data-onboarding-layout="balanced">标准</button>
-            <button type="button" class="preset-chip" data-onboarding-layout="spacious">舒展</button>
-            <button type="button" class="preset-chip" data-onboarding-layout="free">自由</button>
+          <div class="preset-pill-group" role="group" aria-label="排版预设" data-i18n-aria-label="styleLayoutOnboardingAria">
+            <button type="button" class="preset-chip" data-onboarding-layout="compact" data-i18n="styleLayoutCompact">紧凑</button>
+            <button type="button" class="preset-chip is-active" data-onboarding-layout="balanced" data-i18n="styleLayoutBalanced">标准</button>
+            <button type="button" class="preset-chip" data-onboarding-layout="spacious" data-i18n="styleLayoutSpacious">舒展</button>
+            <button type="button" class="preset-chip" data-onboarding-layout="free" data-i18n="styleLayoutFree">自由</button>
           </div>
         </div>
 
@@ -188,7 +188,7 @@
           <div class="preview-tuning-grid">
             <div class="tuning-field">
               <div class="tuning-header">
-                <span>字号</span>
+                <span data-i18n="styleFontSize">字号</span>
                 <span id="fontSizeDisplay">26 px</span>
               </div>
               <input type="range" id="sliderFontSize" min="18" max="44" value="26">
@@ -196,7 +196,7 @@
 
             <div class="tuning-field">
               <div class="tuning-header">
-                <span>自由垂直位置</span>
+                <span data-i18n="styleVerticalOffsetOnboarding">自由垂直位置</span>
                 <span id="offsetDisplay">26%</span>
               </div>
               <input type="range" id="sliderOffset" min="8" max="42" value="26">
@@ -204,7 +204,7 @@
 
             <div class="tuning-field">
               <div class="tuning-header">
-                <span>文字颜色</span>
+                <span data-i18n="styleTextColor">文字颜色</span>
                 <span id="textColorDisplay">#FFFFFF</span>
               </div>
               <div class="color-picker-row">
@@ -214,7 +214,7 @@
 
             <div class="tuning-field">
               <div class="tuning-header">
-                <span>文字透明度</span>
+                <span data-i18n="styleTextOpacity">文字透明度</span>
                 <span id="textOpacityDisplay">100%</span>
               </div>
               <input type="range" id="sliderTextOpacity" min="40" max="100" step="5" value="100">
@@ -222,7 +222,7 @@
 
             <div class="tuning-field">
               <div class="tuning-header">
-                <span>背景颜色</span>
+                <span data-i18n="styleBackgroundColor">背景颜色</span>
                 <span id="bgColorDisplay">#000000</span>
               </div>
               <div class="color-picker-row">
@@ -232,7 +232,7 @@
 
             <div class="tuning-field">
               <div class="tuning-header">
-                <span>背景透明度</span>
+                <span data-i18n="styleBackgroundOpacity">背景透明度</span>
                 <span id="bgOpacityDisplay">64%</span>
               </div>
               <input type="range" id="sliderBgOpacity" min="0" max="100" step="5" value="64">
@@ -240,7 +240,7 @@
 
             <div class="tuning-field">
               <div class="tuning-header">
-                <span>描边颜色</span>
+                <span data-i18n="styleStrokeColor">描边颜色</span>
                 <span id="strokeColorDisplay">#000000</span>
               </div>
               <div class="color-picker-row">
@@ -250,7 +250,7 @@
 
             <div class="tuning-field">
               <div class="tuning-header">
-                <span>描边宽度</span>
+                <span data-i18n="styleStrokeWidth">描边宽度</span>
                 <span id="strokeWidthDisplay">1 px</span>
               </div>
               <input type="range" id="sliderStrokeWidth" min="0" max="4" step="0.5" value="1">
@@ -258,25 +258,25 @@
 
             <div class="tuning-field">
               <div class="tuning-header">
-                <span>字体</span>
+                <span data-i18n="styleFontFamily">字体</span>
               </div>
               <select id="selectFontFamily" class="select-input select-input-sm">
-                <option value="system">系统</option>
-                <option value="sans">无衬线</option>
-                <option value="serif">衬线</option>
-                <option value="rounded">圆体</option>
+                <option value="system" data-i18n="styleFontSystem">系统</option>
+                <option value="sans" data-i18n="styleFontSans">无衬线</option>
+                <option value="serif" data-i18n="styleFontSerif">衬线</option>
+                <option value="rounded" data-i18n="styleFontRounded">圆体</option>
               </select>
             </div>
 
             <div class="tuning-field">
               <div class="tuning-header">
-                <span>字重</span>
+                <span data-i18n="styleFontWeight">字重</span>
               </div>
               <select id="selectFontWeight" class="select-input select-input-sm">
-                <option value="500">中等</option>
-                <option value="600">半粗</option>
-                <option value="700">粗体</option>
-                <option value="800">特粗</option>
+                <option value="500" data-i18n="styleWeight500">中等</option>
+                <option value="600" data-i18n="styleWeight600">半粗</option>
+                <option value="700" data-i18n="styleWeight700">粗体</option>
+                <option value="800" data-i18n="styleWeight800">特粗</option>
               </select>
             </div>
           </div>
@@ -285,14 +285,15 @@
     </div>
 
     <footer class="footer">
-      <button type="button" class="btn btn-quiet" id="btnBack" style="visibility: hidden;">上一步</button>
+      <button type="button" class="btn btn-quiet" id="btnBack" style="visibility: hidden;" data-i18n="onboardingBack">上一步</button>
       <div style="display: flex; gap: 10px;">
-        <button type="button" class="btn btn-quiet" id="btnSkip">跳过向导</button>
-        <button type="button" class="btn btn-primary" id="btnForward">下一步</button>
+        <button type="button" class="btn btn-quiet" id="btnSkip" data-i18n="onboardingSkip">跳过向导</button>
+        <button type="button" class="btn btn-primary" id="btnForward" data-i18n="onboardingNext">下一步</button>
       </div>
     </footer>
   </main>
 
+  <script src="../i18n.js"></script>
   <script src="./onboarding.js"></script>
 </body>
 </html>

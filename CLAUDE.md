@@ -2,7 +2,7 @@
 WebExtension + macOS Safari Extension Packager + 原生浏览器字幕覆盖层
 
 <directory>
-extension/ - 浏览器扩展源码 (icons/ + src/ 五个运行上下文)
+extension/ - 浏览器扩展源码 (manifest.json + _locales/ + icons/ + src/ 五个运行上下文)
 </directory>
 
 <directory>
@@ -18,7 +18,7 @@ cases/ - 真实 provider 畸形回包的解析回归夹具，被 translation-wor
 </directory>
 
 <directory>
-.github/ - CI 工作流，在 Node 22/24 上跑 check 与 test
+.github/ - CI 与发布工作流：CI 在 Node 22/24 上跑 check 与 test，Release 在 v* tag 推送时构建 DMG 并发布
 </directory>
 
 <config>
@@ -39,6 +39,10 @@ LICENSE - MIT；CONTRIBUTING.md / SECURITY.md / CODE_OF_CONDUCT.md / CHANGELOG.m
 
 <config>
 .editorconfig - 跨编辑器缩进/换行约定
+</config>
+
+<config>
+.github/workflows/release.yml - tag 发布流水线，需要 contents: write；tag 推送构建 DMG 并发布 Release，workflow_dispatch 干跑只上传 artifact
 </config>
 
 架构决策:
@@ -89,6 +93,9 @@ Safari 工程由 `scripts/create-safari-project.sh` 从 WebExtension 源码生�
 2026-09-27: 修复日文注音请求：旧 readings 任意键对象 Schema 允许模型返回 `{}`；现改为固定字段 `[{surface,reading}]` 数组请求契约，后台转换为 overlay 使用的读音映射字典，兼容旧响应格式；提示词明确按同条日文原文或日文译文生成读音，纯假名字幕允许空数组。不保证模型始终生成非空读音。
 2026-09-27: 发布 0.2.2 补丁版，同步 WebExtension 与 Safari 工程版本；包含兼容服务日文注音响应修复、模型目录下拉发现及诊断报文导出修复。
 2026-09-27: 品牌更名为 Bilayer（原 Netflix Dual Subtitles Safari），移除 Netflix 商标与品牌红以免 App Review 5.2.1/2.3.x 拒审；协议常量改名 bilayer-bridge/bilayer-host/BILAYER_*/window.Bilayer，bundle id 保持不变以保留已安装用户数据；图标改为双层语义（蓝 #4C8DFF 原文层 + 琥珀 #FFB020 译文层），新增 scripts/build-icons.sh 派生 16/32/48/96/128/256/512 全套并接入 npm run icons；版本 0.3.0。
-2026-09-27: 开源化加固：新增 MIT LICENSE、CONTRIBUTING/SECURITY/CODE_OF_CONDUCT/CHANGELOG、.editorconfig 与 GitHub Actions CI（Node 22/24）；package.json 补齐 license/engines/repository/keywords；check.mjs 改用 fileURLToPath 修正含空格路径并对 manifest↔package 版本做一致性断言；抽取 scripts/sign-app.sh 统一签名与注册，消除 install-app.sh 与 update-app.sh 的重复并移除其中的个人证书、邮箱与绝对路径；新增 scripts/patch-safari-project.mjs 在生成后剥离 appex 内的内部文档与测试文件（含 Extension target 脚本沙盒关闭）；cases/ 与 translation-worker.test.mjs 中的真实影视对白替换为合成内容并保留原有结构畸形；删除未使用的 .env。
+2026-09-27: 开源化加固：新增 MIT LICENSE、CONTRIBUTING/SECURITY/CODE_OF_CONDUCT/CHANGELOG、.editorconfig 与 GitHub Actions CI（Node 22/24）；package.json 补齐 license/engines/repository/keywords；check.mjs 改用 fileURLToPath 修正含空格路径并对 manifest↔package 版本做一致性断言；抽取 scripts/sign-app.sh 统一签名与注册，消除 install-app.sh 内联重复的签名块并移除其中的个人证书、邮箱与绝对路径；新增 scripts/patch-safari-project.mjs 在生成后剥离 appex 内的内部文档与测试文件（含 Extension target 脚本沙盒关闭）；cases/ 与 translation-worker.test.mjs 中的真实影视对白替换为合成内容并保留原有结构畸形；删除未使用的 .env。
 2026-09-27: 新增 README_cn.md 作为 README 的简体中文版，两版顶部互加语言切换链接，章节结构逐节对应。
+2026-09-27: 新增 WebExtension i18n：manifest 声明 default_locale=en 并把 name/description/action.default_title 改用 __MSG_* 占位符，新增 extension/_locales/{en,zh_CN}/messages.json（各 356 键、键集一致）与 extension/src/i18n.js（暴露 globalThis.i18n.t/apply/uiLanguage，驱动 data-i18n 及 -placeholder/-title/-aria-label 并把 documentElement.lang 同步为 runtime.i18n.getUILanguage()）；popup/onboarding/diagnostics/export 四个页面在自身脚本前加载该模块并统一 lang="en"；内容脚本与页面桥接刻意不本地化，因为它们渲染的是字幕文本而非 UI。converter 已为 _locales 生成 folder reference（Resources 阶段的 "_locales in Resources"），appex 内实测存在 Contents/Resources/_locales/{en,zh_CN}/messages.json，无需补丁。
+2026-09-27: 新增 tag 发布流水线 .github/workflows/release.yml：push v* 时在 macos-latest 上校验 tag 与 manifest 版本（scripts/assert-release-version.sh）、生成 Safari 工程、构建 dist/Bilayer-<version>.dmg 并创建或更新 GitHub Release（--notes 的 Gatekeeper 提示由服务端前置到自动 notes，创建后断言存在），workflow_dispatch 只上传 workflow artifact，单一 concurrency 组串行化发布；实测无证书时 xcodebuild 自动使用 ad-hoc「Sign to Run Locally」，产物未公证（spctl 拒绝），两版 README 记录该 Gatekeeper 边界；create-safari-project.sh 将 converter 写入的构建机 SDK 版 MACOSX_DEPLOYMENT_TARGET 统一钉到 12.4（manifest 最高要求为 optional_host_permissions 的 Safari 15.5），宿主 App 与 appex 因此不再随构建机漂移；Xcode 定位收敛到 scripts/xcode-env.sh，覆盖 runner 的 Xcode_<ver>.app 命名与 xcrun 经 PATH 回退的陷阱。
+2026-09-27: 删除已安装包重签名脚本及其 npm 命令，并同步清理 package.json、两份 README、scripts/CLAUDE.md 与 CHANGELOG 中的全部引用：安装与更新统一走 npm run install:app（编译 Release → 覆盖 /Applications/Bilayer.app → sign-app.sh 签名 → 打开宿主 App），签名与注册的唯一实现仍是 sign-app.sh；不再保留独立的重签名/扩展注册校验入口，也不再有任何重启流媒体桌面应用的开关。
 法则: 极简·稳定·导航·版本精确

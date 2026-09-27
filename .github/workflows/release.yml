@@ -1,0 +1,85 @@
+name: Release
+
+# tag 推送（v*）发布正式包；workflow_dispatch 只做干跑，把 DMG 作为 workflow artifact 上传
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# 同一时间只允许一个发布构建：两个 tag 同时推送时后者排队，避免并发写同一个 Release
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# gh release create/upload 需要写仓库内容；其余权限保持默认最低
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # 无依赖安装步骤：项目刻意保持零运行时依赖
+      - name: Static checks (manifest, version sync, syntax)
+        run: npm run check
+
+      - name: Behavior regressions
+        run: npm test
+
+      - name: Assert the tag matches extension/manifest.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bash scripts/assert-release-version.sh "$GITHUB_REF_NAME"
+
+      - name: Generate the Safari project
+        run: npm run safari:project
+
+      # 无签名证书时 xcodebuild 自动落到 CODE_SIGN_IDENTITY=-（Sign to Run Locally），
+      # 因此 CI 不需要 DEVELOPER_TEAM，产物为主机本地 ad-hoc 签名
+      - name: Build and package the release DMG
+        run: npm run package:dmg
+
+      - name: Verify the DMG matches the manifest version
+        run: |
+          version="$(/usr/bin/plutil -extract version raw extension/manifest.json)"
+          test -f "dist/Bilayer-$version.dmg"
+          ls -lh "dist/Bilayer-$version.dmg"
+
+      - name: Upload the DMG as a workflow artifact (manual dry run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bilayer-dmg-${{ github.sha }}
+          path: dist/Bilayer-*.dmg
+          if-no-files-found: error
+
+      - name: Create or update the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="安装提示：本 DMG 由 CI 构建，只有 ad-hoc 签名（Sign to Run Locally）且未经过公证，因此其他 Mac 上 Gatekeeper 会拦截；需右键「打开」，或执行 xattr -dr com.apple.quarantine /Applications/Bilayer.app。Install note: this DMG is ad-hoc signed and not notarized, so Gatekeeper blocks it on other Macs — right-click to open, or clear the com.apple.quarantine attribute."
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/Bilayer-*.dmg --clobber
+          else
+            # gh 把 --notes 作为 body 与 generate_release_notes=true 一起提交，合并发生在服务端：
+            # REST API 明确「If body is specified, the body will be pre-pended to the automatically
+            # generated notes」，gh --generate-notes 帮助文本同样说明 --notes 会被前置。
+            gh release create "$GITHUB_REF_NAME" dist/Bilayer-*.dmg \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              --notes "$notes"
+            # 断言防止上述行为随 gh 版本漂移后安装提示静默消失
+            case "$(gh release view "$GITHUB_REF_NAME" --json body -q .body)" in
+              *"Install note:"*) ;;
+              *)
+                echo "::error::Release 正文缺少 Gatekeeper 安装提示，安装警告不再随包发布"
+                exit 1
+                ;;
+            esac
+          fi

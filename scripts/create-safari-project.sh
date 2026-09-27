@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# [INPUT]: 依赖完整 Xcode 提供的 xcrun safari-web-extension-converter
-# [OUTPUT]: 对外生成 SafariApp Xcode 工程，并同步 WebExtension 的应用版本
+# [INPUT]: 依赖 xcode-env.sh 定位到的完整 Xcode 及其 xcrun safari-web-extension-converter
+# [OUTPUT]: 对外生成 SafariApp Xcode 工程，同步 WebExtension 版本并钉住 MACOSX_DEPLOYMENT_TARGET
 # [POS]: scripts 的 Safari 打包入口，被 npm run safari:project 调用
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
@@ -19,16 +19,16 @@ VERSION="$(/usr/bin/plutil -extract version raw "$EXTENSION_DIR/manifest.json")"
 IFS=. read -r VERSION_MAJOR VERSION_MINOR VERSION_PATCH <<< "$VERSION"
 BUILD_VERSION="$((10#$VERSION_MAJOR * 10000 + 10#$VERSION_MINOR * 100 + 10#$VERSION_PATCH))"
 
-if ! xcrun --find safari-web-extension-converter >/dev/null 2>&1; then
-  for candidate in /Applications/Xcode.app /Applications/Xcode-*.app; do
-    if [[ -x "$candidate/Contents/Developer/usr/bin/safari-web-extension-converter" ]]; then
-      export DEVELOPER_DIR="$candidate/Contents/Developer"
-      break
-    fi
-  done
-fi
+# converter 把构建机的 SDK 版本写进工程级 MACOSX_DEPLOYMENT_TARGET（本机为 26.5），宿主 App 继承后
+# LSMinimumSystemVersion 就等于该 SDK 版本：产物只能在构建机同版本 macOS 上安装，且跨机器不可复现。
+# 这里显式钉住下限。manifest 的最高要求键是 optional_host_permissions（Safari 15.5 起支持），
+# 其余（manifest_version 3 / action / host_permissions / web_accessible_resources）为 Safari 15.4；
+# Safari 15.5 随 macOS 12.4 发布，故宿主 App 与 appex 统一要求 macOS 12.4。改这个值前先核对 manifest。
+MACOS_MIN_VERSION="12.4"
 
-if ! xcrun --find safari-web-extension-converter >/dev/null 2>&1; then
+source "$ROOT_DIR/scripts/xcode-env.sh"
+
+if ! resolve_developer_dir safari-web-extension-converter; then
   echo "safari-web-extension-converter is unavailable."
   echo "Install full Xcode, then run:"
   echo "  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
@@ -45,10 +45,11 @@ xcrun safari-web-extension-converter "$EXTENSION_DIR" \
   --force
 
 if [[ -f "$PBXPROJ" ]]; then
-  export BUNDLE_ID DEBUG_BUNDLE_ID VERSION BUILD_VERSION
+  export BUNDLE_ID DEBUG_BUNDLE_ID VERSION BUILD_VERSION MACOS_MIN_VERSION
   /usr/bin/perl -0pi -e '
     s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = $ENV{VERSION};/g;
     s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = $ENV{BUILD_VERSION};/g;
+    s/MACOSX_DEPLOYMENT_TARGET = [^;]+;/MACOSX_DEPLOYMENT_TARGET = $ENV{MACOS_MIN_VERSION};/g;
   ' "$PBXPROJ"
   /usr/bin/perl -0pi -e '
     sub fallback { defined $_[0] ? $_[0] : $_[1] }

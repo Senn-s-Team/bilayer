@@ -1,0 +1,1070 @@
+{
+  "extName": {
+    "message": "Bilayer"
+  },
+  "extDescription": {
+    "message": "在流媒体视频页面上显示双语字幕，可选 AI 翻译。"
+  },
+  "extActionTitle": {
+    "message": "Bilayer"
+  },
+  "commonCancel": {
+    "message": "取消"
+  },
+  "popupBrand": {
+    "message": "双字幕"
+  },
+  "popupNavAria": {
+    "message": "设置分类"
+  },
+  "tabSubtitles": {
+    "message": "字幕"
+  },
+  "tabAi": {
+    "message": "AI 翻译"
+  },
+  "tabProviders": {
+    "message": "翻译服务"
+  },
+  "tabStyles": {
+    "message": "外观"
+  },
+  "popupOnboardingLabel": {
+    "message": "向导"
+  },
+  "popupOnboardingAria": {
+    "message": "打开新手向导"
+  },
+  "popupDiagnosticsLabel": {
+    "message": "诊断"
+  },
+  "popupDiagnosticsAria": {
+    "message": "打开诊断报文面板"
+  },
+  "popupStatusConnecting": {
+    "message": "正在连接 Netflix"
+  },
+  "popupLocalPreviewStatus": {
+    "message": "界面预览 · 设置请在 Safari 扩展中使用"
+  },
+  "popupLocalPreviewCredential": {
+    "message": "在 Safari 扩展中配置密钥"
+  },
+  "popupLocalPreviewTest": {
+    "message": "请在 Safari 扩展中测试连通性"
+  },
+  "sectionSources": {
+    "message": "字幕来源"
+  },
+  "sectionPlayback": {
+    "message": "播放显示"
+  },
+  "sectionAiTracks": {
+    "message": "字幕轨道与语言"
+  },
+  "sectionAiSchedule": {
+    "message": "调度与语境"
+  },
+  "sectionAiPrompt": {
+    "message": "翻译提示词 (Prompt)"
+  },
+  "settingEnabledTitle": {
+    "message": "启用字幕"
+  },
+  "settingEnabledDesc": {
+    "message": "在 Netflix 播放页面显示双字幕"
+  },
+  "settingEnabledAria": {
+    "message": "启用字幕覆盖"
+  },
+  "settingHideNativeTitle": {
+    "message": "隐藏原生字幕"
+  },
+  "settingHideNativeDesc": {
+    "message": "使用插件字幕替代 Netflix 字幕"
+  },
+  "settingTimingTitle": {
+    "message": "时间偏移"
+  },
+  "settingTimingDesc": {
+    "message": "正值延后，负值提前"
+  },
+  "settingTimingAria": {
+    "message": "字幕时间偏移"
+  },
+  "modeGroupAria": {
+    "message": "字幕呈现模式"
+  },
+  "modeRecommended": {
+    "message": "推荐"
+  },
+  "modeNativeTitle": {
+    "message": "双原生字幕"
+  },
+  "modeNativeDesc": {
+    "message": "叠加 Netflix 官方双语轨道，极速稳定、零额外开销。"
+  },
+  "modeAiTitle": {
+    "message": "AI 智能翻译"
+  },
+  "modeAiDesc": {
+    "message": "大模型依据前后文生成生动口语译文，支持预翻译与模型切换。"
+  },
+  "modeDescriptionNative": {
+    "message": "两行分别显示 Netflix 原生字幕。"
+  },
+  "modeDescriptionNativeSwitch": {
+    "message": "两行分别显示 Netflix 原生字幕；切换模式不会清除轨道或翻译设置。"
+  },
+  "modeDescriptionAi": {
+    "message": "一行保留 Netflix 原字幕，另一行由所选 AI 大模型实时生成口语译文。"
+  },
+  "modeConfigureAi": {
+    "message": "配置 AI 翻译 →"
+  },
+  "trackGridAria": {
+    "message": "字幕轨道"
+  },
+  "trackPrimaryLabel": {
+    "message": "第一行字幕来源"
+  },
+  "trackSecondaryLabel": {
+    "message": "第二行字幕来源"
+  },
+  "trackPrimaryAi": {
+    "message": "第一行 · AI 译文"
+  },
+  "trackPrimaryNative": {
+    "message": "第一行 · Netflix 字幕"
+  },
+  "trackSecondaryAi": {
+    "message": "第二行 · AI 译文"
+  },
+  "trackSecondaryNative": {
+    "message": "第二行 · Netflix 字幕"
+  },
+  "trackSelectAi": {
+    "message": "AI 翻译"
+  },
+  "trackSelectNone": {
+    "message": "不显示"
+  },
+  "trackSelectSourcePlaceholder": {
+    "message": "请选择源语言字幕"
+  },
+  "trackSelectRuntime": {
+    "message": "播放时选择轨道"
+  },
+  "trackSelectSourceRuntime": {
+    "message": "播放时选择源轨道"
+  },
+  "actionSwapTracks": {
+    "message": "交换两行字幕及样式"
+  },
+  "actionReloadTracks": {
+    "message": "重新读取字幕"
+  },
+  "statusNotSelected": {
+    "message": "未选择"
+  },
+  "statusNotConnected": {
+    "message": "未连接 Netflix 页面"
+  },
+  "statusNotConnectedHint": {
+    "message": "未连接 Netflix 页面；请在影片窗口打开弹窗"
+  },
+  "statusOpenMovie": {
+    "message": "打开影片后可选择字幕"
+  },
+  "statusWaitingPlayback": {
+    "message": "等待播放"
+  },
+  "statusReading": {
+    "message": "正在读取字幕"
+  },
+  "statusReloading": {
+    "message": "正在重新读取字幕"
+  },
+  "statusWaitingTracks": {
+    "message": "等待字幕轨道"
+  },
+  "statusLoading": {
+    "message": "正在加载"
+  },
+  "statusLoadedCount": {
+    "message": "已加载 $1 条"
+  },
+  "statusDetected": {
+    "message": "已识别 $1 条字幕"
+  },
+  "statusDetectedWithError": {
+    "message": "已识别 $1 条，原字幕加载失败"
+  },
+  "statusAiWaitingSource": {
+    "message": "AI 等待原字幕"
+  },
+  "statusAiTranslated": {
+    "message": "AI 已翻译 $1 条"
+  },
+  "statusAiTranslating": {
+    "message": "AI 翻译中 · $1 条"
+  },
+  "statusAiFailed": {
+    "message": "AI 翻译失败：$1"
+  },
+  "statusAiCheckSettings": {
+    "message": "请检查密钥及设置"
+  },
+  "errorNoSubtitleText": {
+    "message": "轨道没有文本字幕"
+  },
+  "errorDownloadFailed": {
+    "message": "字幕下载失败"
+  },
+  "errorTimeout": {
+    "message": "字幕读取超时"
+  },
+  "errorLoadFailed": {
+    "message": "字幕加载失败"
+  },
+  "netflixNotResponding": {
+    "message": "Netflix 页面未响应；请刷新影片并检查 Web App 扩展权限"
+  },
+  "netflixNotFound": {
+    "message": "未找到 Netflix 播放页；请检查 Web App 扩展权限"
+  },
+  "aiSourceTrack": {
+    "message": "AI 源字幕轨道"
+  },
+  "aiTargetLanguage": {
+    "message": "目标语言"
+  },
+  "aiPrefetchCount": {
+    "message": "预翻译字幕句组"
+  },
+  "aiContextCount": {
+    "message": "前后文各取字幕条数"
+  },
+  "aiScheduleHelp": {
+    "message": "预翻译默认最多 10 组、限播放前方 60 秒；0 只翻译当前句。前后文默认每侧 2 条，仅用于语境消歧。"
+  },
+  "aiStyleGuide": {
+    "message": "全局风格指导（不属于单个服务）"
+  },
+  "aiStyleGuidePlaceholder": {
+    "message": "保持原意和人物语气，使用自然口语。"
+  },
+  "aiRubyTitle": {
+    "message": "日语字幕注音 (振假名)"
+  },
+  "aiRubyDesc": {
+    "message": "为字幕中的日文汉字标注平假名读音"
+  },
+  "aiRubyAria": {
+    "message": "日语字幕注音"
+  },
+  "aiRubyTitleTarget": {
+    "message": "日语译文字幕注音 (振假名)"
+  },
+  "aiRubyDescTarget": {
+    "message": "为 AI 翻译生成的日文译文字幕汉字标注平假名读音"
+  },
+  "aiRubyTitleSource": {
+    "message": "日语原字幕注音 (振假名)"
+  },
+  "aiRubyDescSource": {
+    "message": "源语言为日语时，为原声字幕汉字标注平假名读音"
+  },
+  "aiConfigureProviders": {
+    "message": "配置翻译服务 →"
+  },
+  "providerConfigured": {
+    "message": "已配置服务"
+  },
+  "providerListAria": {
+    "message": "翻译服务列表"
+  },
+  "providerAdd": {
+    "message": "新增服务"
+  },
+  "providerDelete": {
+    "message": "删除当前服务"
+  },
+  "providerName": {
+    "message": "服务名称"
+  },
+  "providerNamePlaceholder": {
+    "message": "如 深度求索"
+  },
+  "providerEndpoint": {
+    "message": "兼容接口地址（留空使用 OpenAI）"
+  },
+  "providerModel": {
+    "message": "模型 ID"
+  },
+  "providerModelSelect": {
+    "message": "选择模型"
+  },
+  "providerModelFetch": {
+    "message": "获取模型"
+  },
+  "providerModelFilter": {
+    "message": "过滤模型 ID"
+  },
+  "providerModelFilterAria": {
+    "message": "过滤模型"
+  },
+  "providerEndpointNotice": {
+    "message": "使用其他服务时，需要授权其域名；字幕文本与密钥会发送给该服务。"
+  },
+  "providerCredential": {
+    "message": "当前服务的 API 密钥"
+  },
+  "providerCredentialPlaceholder": {
+    "message": "输入新密钥后保存"
+  },
+  "providerCredentialChecking": {
+    "message": "正在检查密钥"
+  },
+  "providerCredentialConfigured": {
+    "message": "已配置密钥"
+  },
+  "providerCredentialMissing": {
+    "message": "未配置密钥"
+  },
+  "providerCredentialSave": {
+    "message": "保存密钥"
+  },
+  "providerCredentialDelete": {
+    "message": "删除密钥"
+  },
+  "providerConsent": {
+    "message": "启用 AI 后，源轨道字幕及邻句会发送给所选服务；使用自己的 API 密钥可能产生费用。"
+  },
+  "providerTest": {
+    "message": "测试连通性"
+  },
+  "providerTesting": {
+    "message": "测试中…"
+  },
+  "providerNewDraft": {
+    "message": "新增翻译服务"
+  },
+  "providerPresetTitle": {
+    "message": "选择预设模板"
+  },
+  "providerPresetAria": {
+    "message": "服务预设模板"
+  },
+  "providerNewDraftNamePlaceholder": {
+    "message": "服务名称"
+  },
+  "providerNewDraftEndpointPlaceholder": {
+    "message": "留空使用 OpenAI 官方接口"
+  },
+  "providerNewDraftKey": {
+    "message": "API 密钥 (API Key)"
+  },
+  "providerNewDraftSave": {
+    "message": "保存密钥并添加"
+  },
+  "providerUnnamed": {
+    "message": "未命名服务"
+  },
+  "providerNewName": {
+    "message": "新服务"
+  },
+  "providerSavedHost": {
+    "message": "已保存 $1；使用前需获得域名授权"
+  },
+  "providerUseOpenAI": {
+    "message": "使用 OpenAI 官方接口"
+  },
+  "providerModelsFetching": {
+    "message": "正在获取模型列表…"
+  },
+  "providerModelsNeedKey": {
+    "message": "请先输入 API 密钥"
+  },
+  "providerModelsFetched": {
+    "message": "已获取 $1 个模型，请从列表选择"
+  },
+  "providerModelsFailed": {
+    "message": "失败：$1；可重试获取模型"
+  },
+  "providerModelsFailedShort": {
+    "message": "获取模型失败"
+  },
+  "providerEndpointNeedHttps": {
+    "message": "请输入 HTTPS Base URL（自动补全 /v1/chat/completions）"
+  },
+  "providerEndpointNoPermissionApi": {
+    "message": "当前浏览器无法申请该服务的域名访问权限"
+  },
+  "providerEndpointRequesting": {
+    "message": "正在申请服务域名访问权限"
+  },
+  "providerEndpointDenied": {
+    "message": "未授权该域名；字幕与密钥不会发送"
+  },
+  "providerEndpointGranted": {
+    "message": "已授权 $1；已使用 $2"
+  },
+  "providerJsonSchema": {
+    "message": "支持 JSON Schema (严格模式)"
+  },
+  "providerJsonObject": {
+    "message": "支持 JSON Object 约束"
+  },
+  "providerJsonNone": {
+    "message": "⚠️ 不支持结构化 JSON：可能出现解析错误或 AI 字幕不显示"
+  },
+  "providerConnectSchema": {
+    "message": "连接成功 · 支持 JSON Schema (严格模式)"
+  },
+  "providerConnectObject": {
+    "message": "连接成功 · 支持 JSON Object 约束"
+  },
+  "providerConnectNone": {
+    "message": "连接成功，但模型不支持结构化 JSON。可能出现解析错误导致 AI 字幕丢失"
+  },
+  "providerFailPrefix": {
+    "message": "失败：$1"
+  },
+  "providerFailGeneric": {
+    "message": "请求失败"
+  },
+  "providerErrorAuth": {
+    "message": "密钥无效"
+  },
+  "providerErrorRateLimit": {
+    "message": "请求过于频繁"
+  },
+  "providerErrorQuota": {
+    "message": "额度不足"
+  },
+  "providerErrorPermissionDenied": {
+    "message": "未授权服务域名"
+  },
+  "providerErrorConfiguration": {
+    "message": "请先填写有效模型、端点和密钥"
+  },
+  "providerErrorUnavailable": {
+    "message": "服务不可达"
+  },
+  "providerErrorInvalidResponse": {
+    "message": "服务返回格式有误"
+  },
+  "statusErrorAuth": {
+    "message": "API 密钥无效"
+  },
+  "statusErrorQuota": {
+    "message": "API 额度不足"
+  },
+  "statusErrorUnavailable": {
+    "message": "兼容服务网络不可用"
+  },
+  "statusErrorConfiguration": {
+    "message": "请检查端点、密钥、模型和设置"
+  },
+  "statusErrorPermissionDenied": {
+    "message": "未授权兼容服务域名"
+  },
+  "statusErrorSourceUnavailable": {
+    "message": "请选择 AI 源语言字幕轨道"
+  },
+  "statusErrorInitialTimeout": {
+    "message": "首批翻译超时，已继续播放原文"
+  },
+  "statusErrorBudgetExceeded": {
+    "message": "本集翻译额度已用尽"
+  },
+  "providerConnectionFailed": {
+    "message": "连接失败"
+  },
+  "providerValidEndpoint": {
+    "message": "请输入有效的 HTTPS Base URL 端点"
+  },
+  "providerNeedKeyToList": {
+    "message": "请先在下方输入 API 密钥，以便获取模型列表"
+  },
+  "providerEndpointDeniedModels": {
+    "message": "未授权该端点域名访问权限，无法获取模型"
+  },
+  "providerKeyInvalidModels": {
+    "message": "密钥无效，无法获取模型"
+  },
+  "providerModelsListFailed": {
+    "message": "获取模型列表失败，请检查端点与网络"
+  },
+  "providerFetchingShort": {
+    "message": "获取中…"
+  },
+  "providerLocalNoKey": {
+    "message": "本地服务无需密钥，可留空"
+  },
+  "providerTestIdle": {
+    "message": "点击右侧按钮测试端点连通性"
+  },
+  "providerTestRunning": {
+    "message": "正在测试端点连通性..."
+  },
+  "providerTestDenied": {
+    "message": "失败：未授权服务域名权限"
+  },
+  "providerTestBadUrl": {
+    "message": "失败：端点 URL 格式无效"
+  },
+  "providerTestNeedKey": {
+    "message": "请先填入有效 API 密钥后再测试"
+  },
+  "providerTestOkSchema": {
+    "message": "连通正常 · 支持 JSON Schema 严格模式"
+  },
+  "providerTestOkObject": {
+    "message": "连通正常 · 支持 JSON Object 约束"
+  },
+  "providerTestOkNone": {
+    "message": "连通成功，但该模型不支持结构化 JSON，可能出现解析错误导致 AI 字幕不显示"
+  },
+  "providerTestMockOk": {
+    "message": "连通正常 · 延迟 142ms · 模型响应成功"
+  },
+  "providerTestServiceName": {
+    "message": "测试服务"
+  },
+  "providerSavedKeyPlaceholder": {
+    "message": "已保存现有密钥 (输入新密钥以覆盖)"
+  },
+  "providerEnterKeyPlaceholder": {
+    "message": "输入该服务的 API Key"
+  },
+  "presetOpenAI": {
+    "message": "OpenAI 官方"
+  },
+  "presetSiliconFlow": {
+    "message": "硅基流动"
+  },
+  "presetOllama": {
+    "message": "Ollama 本地"
+  },
+  "presetCustom": {
+    "message": "自定义"
+  },
+  "presetCustomEndpoint": {
+    "message": "自定义端点"
+  },
+  "styleRoleAria": {
+    "message": "正在编辑的字幕"
+  },
+  "stylePrimary": {
+    "message": "第一字幕"
+  },
+  "styleSecondary": {
+    "message": "第二字幕"
+  },
+  "styleReset": {
+    "message": "恢复默认样式"
+  },
+  "styleResetOnboarding": {
+    "message": "恢复当前字幕默认外观"
+  },
+  "styleResetShort": {
+    "message": "重置默认"
+  },
+  "stylePreview": {
+    "message": "屏幕预览"
+  },
+  "styleLayoutTitle": {
+    "message": "位置与尺寸"
+  },
+  "styleLayoutAria": {
+    "message": "双字幕位置预设"
+  },
+  "styleLayoutOnboardingAria": {
+    "message": "排版预设"
+  },
+  "styleLayoutCompact": {
+    "message": "紧凑"
+  },
+  "styleLayoutBalanced": {
+    "message": "标准"
+  },
+  "styleLayoutSpacious": {
+    "message": "舒展"
+  },
+  "styleLayoutFree": {
+    "message": "自由"
+  },
+  "styleFontSize": {
+    "message": "字号"
+  },
+  "styleVerticalOffset": {
+    "message": "自由位置"
+  },
+  "styleVerticalOffsetOnboarding": {
+    "message": "自由垂直位置"
+  },
+  "styleTextTitle": {
+    "message": "文字"
+  },
+  "styleFontFamily": {
+    "message": "字体"
+  },
+  "styleFontSystem": {
+    "message": "系统"
+  },
+  "styleFontSans": {
+    "message": "无衬线"
+  },
+  "styleFontSerif": {
+    "message": "衬线"
+  },
+  "styleFontRounded": {
+    "message": "圆体"
+  },
+  "styleFontWeight": {
+    "message": "字重"
+  },
+  "styleWeight500": {
+    "message": "中等"
+  },
+  "styleWeight600": {
+    "message": "半粗"
+  },
+  "styleWeight700": {
+    "message": "粗体"
+  },
+  "styleWeight800": {
+    "message": "特粗"
+  },
+  "styleLineHeight": {
+    "message": "行高"
+  },
+  "styleMaxWidth": {
+    "message": "最大宽度"
+  },
+  "styleTextColor": {
+    "message": "文字颜色"
+  },
+  "styleTextOpacity": {
+    "message": "文字透明度"
+  },
+  "styleEffectsTitle": {
+    "message": "描边与背景"
+  },
+  "styleStrokeColor": {
+    "message": "描边颜色"
+  },
+  "styleStrokeWidth": {
+    "message": "描边宽度"
+  },
+  "styleBackgroundColor": {
+    "message": "背景颜色"
+  },
+  "styleBackgroundOpacity": {
+    "message": "背景透明度"
+  },
+  "langZhHans": {
+    "message": "简体中文"
+  },
+  "langZhHant": {
+    "message": "繁體中文"
+  },
+  "langJa": {
+    "message": "日本語"
+  },
+  "langKo": {
+    "message": "한국어"
+  },
+  "langEn": {
+    "message": "English"
+  },
+  "langEs": {
+    "message": "Español"
+  },
+  "langFr": {
+    "message": "Français"
+  },
+  "langDe": {
+    "message": "Deutsch"
+  },
+  "langIt": {
+    "message": "Italiano"
+  },
+  "langPtBr": {
+    "message": "Português (Brasil)"
+  },
+  "langRu": {
+    "message": "Русский"
+  },
+  "langAr": {
+    "message": "العربية"
+  },
+  "langHi": {
+    "message": "हिन्दी"
+  },
+  "sampleNative": {
+    "message": "永远别跟我提胜率。"
+  },
+  "sampleAi": {
+    "message": "不要告诉我几率是多少。"
+  },
+  "onboardingTitle": {
+    "message": "Bilayer · 新手引导"
+  },
+  "onboardingBrand": {
+    "message": "Bilayer 设置向导"
+  },
+  "onboardingStepperAria": {
+    "message": "向导步骤"
+  },
+  "onboardingStepEnv": {
+    "message": "1. 环境"
+  },
+  "onboardingStepMode": {
+    "message": "2. 模式"
+  },
+  "onboardingStepVisual": {
+    "message": "3. 视效"
+  },
+  "onboardingEnvTitle": {
+    "message": "检查 Netflix 环境就绪"
+  },
+  "onboardingEnvSubtitle": {
+    "message": "扩展需要 Safari 授予 netflix.com 运行权限，并建议在开启影片后开始使用。"
+  },
+  "onboardingEnvReady": {
+    "message": "已探测到 Netflix 播放页面，字幕引擎就绪"
+  },
+  "onboardingEnvConnected": {
+    "message": "已连接 Netflix 播放页面，字幕引擎就绪"
+  },
+  "onboardingEnvDetected": {
+    "message": "已检测到 Netflix 页面，开启影片播放即可就绪"
+  },
+  "onboardingEnvMissing": {
+    "message": "未检测到 Netflix 页面；可点击右侧按钮开启"
+  },
+  "onboardingOpenNetflix": {
+    "message": "打开 Netflix ↗"
+  },
+  "onboardingPermissionTitle": {
+    "message": "Safari 权限配置"
+  },
+  "onboardingPermissionDesc": {
+    "message": "在 Safari 设置 → 扩展中勾选“在每个网站上始终允许”或“在 netflix.com 上始终允许”。"
+  },
+  "onboardingWebappTitle": {
+    "message": "独立 Web App 用户"
+  },
+  "onboardingWebappDesc": {
+    "message": "若在“添加到程序坞”的独立 Netflix 窗口使用，需在该窗口的设置菜单内单独启用扩展。"
+  },
+  "onboardingModeTitle": {
+    "message": "选择双字幕呈现模式"
+  },
+  "onboardingModeSubtitle": {
+    "message": "双原生适合已有官方多语轨的影片；AI 翻译可在原声基础上获得量身定制的口语译文。"
+  },
+  "onboardingModeNativeDesc": {
+    "message": "极速稳定，直接叠加 Netflix 官方第二语言字幕轨道，零等待、零额外开销。"
+  },
+  "onboardingModeAiDesc": {
+    "message": "接入大语言模型，依据影片前后文生成生动口语译文，支持预翻译与模型切换。"
+  },
+  "onboardingPresetTitle": {
+    "message": "常用服务预设"
+  },
+  "onboardingPresetNote": {
+    "message": "密钥仅留存在本地 Safari 存储"
+  },
+  "onboardingKeyToggle": {
+    "message": "切换明文显示"
+  },
+  "onboardingBaseUrl": {
+    "message": "Base URL 端点"
+  },
+  "onboardingVisualTitle": {
+    "message": "实机视效校准"
+  },
+  "onboardingVisualSubtitle": {
+    "message": "两行字幕已就绪，可在下方预览屏幕叠放与实时排版。"
+  },
+  "onboardingVisualSubtitleAi": {
+    "message": "AI 翻译模式已就绪，主字幕播放时副字幕由所选大模型实时生成。"
+  },
+  "onboardingVisualSubtitleNative": {
+    "message": "双原生字幕已就绪，两行均由 Netflix 官方原声轨道驱动。"
+  },
+  "onboardingAiStream": {
+    "message": "AI 实时翻译流"
+  },
+  "onboardingBack": {
+    "message": "上一步"
+  },
+  "onboardingSkip": {
+    "message": "跳过向导"
+  },
+  "onboardingNext": {
+    "message": "下一步"
+  },
+  "onboardingFinish": {
+    "message": "完成并开始观影"
+  },
+  "onboardingSaved": {
+    "message": "保存就绪 ✓"
+  },
+  "onboardingSkipped": {
+    "message": "已跳过..."
+  },
+  "diagTitle": {
+    "message": "原始翻译报文 · Bilayer"
+  },
+  "diagHeading": {
+    "message": "原始翻译报文"
+  },
+  "diagSubtitle": {
+    "message": "最近 20 次请求 · 仅存扩展内存 · 报文含字幕原文"
+  },
+  "diagLiveConnecting": {
+    "message": "正在连接后台"
+  },
+  "diagLiveFailed": {
+    "message": "后台连接失败"
+  },
+  "diagLiveCapturing": {
+    "message": "原始采集中"
+  },
+  "diagLiveOff": {
+    "message": "未开启采集"
+  },
+  "diagCaptureStop": {
+    "message": "停止采集"
+  },
+  "diagCaptureStart": {
+    "message": "开始采集"
+  },
+  "diagRefresh": {
+    "message": "刷新"
+  },
+  "diagExport": {
+    "message": "导出案例到硬盘 ↓"
+  },
+  "diagExportTitle": {
+    "message": "导出当前捕获的全部报文到本地磁盘作为案例"
+  },
+  "diagClear": {
+    "message": "清空记录"
+  },
+  "diagGridAria": {
+    "message": "原始翻译报文"
+  },
+  "diagRequests": {
+    "message": "请求"
+  },
+  "diagRecordListAria": {
+    "message": "翻译请求记录"
+  },
+  "diagEmpty": {
+    "message": "等待翻译请求。保持此页打开并播放字幕，记录会自动出现在这里。"
+  },
+  "diagDetailEmptyTitle": {
+    "message": "等待第一条翻译请求"
+  },
+  "diagDetailEmptyDesc": {
+    "message": "保持此页打开，在 Netflix 播放页启用 AI 翻译并播放字幕。"
+  },
+  "diagTransport": {
+    "message": "连接信息"
+  },
+  "diagHeaders": {
+    "message": "请求头 / 响应头（Authorization 已移除）"
+  },
+  "diagTabResponse": {
+    "message": "响应体"
+  },
+  "diagTabRequest": {
+    "message": "请求体"
+  },
+  "diagTabUi": {
+    "message": "渲染为 UI"
+  },
+  "diagCopy": {
+    "message": "复制报文"
+  },
+  "diagCopied": {
+    "message": "已复制 ✓"
+  },
+  "diagCopyFailed": {
+    "message": "复制失败"
+  },
+  "diagToggleRaw": {
+    "message": "切换折叠树"
+  },
+  "diagFormattedText": {
+    "message": "格式化文本"
+  },
+  "diagSearchPlaceholder": {
+    "message": "搜索键、值或路径"
+  },
+  "diagSearchAria": {
+    "message": "搜索 JSON 键、值或路径"
+  },
+  "diagSearchStatus": {
+    "message": "搜索 JSON"
+  },
+  "diagSearchNoMatch": {
+    "message": "无匹配"
+  },
+  "diagPrevMatch": {
+    "message": "上一个匹配"
+  },
+  "diagNextMatch": {
+    "message": "下一个匹配"
+  },
+  "diagExpandAll": {
+    "message": "全部展开"
+  },
+  "diagCollapse": {
+    "message": "收起层级"
+  },
+  "diagShortcuts": {
+    "message": "↑↓ 导航 · ←→ 折叠/展开"
+  },
+  "diagPayloadAria": {
+    "message": "报文内容"
+  },
+  "diagRequestNumber": {
+    "message": "请求 $1"
+  },
+  "diagInProgress": {
+    "message": "进行中"
+  },
+  "diagModelUnspecified": {
+    "message": "未指定模型"
+  },
+  "diagRequestGeneric": {
+    "message": "请求"
+  },
+  "diagAwaitingResponse": {
+    "message": "等待响应"
+  },
+  "diagMethod": {
+    "message": "方法"
+  },
+  "diagReqBodyBytes": {
+    "message": "请求体字节"
+  },
+  "diagResStatus": {
+    "message": "响应状态"
+  },
+  "diagResBodyBytes": {
+    "message": "响应体字节"
+  },
+  "diagTotalDuration": {
+    "message": "完整耗时"
+  },
+  "diagNoResponse": {
+    "message": "响应尚未返回"
+  },
+  "diagRequestFailed": {
+    "message": "请求未收到响应：$1"
+  },
+  "diagUiShape": {
+    "message": "字幕视效 UI"
+  },
+  "diagFormattedJson": {
+    "message": "格式化 JSON · $1"
+  },
+  "diagRawText": {
+    "message": "原始文本"
+  },
+  "diagJsonArray": {
+    "message": "JSON 数组 · $1 项"
+  },
+  "diagJsonObject": {
+    "message": "JSON 对象 · $1 个字段"
+  },
+  "diagUiBannerTitle": {
+    "message": "双语字幕视效预览"
+  },
+  "diagUiValid": {
+    "message": "校验通过 ✓"
+  },
+  "diagUiFailed": {
+    "message": "校验失败 ($1)"
+  },
+  "diagUiBannerMeta": {
+    "message": "模型: $1 · 耗时: $2 · 共 $3 句字幕"
+  },
+  "diagUiEmpty": {
+    "message": "未能解析出结构化字幕条目。请切换至「响应体」查看报文文本。"
+  },
+  "diagUiMissingTranslation": {
+    "message": "未返回译文"
+  },
+  "diagUiSourceRef": {
+    "message": "原文参照: $1"
+  },
+  "diagTreeArray": {
+    "message": "数组"
+  },
+  "diagTreeObject": {
+    "message": "对象"
+  },
+  "diagTreeItems": {
+    "message": "$1 项"
+  },
+  "diagTreeFields": {
+    "message": "$1 字段"
+  },
+  "diagExpandString": {
+    "message": "展开 $1 的完整字符串"
+  },
+  "diagCollapseString": {
+    "message": "收起 $1 的完整字符串"
+  },
+  "diagStatusSuccess": {
+    "message": "成功"
+  },
+  "diagStatusFailed": {
+    "message": "失败"
+  },
+  "diagStatusCountMismatch": {
+    "message": "$1 (条数不符: 期望$2条/实收$3条)"
+  },
+  "diagStatusReason": {
+    "message": "$1 ($2)"
+  },
+  "diagStatusError": {
+    "message": "失败: $1"
+  },
+  "diagStatusReturnedUnvalidated": {
+    "message": "已返回，未完成校验"
+  },
+  "diagStatusRequesting": {
+    "message": "请求中"
+  },
+  "diagLocalPreview": {
+    "message": "界面预览 · 示例数据"
+  },
+  "diagExportEmpty": {
+    "message": "当前没有可导出的报文记录。请在 Netflix 播放片刻生成字幕翻译后再导出。"
+  },
+  "diagExportFailed": {
+    "message": "导出失败：请检查浏览器下载权限。"
+  },
+  "diagExportNotReady": {
+    "message": "导出组件尚未就绪，请稍后重试。"
+  },
+  "diagSampleSystemPrompt": {
+    "message": "请保持字幕自然、简洁。"
+  },
+  "diagCopySourceLabel": {
+    "message": "原文: $1"
+  },
+  "diagCopyTargetLabel": {
+    "message": "译文: $1"
+  }
+}

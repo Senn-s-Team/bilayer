@@ -14,7 +14,7 @@ const TARGET_LANGUAGES = new Set([
 ]);
 const LLM_PRESETS = {
   openai: {
-    name: "OpenAI 官方",
+    name: i18n.t("presetOpenAI"),
     endpoint: "",
     model: "gpt-4o-mini",
     models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "chatgpt-4o-latest"]
@@ -38,13 +38,13 @@ const LLM_PRESETS = {
     models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
   },
   siliconflow: {
-    name: "硅基流动",
+    name: i18n.t("presetSiliconFlow"),
     endpoint: "https://api.siliconflow.cn/v1/chat/completions",
     model: "deepseek-ai/DeepSeek-V3",
     models: ["deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1", "Qwen/Qwen2.5-7B-Instruct"]
   },
   ollama: {
-    name: "Ollama 本地",
+    name: i18n.t("presetOllama"),
     endpoint: "http://localhost:11434/v1/chat/completions",
     model: "qwen2.5:7b",
     models: ["qwen2.5:7b", "llama3.2", "deepseek-r1:8b"]
@@ -100,7 +100,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const DEFAULT_PROVIDERS = [
-  { id: "openai", name: "OpenAI 官方", endpoint: "", model: "gpt-4o-mini", credential: "" }
+  { id: "openai", name: i18n.t("presetOpenAI"), endpoint: "", model: "gpt-4o-mini", credential: "" }
 ];
 
 const STYLE_ROLE_SUFFIXES = [
@@ -249,7 +249,7 @@ let activeStyleRole = "primary";
 let pollTimer = 0;
 let currentWatchId = "";
 let connectedTabId = null;
-let connectionHint = "未连接 Netflix 页面；请在影片窗口打开弹窗";
+let connectionHint = i18n.t("statusNotConnectedHint");
 const providerModelCatalog = new Map();
 
 bindNavigation();
@@ -274,16 +274,16 @@ async function init() {
 }
 
 function showLocalPreview() {
-  elements.pageStatus.textContent = "界面预览 · 设置请在 Safari 扩展中使用";
+  elements.pageStatus.textContent = i18n.t("popupLocalPreviewStatus");
   elements.statusDot.dataset.state = "idle";
-  controls.primaryTrackKey.add(new Option("播放时选择轨道", ""));
-  controls.secondaryTrackKey.add(new Option("播放时选择轨道", ""));
-  providerControls.source.add(new Option("播放时选择源轨道", ""));
+  controls.primaryTrackKey.add(new Option(i18n.t("trackSelectRuntime"), ""));
+  controls.secondaryTrackKey.add(new Option(i18n.t("trackSelectRuntime"), ""));
+  providerControls.source.add(new Option(i18n.t("trackSelectSourceRuntime"), ""));
   if (providerControls.masterList) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "provider-master-item is-selected";
-    btn.textContent = "OpenAI 官方";
+    btn.textContent = i18n.t("presetOpenAI");
     providerControls.masterList.appendChild(btn);
   }
   providerControls.editor.hidden = false;
@@ -292,9 +292,9 @@ function showLocalPreview() {
   setModelOptions(elements.providerModelList, LLM_PRESETS.openai.models);
   bindModelPicker(providerControls.model, elements.providerModelList, document.querySelector("#providerModelMenu"), document.querySelector("#providerModelSearch"), () => {});
   bindModelPicker(newDraftControls.model, newDraftControls.modelList, document.querySelector("#newDraftModelMenu"), document.querySelector("#newDraftModelSearch"), () => {});
-  elements.aiCredentialStatus.textContent = "在 Safari 扩展中配置密钥";
+  elements.aiCredentialStatus.textContent = i18n.t("popupLocalPreviewCredential");
   elements.testProvider.addEventListener("click", () => {
-    elements.providerTestStatus.textContent = "请在 Safari 扩展中测试连通性";
+    elements.providerTestStatus.textContent = i18n.t("popupLocalPreviewTest");
   });
 }
 
@@ -441,7 +441,7 @@ function bindControls() {
 }
 
 function selectTab(tabName) {
-  elements.activePageTitle.textContent = document.querySelector(`[data-tab="${tabName}"]`)?.textContent ?? "字幕";
+  elements.activePageTitle.textContent = document.querySelector(`[data-tab="${tabName}"]`)?.textContent ?? i18n.t("tabSubtitles");
   document.querySelectorAll("[data-tab]").forEach((button) => {
     const active = button.dataset.tab === tabName;
     button.classList.toggle("is-active", active);
@@ -515,7 +515,7 @@ function updateEndpoint() {
   const raw = providerControls.endpoint.value.trim();
   if (!raw) {
     void updateProviderField("endpoint", "");
-    elements.aiEndpointStatus.textContent = "使用 OpenAI 官方接口";
+    elements.aiEndpointStatus.textContent = i18n.t("providerUseOpenAI");
     return;
   }
   let url;
@@ -524,24 +524,24 @@ function updateEndpoint() {
     normalized = normalizeProviderEndpoint(raw);
     url = new URL(normalized);
   } catch {
-    elements.aiEndpointStatus.textContent = "请输入 HTTPS Base URL（自动补全 /v1/chat/completions）";
+    elements.aiEndpointStatus.textContent = i18n.t("providerEndpointNeedHttps");
     return;
   }
   providerControls.endpoint.value = normalized;
   const origin = `${url.protocol}//${url.hostname}/*`;
   if (!runtime.permissions?.request) {
-    elements.aiEndpointStatus.textContent = "当前浏览器无法申请该服务的域名访问权限";
+    elements.aiEndpointStatus.textContent = i18n.t("providerEndpointNoPermissionApi");
     return;
   }
-  elements.aiEndpointStatus.textContent = "正在申请服务域名访问权限";
+  elements.aiEndpointStatus.textContent = i18n.t("providerEndpointRequesting");
   runtime.permissions.request({ origins: [origin] }, (granted) => {
     if (providerId !== currentSettings.aiProviderId) return;
     if (runtime.runtime.lastError || !granted) {
-      elements.aiEndpointStatus.textContent = "未授权该域名；字幕与密钥不会发送";
+      elements.aiEndpointStatus.textContent = i18n.t("providerEndpointDenied");
       return;
     }
     void updateProviderField("endpoint", normalized);
-    elements.aiEndpointStatus.textContent = `已授权 ${url.host}；已使用 ${url.pathname}`;
+    elements.aiEndpointStatus.textContent = i18n.t("providerEndpointGranted", [url.host, url.pathname]);
     if (currentSettings.aiRole !== "off") scheduleStatePoll(0);
   });
 }
@@ -557,7 +557,7 @@ function normalizeProviderEndpoint(raw) {
 
 function setSelectedModel(trigger, model) {
   trigger.dataset.value = model;
-  trigger.textContent = model || "选择模型";
+  trigger.textContent = model || i18n.t("providerModelSelect");
 }
 
 function setModelOptions(list, models) {
@@ -619,14 +619,14 @@ async function fetchProviderModels(force = false) {
   const active = selectedProvider();
   if (!active || active.id !== providerId) return;
   if (!active.credential && active.endpoint !== "http://localhost:11434/v1/chat/completions") {
-    elements.providerTestStatus.textContent = "请先输入 API 密钥";
+    elements.providerTestStatus.textContent = i18n.t("providerModelsNeedKey");
     return;
   }
 
   const request = { endpoint: active.endpoint, credential: active.credential, pending: true, models: cached?.endpoint === active.endpoint && cached?.credential === active.credential ? cached.models : null };
   providerModelCatalog.set(providerId, request);
   elements.fetchProviderModels.disabled = true;
-  elements.providerTestStatus.textContent = "正在获取模型列表…";
+  elements.providerTestStatus.textContent = i18n.t("providerModelsFetching");
   await new Promise((resolve) => {
     runtime.runtime.sendMessage({ type: "BILAYER_LIST_MODELS", providerId }, (result) => {
       request.pending = false;
@@ -637,9 +637,9 @@ async function fetchProviderModels(force = false) {
       }
       elements.fetchProviderModels.disabled = false;
       if (runtime.runtime.lastError || !result?.ok || !Array.isArray(result.models)) {
-        const errorMsg = result?.errorCode === "auth" ? "密钥无效" :
-          result?.errorCode === "permission_denied" ? "未授权服务域名" : "获取模型失败";
-        elements.providerTestStatus.textContent = `失败：${errorMsg}；可重试获取模型`;
+        const errorMsg = result?.errorCode === "auth" ? i18n.t("providerErrorAuth") :
+          result?.errorCode === "permission_denied" ? i18n.t("providerErrorPermissionDenied") : i18n.t("providerModelsFailedShort");
+        elements.providerTestStatus.textContent = i18n.t("providerModelsFailed", [errorMsg]);
       } else {
         request.models = result.models;
         const search = elements.providerModelList.previousElementSibling;
@@ -647,7 +647,7 @@ async function fetchProviderModels(force = false) {
         setModelOptions(elements.providerModelList, [current.model, ...result.models]);
         search.value = query;
         for (const option of elements.providerModelList.children) option.hidden = !option.textContent.toLocaleLowerCase().includes(query);
-        elements.providerTestStatus.textContent = `已获取 ${result.models.length} 个模型，请从列表选择`;
+        elements.providerTestStatus.textContent = i18n.t("providerModelsFetched", [result.models.length]);
       }
       resolve();
     });
@@ -679,7 +679,7 @@ async function swapTracks() {
     markTrackLoading("secondary");
   } else {
     markTrackLoading(currentSettings.aiRole === "primary" ? "secondary" : "primary");
-    writeRoleStatus(currentSettings.aiRole, "AI 等待原字幕", "loading");
+    writeRoleStatus(currentSettings.aiRole, i18n.t("statusAiWaitingSource"), "loading");
   }
   await writeSettings(update);
   scheduleStatePoll(0);
@@ -691,9 +691,9 @@ async function reloadTracks() {
   clearTimeout(pollTimer);
   elements.reloadTracks.disabled = true;
   elements.reloadTracks.classList.add("is-busy");
-  writePageStatus("正在重新读取字幕", "loading");
-  writeRoleStatus("primary", "等待字幕轨道", "loading");
-  writeRoleStatus("secondary", "等待字幕轨道", "loading");
+  writePageStatus(i18n.t("statusReloading"), "loading");
+  writeRoleStatus("primary", i18n.t("statusWaitingTracks"), "loading");
+  writeRoleStatus("secondary", i18n.t("statusWaitingTracks"), "loading");
 
   await sendMessageToActiveTab({ type: "BILAYER_RELOAD" });
   scheduleStatePoll(0);
@@ -737,7 +737,7 @@ function populateTrackSelects() {
   populateTrackSelect("primary");
   populateTrackSelect("secondary");
   const source = findSelectedTrack(currentSettings.aiSourceTrackKey, currentSettings.aiSourceTrackPreference, currentSettings.aiSourceLanguage);
-  providerControls.source.replaceChildren(createOption("", "请选择源语言字幕"), ...currentTracks.map(trackToOption));
+  providerControls.source.replaceChildren(createOption("", i18n.t("trackSelectSourcePlaceholder")), ...currentTracks.map(trackToOption));
   providerControls.source.value = source?.key ?? "";
   providerControls.source.disabled = currentTracks.length === 0;
   updateJapaneseRubyVisibility();
@@ -745,12 +745,12 @@ function populateTrackSelects() {
 function populateTrackSelect(role) {
   const select = controls[`${role}TrackKey`];
   if (currentSettings.aiRole === role) {
-    select.replaceChildren(createOption("__ai__", "AI 翻译"));
+    select.replaceChildren(createOption("__ai__", i18n.t("trackSelectAi")));
     select.value = "__ai__";
     return;
   }
   const selected = findSelectedTrack(currentSettings[`${role}TrackKey`], currentSettings[`${role}TrackPreference`], currentSettings[`${role}Language`]);
-  select.replaceChildren(createOption("", "不显示"), ...currentTracks.map(trackToOption));
+  select.replaceChildren(createOption("", i18n.t("trackSelectNone")), ...currentTracks.map(trackToOption));
   select.value = selected?.key ?? "";
 }
 
@@ -762,8 +762,8 @@ function writeModeControls() {
   elements.aiMode.classList.toggle("is-selected", isAi);
   elements.openAiSettings.hidden = !isAi;
   elements.modeDescription.textContent = isAi
-    ? "一行保留 Netflix 原字幕，另一行由所选 AI 大模型实时生成口语译文。"
-    : "两行分别显示 Netflix 原生字幕；切换模式不会清除轨道或翻译设置。";
+    ? i18n.t("modeDescriptionAi")
+    : i18n.t("modeDescriptionNativeSwitch");
 }
 
 function writeControls() {
@@ -799,7 +799,7 @@ function writeProviderControls() {
       btn.setAttribute("aria-selected", String(provider.id === currentSettings.aiProviderId));
 
       const span = document.createElement("span");
-      span.textContent = provider.name || "未命名服务";
+      span.textContent = provider.name || i18n.t("providerUnnamed");
       btn.appendChild(span);
 
       btn.addEventListener("click", () => {
@@ -821,8 +821,8 @@ function writeProviderControls() {
 
     const matchedPreset = Object.values(LLM_PRESETS).find((p) => p.endpoint === (selected.endpoint ?? ""));
     elements.aiEndpointStatus.textContent = selected.endpoint
-      ? `已保存 ${new URL(selected.endpoint).host}；使用前需获得域名授权`
-      : "使用 OpenAI 官方接口";
+      ? i18n.t("providerSavedHost", [new URL(selected.endpoint).host])
+      : i18n.t("providerUseOpenAI");
 
     const catalog = providerModelCatalog.get(selected.id);
     const discovered = catalog?.endpoint === selected.endpoint && catalog?.credential === selected.credential ? catalog.models : null;
@@ -831,13 +831,13 @@ function writeProviderControls() {
     if (selected.jsonMode) {
       if (selected.jsonMode === "json_schema") {
         elements.providerTestStatus.dataset.state = "success";
-        elements.providerTestStatus.textContent = "支持 JSON Schema (严格模式)";
+        elements.providerTestStatus.textContent = i18n.t("providerJsonSchema");
       } else if (selected.jsonMode === "json_object") {
         elements.providerTestStatus.dataset.state = "success";
-        elements.providerTestStatus.textContent = "支持 JSON Object 约束";
+        elements.providerTestStatus.textContent = i18n.t("providerJsonObject");
       } else if (selected.jsonMode === "none") {
         elements.providerTestStatus.dataset.state = "warning";
-        elements.providerTestStatus.textContent = "⚠️ 不支持结构化 JSON：可能出现解析错误或 AI 字幕不显示";
+        elements.providerTestStatus.textContent = i18n.t("providerJsonNone");
       }
     } else {
       elements.providerTestStatus.dataset.state = "";
@@ -880,14 +880,14 @@ function selectDraftPreset(presetKey) {
   setModelOptions(newDraftControls.modelList, preset.models ?? []);
 
   if (presetKey === "ollama") {
-    newDraftControls.key.placeholder = "本地服务无需密钥，可留空";
+    newDraftControls.key.placeholder = i18n.t("providerLocalNoKey");
   } else {
     newDraftControls.key.placeholder = "sk-...";
   }
 }
 
 async function saveNewDraftProvider() {
-  const name = newDraftControls.name.value.trim() || "新服务";
+  const name = newDraftControls.name.value.trim() || i18n.t("providerNewName");
   const rawEndpoint = newDraftControls.endpoint.value.trim();
   const credential = newDraftControls.key.value.trim();
 
@@ -896,7 +896,7 @@ async function saveNewDraftProvider() {
     try {
       endpoint = normalizeProviderEndpoint(rawEndpoint);
     } catch {
-      alert("请输入有效的 HTTPS Base URL 端点");
+      alert(i18n.t("providerValidEndpoint"));
       return;
     }
   }
@@ -938,13 +938,13 @@ async function fetchNewDraftModels() {
     try {
       endpoint = normalizeProviderEndpoint(rawEndpoint);
     } catch {
-      alert("请输入有效的 HTTPS Base URL 端点");
+      alert(i18n.t("providerValidEndpoint"));
       return;
     }
   }
 
   if (!credential && endpoint !== "http://localhost:11434/v1/chat/completions") {
-    alert("请先在下方输入 API 密钥，以便获取模型列表");
+    alert(i18n.t("providerNeedKeyToList"));
     newDraftControls.key.focus();
     return;
   }
@@ -955,14 +955,14 @@ async function fetchNewDraftModels() {
       const origin = `${url.protocol}//${url.hostname}/*`;
       const granted = await new Promise((res) => runtime.permissions.request({ origins: [origin] }, res));
       if (!granted) {
-        alert("未授权该端点域名访问权限，无法获取模型");
+        alert(i18n.t("providerEndpointDeniedModels"));
         return;
       }
     } catch { /* no-op */ }
   }
 
   newDraftControls.fetchBtn.disabled = true;
-  newDraftControls.fetchBtn.textContent = "获取中…";
+  newDraftControls.fetchBtn.textContent = i18n.t("providerFetchingShort");
 
   const message = {
     type: "BILAYER_LIST_MODELS",
@@ -972,9 +972,9 @@ async function fetchNewDraftModels() {
 
   runtime.runtime.sendMessage(message, (result) => {
     newDraftControls.fetchBtn.disabled = false;
-    newDraftControls.fetchBtn.textContent = "获取模型";
+    newDraftControls.fetchBtn.textContent = i18n.t("providerModelFetch");
     if (runtime.runtime.lastError || !result?.ok) {
-      alert(result?.errorCode === "auth" ? "密钥无效，无法获取模型" : "获取模型列表失败，请检查端点与网络");
+      alert(result?.errorCode === "auth" ? i18n.t("providerKeyInvalidModels") : i18n.t("providerModelsListFailed"));
       return;
     }
     setModelOptions(newDraftControls.modelList, result.models);
@@ -1002,29 +1002,29 @@ async function testProviderConnection() {
 
   const providerId = provider.id;
   elements.testProvider.disabled = true;
-  elements.providerTestStatus.textContent = "测试中…";
+  elements.providerTestStatus.textContent = i18n.t("providerTesting");
   return new Promise((resolve) => {
     runtime.runtime.sendMessage({ type: "BILAYER_TEST_PROVIDER", providerId }, (result) => {
       elements.testProvider.disabled = false;
       if (providerId !== currentSettings.aiProviderId) { resolve(); return; }
       if (runtime.runtime.lastError || !result?.ok) {
         const errors = {
-          auth: "密钥无效", rate_limit: "请求过于频繁", quota: "额度不足",
-          permission_denied: "未授权服务域名", configuration: "请先填写有效模型、端点和密钥",
-          unavailable: "服务不可达", invalid_response: "服务返回格式有误"
+          auth: i18n.t("providerErrorAuth"), rate_limit: i18n.t("providerErrorRateLimit"), quota: i18n.t("providerErrorQuota"),
+          permission_denied: i18n.t("providerErrorPermissionDenied"), configuration: i18n.t("providerErrorConfiguration"),
+          unavailable: i18n.t("providerErrorUnavailable"), invalid_response: i18n.t("providerErrorInvalidResponse")
         };
         elements.providerTestStatus.dataset.state = "error";
-        elements.providerTestStatus.textContent = `失败：${errors[result?.errorCode] ?? "请求失败"}`;
+        elements.providerTestStatus.textContent = i18n.t("providerFailPrefix", [errors[result?.errorCode] ?? i18n.t("providerFailGeneric")]);
       } else {
         if (result.jsonMode === "json_schema") {
           elements.providerTestStatus.dataset.state = "success";
-          elements.providerTestStatus.textContent = "连接成功 · 支持 JSON Schema (严格模式)";
+          elements.providerTestStatus.textContent = i18n.t("providerConnectSchema");
         } else if (result.jsonMode === "json_object") {
           elements.providerTestStatus.dataset.state = "success";
-          elements.providerTestStatus.textContent = "连接成功 · 支持 JSON Object 约束";
+          elements.providerTestStatus.textContent = i18n.t("providerConnectObject");
         } else {
           elements.providerTestStatus.dataset.state = "warning";
-          elements.providerTestStatus.textContent = "连接成功，但模型不支持结构化 JSON。可能出现解析错误导致 AI 字幕丢失";
+          elements.providerTestStatus.textContent = i18n.t("providerConnectNone");
         }
       }
       resolve();
@@ -1143,15 +1143,15 @@ function colorWithOpacity(color, opacity) {
 function writeStatus() {
   if (!currentPageState) {
     writePageStatus(connectionHint, "error");
-    writeRoleStatus("primary", "未连接 Netflix 页面", "error");
-    writeRoleStatus("secondary", "未连接 Netflix 页面", "error");
+    writeRoleStatus("primary", i18n.t("statusNotConnected"), "error");
+    writeRoleStatus("secondary", i18n.t("statusNotConnected"), "error");
     return;
   }
 
   if (!isWatchPage(currentPageState)) {
-    writePageStatus("打开影片后可选择字幕", "idle");
-    writeRoleStatus("primary", "等待播放", "idle");
-    writeRoleStatus("secondary", "等待播放", "idle");
+    writePageStatus(i18n.t("statusOpenMovie"), "idle");
+    writeRoleStatus("primary", i18n.t("statusWaitingPlayback"), "idle");
+    writeRoleStatus("secondary", i18n.t("statusWaitingPlayback"), "idle");
     return;
   }
 
@@ -1163,9 +1163,9 @@ function writeStatus() {
   const sourceStatus = sourceRole === "primary" ? primary : secondary;
   const hasError = sourceRole ? Boolean(sourceStatus?.error) : Boolean(primary?.error || secondary?.error);
 
-  if (currentTracks.length === 0) writePageStatus("正在读取字幕", "loading");
-  else if (hasError) writePageStatus(`已识别 ${currentTracks.length} 条，原字幕加载失败`, "error");
-  else writePageStatus(`已识别 ${currentTracks.length} 条字幕`, "ready");
+  if (currentTracks.length === 0) writePageStatus(i18n.t("statusReading"), "loading");
+  else if (hasError) writePageStatus(i18n.t("statusDetectedWithError", [currentTracks.length]), "error");
+  else writePageStatus(i18n.t("statusDetected", [currentTracks.length]), "ready");
 
   if (sourceRole) {
     writeLoadStatus(sourceRole, sourceStatus, currentSettings[`${sourceRole}TrackKey`] || currentSettings[`${sourceRole}Language`]);
@@ -1183,7 +1183,7 @@ function writePageStatus(message, state) {
 
 function writeLoadStatus(role, loadStatus, hasSelection) {
   if (!hasSelection) {
-    writeRoleStatus(role, "未选择", "idle");
+    writeRoleStatus(role, i18n.t("statusNotSelected"), "idle");
     return;
   }
 
@@ -1193,39 +1193,39 @@ function writeLoadStatus(role, loadStatus, hasSelection) {
   }
 
   if (loadStatus?.cueCount > 0) {
-    writeRoleStatus(role, `已加载 ${loadStatus.cueCount} 条`, "ready");
+    writeRoleStatus(role, i18n.t("statusLoadedCount", [loadStatus.cueCount]), "ready");
     return;
   }
 
-  writeRoleStatus(role, currentTracks.length > 0 ? "正在加载" : "等待字幕轨道", "loading");
+  writeRoleStatus(role, currentTracks.length > 0 ? i18n.t("statusLoading") : i18n.t("statusWaitingTracks"), "loading");
 }
 
 function writeTranslationStatus(role, status) {
   switch (status?.phase) {
     case "ready":
-      writeRoleStatus(role, `AI 已翻译 ${status.count ?? 0} 条`, "ready");
+      writeRoleStatus(role, i18n.t("statusAiTranslated", [status.count ?? 0]), "ready");
       break;
     case "translating":
-      writeRoleStatus(role, `AI 翻译中 · ${status.count ?? 0} 条`, "loading");
+      writeRoleStatus(role, i18n.t("statusAiTranslating", [status.count ?? 0]), "loading");
       break;
     case "error": {
       const errors = {
-        auth: "API 密钥无效",
-        rate_limit: "请求过于频繁",
-        quota: "API 额度不足",
-        unavailable: "兼容服务网络不可用",
-        invalid_response: "服务返回格式有误",
-        configuration: "请检查端点、密钥、模型和设置",
-        permission_denied: "未授权兼容服务域名",
-        source_unavailable: "请选择 AI 源语言字幕轨道",
-        initial_timeout: "首批翻译超时，已继续播放原文",
-        budget_exceeded: "本集翻译额度已用尽"
+        auth: i18n.t("statusErrorAuth"),
+        rate_limit: i18n.t("providerErrorRateLimit"),
+        quota: i18n.t("statusErrorQuota"),
+        unavailable: i18n.t("statusErrorUnavailable"),
+        invalid_response: i18n.t("providerErrorInvalidResponse"),
+        configuration: i18n.t("statusErrorConfiguration"),
+        permission_denied: i18n.t("statusErrorPermissionDenied"),
+        source_unavailable: i18n.t("statusErrorSourceUnavailable"),
+        initial_timeout: i18n.t("statusErrorInitialTimeout"),
+        budget_exceeded: i18n.t("statusErrorBudgetExceeded")
       };
-      writeRoleStatus(role, `AI 翻译失败：${errors[status.error] ?? "请检查密钥及设置"}`, "error");
+      writeRoleStatus(role, i18n.t("statusAiFailed", [errors[status.error] ?? i18n.t("statusAiCheckSettings")]), "error");
       break;
     }
     default:
-      writeRoleStatus(role, "AI 等待原字幕", "loading");
+      writeRoleStatus(role, i18n.t("statusAiWaitingSource"), "loading");
   }
 }
 
@@ -1236,7 +1236,7 @@ function writeRoleStatus(role, message, state) {
 }
 
 function markTrackLoading(role) {
-  writeRoleStatus(role, "正在加载", "loading");
+  writeRoleStatus(role, i18n.t("statusLoading"), "loading");
 }
 
 function writeAvailability() {
@@ -1244,8 +1244,8 @@ function writeAvailability() {
   const tracksReady = onWatchPage && currentTracks.length > 0;
   controls.primaryTrackKey.disabled = !tracksReady || currentSettings.aiRole === "primary";
   controls.secondaryTrackKey.disabled = !tracksReady || currentSettings.aiRole === "secondary";
-  elements.primaryTrackLabel.textContent = currentSettings.aiRole === "primary" ? "第一行 · AI 译文" : "第一行 · Netflix 字幕";
-  elements.secondaryTrackLabel.textContent = currentSettings.aiRole === "secondary" ? "第二行 · AI 译文" : "第二行 · Netflix 字幕";
+  elements.primaryTrackLabel.textContent = currentSettings.aiRole === "primary" ? i18n.t("trackPrimaryAi") : i18n.t("trackPrimaryNative");
+  elements.secondaryTrackLabel.textContent = currentSettings.aiRole === "secondary" ? i18n.t("trackSecondaryAi") : i18n.t("trackSecondaryNative");
   elements.swapTracks.disabled = !tracksReady;
   elements.reloadTracks.disabled = !onWatchPage;
   elements.reloadTracks.classList.remove("is-busy");
@@ -1335,10 +1335,10 @@ function findSelectedTrack(trackKey, preference, language) {
 
 function friendlyError(error) {
   const message = String(error ?? "").toLowerCase();
-  if (message.includes("0 cues")) return "轨道没有文本字幕";
-  if (message.includes("load failed") || message.includes("fetch")) return "字幕下载失败";
-  if (message.includes("timeout")) return "字幕读取超时";
-  return "字幕加载失败";
+  if (message.includes("0 cues")) return i18n.t("errorNoSubtitleText");
+  if (message.includes("load failed") || message.includes("fetch")) return i18n.t("errorDownloadFailed");
+  if (message.includes("timeout")) return i18n.t("errorTimeout");
+  return i18n.t("errorLoadFailed");
 }
 
 function isWatchPage(pageState) {
@@ -1399,7 +1399,7 @@ function normalizeSettings(stored) {
 
 function readCredentialStatus() {
   elements.aiCredential.value = "";
-  elements.aiCredentialStatus.textContent = selectedProvider()?.credential ? "已配置密钥" : "未配置密钥";
+  elements.aiCredentialStatus.textContent = selectedProvider()?.credential ? i18n.t("providerCredentialConfigured") : i18n.t("providerCredentialMissing");
 }
 
 async function saveCredential() {
@@ -1443,8 +1443,8 @@ async function sendMessageToActiveTab(message) {
   }
   connectedTabId = null;
   connectionHint = reachable
-    ? "Netflix 页面未响应；请刷新影片并检查 Web App 扩展权限"
-    : "未找到 Netflix 播放页；请检查 Web App 扩展权限";
+    ? i18n.t("netflixNotResponding")
+    : i18n.t("netflixNotFound");
   return fallback;
 }
 
@@ -1525,14 +1525,14 @@ function updateJapaneseRubyVisibility() {
   const desc = document.querySelector("#aiJapaneseRubyDesc");
   if (title && desc) {
     if (isTargetJp && !isSourceJp) {
-      title.textContent = "日语译文字幕注音 (振假名)";
-      desc.textContent = "为 AI 翻译生成的日文译文字幕汉字标注平假名读音";
+      title.textContent = i18n.t("aiRubyTitleTarget");
+      desc.textContent = i18n.t("aiRubyDescTarget");
     } else if (isSourceJp && !isTargetJp) {
-      title.textContent = "日语原字幕注音 (振假名)";
-      desc.textContent = "源语言为日语时，为原声字幕汉字标注平假名读音";
+      title.textContent = i18n.t("aiRubyTitleSource");
+      desc.textContent = i18n.t("aiRubyDescSource");
     } else {
-      title.textContent = "日语字幕注音 (振假名)";
-      desc.textContent = "为字幕中的日文汉字标注平假名读音";
+      title.textContent = i18n.t("aiRubyTitle");
+      desc.textContent = i18n.t("aiRubyDesc");
     }
   }
 }

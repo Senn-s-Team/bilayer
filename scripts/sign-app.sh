@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # [INPUT]: 已构建的 .app 路径、嵌套 .appex 与本机 Apple 开发者证书（可用 CERT_NAME 覆盖）
 # [OUTPUT]: 完成沙盒权限注入、嵌套深层签名、隔离属性清除与 pluginkit 扩展注册
-# [POS]: scripts 的签名与注册公共层，被 install-app.sh 与 update-app.sh 复用；entitlements/codesign/pluginkit 的唯一实现
+# [POS]: scripts 的签名与注册公共层，被 install-app.sh 复用；entitlements/codesign/pluginkit 的唯一实现
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
 set -euo pipefail

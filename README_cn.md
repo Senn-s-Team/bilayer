@@ -15,7 +15,7 @@ macOS Safari Web Extension：在流媒体网页上同时显示两行字幕，并
 - `extension/src/page/`：页面主世界桥接层，观察 Netflix 播放器元数据与字幕请求。
 - `extension/src/content/`：隔离世界内容脚本，负责字幕加载、解析、时间轴与覆盖层渲染。
 - `extension/src/popup/`：扩展弹窗，管理语言与显示设置。
-- `scripts/`：本地校验、图标派生与 Safari 工程转换脚本。
+- `scripts/`：本地校验、图标派生、Safari 转换、签名与发布辅助脚本。
 
 ## 环境要求
 
@@ -48,6 +48,40 @@ sudo xcode-select -s /Applications/Xcode-26.5.0.app/Contents/Developer
 打开 `SafariApp/` 下生成的 Xcode 工程，在 Safari 设置中启用扩展，然后在 `https://www.netflix.com/watch/...` 上测试。
 
 如果使用 Netflix 的 Mac 桌面应用（PWA），需在 **Netflix → 设置 → 扩展** 中单独启用；Web App 的扩展设置与 Safari 相互独立。若弹窗提示找不到或无法连接到 Netflix 页面，请先确认 Web App 中的网站访问权限，然后重新加载视频页。弹窗会先检查活动窗口与可访问的 Netflix 标签页，之后才报告连接失败。
+
+## 发布
+
+推送 `v*` tag 会在 `macos-latest` 上触发 **Release** 工作流：校验版本、构建 Safari App 与 DMG，然后发布到 GitHub Releases。
+
+1. 提升 `extension/manifest.json` 的 `version`，同步 `package.json`，合入 `main`。
+2. 打 tag 并推送：`git tag -a v0.3.0 -m "Bilayer 0.3.0" && git push origin v0.3.0`。
+3. 工作流依次运行 `npm run check`、`npm test`，然后执行 `bash scripts/assert-release-version.sh`；tag 去掉前导 `v` 后与 `extension/manifest.json` 不一致时构建直接失败。
+4. 随后运行 `npm run safari:project` 与 `npm run package:dmg`，为该 tag 创建（或更新）GitHub Release，并附带 `dist/Bilayer-<version>.dmg`。手动触发 `workflow_dispatch` 不发布 Release，只把 DMG 作为 workflow artifact 上传。
+5. `build/` 与 `dist/` 都在 gitignore 中，DMG 只存在于 GitHub Release 或 workflow artifact，不进入版本库。两次 tag 构建不会并行（单一 `concurrency` 组）。
+
+**Gatekeeper：** Release 产物使用 ad-hoc「Sign to Run Locally」签名且**未公证**——运行方式与本地自签名流程见下文 **签名与 Gatekeeper**。App 要求 **macOS 12.4 或更高版本**：`scripts/create-safari-project.sh` 为宿主 App 与扩展统一钉住 `MACOSX_DEPLOYMENT_TARGET`——本项目的 MV3 manifest 需要 Safari 15.4+，其中 `optional_host_permissions` 需要 Safari 15.5，而 Safari 15.5 随 macOS 12.4 发布。
+
+## 签名与 Gatekeeper
+
+CI 没有 Developer ID 证书，因此从 GitHub Release 下载的 DMG 只带 ad-hoc「Sign to Run Locally」签名，也没有公证票据。把它拿到其他 Mac 上首次打开时，Gatekeeper 会拦截（「不明开发者」/「已损坏」）。
+
+**运行下载到的 App。** macOS 允许你在自己的机器上放行：
+
+1. 在 Finder 中右键点击 `Bilayer.app`，选择 **打开**，然后在弹窗中确认。
+2. 或先清除隔离属性，再正常打开：`xattr -dr com.apple.quarantine /Applications/Bilayer.app`
+
+**自己构建并签名。** 这是受支持的一等路径：本地构建会用你自己的 Apple 证书签名，根本不会被隔离。
+
+1. `security find-identity -v -p codesigning` 列出可用于签名的身份；本机若没有任何身份，`scripts/sign-app.sh` 会退回 ad-hoc `-`，也就是回到下载 DMG 的处境。
+2. 一条命令完成构建、签名与安装——`scripts/sign-app.sh` 会自动选用本机第一个 `Apple Development` 身份：`npm run install:app`
+3. 用显式证书覆盖自动选择：`CERT_NAME="Apple Development: you@example.com (XXXXXXXXXX)" npm run install:app`
+
+**确认实际得到的签名。** 两条命令都随 macOS 提供：
+
+1. `codesign -dv --verbose=4 /Applications/Bilayer.app`——用你自己的证书签名时会列出 `Authority=Apple Development: you@example.com (XXXXXXXXXX)` 以及你自己的 `TeamIdentifier`；CI 下载的版本则显示 `Signature=adhoc` 与 `TeamIdentifier=not set`。
+2. `spctl -a -vvv -t exec /Applications/Bilayer.app`——两者都会输出 `rejected`，因为 ad-hoc 与 `Apple Development` 签名都不是可分发（已公证）的签名；用你自己的证书签名时会额外输出 `origin=Apple Development: you@example.com (XXXXXXXXXX)`，而 ad-hoc 下载只有一行 `rejected`。本地签名的版本因为从未被隔离，仍能正常打开；只有已公证的 Developer ID 构建才会输出 `accepted` 以及 `source=` 行。
+
+要产出在别人 Mac 上不会被 Gatekeeper 拦截的下载，需要同时具备三样：**Developer ID Application** 证书、`xcrun notarytool submit` 提交公证，以及 `xcrun stapler staple`。本仓库不执行其中任何一步，也没有在 CI 中保存证书密钥，因此 GitHub Release 产物始终是 ad-hoc 签名。
 
 ## AI 翻译（自带密钥）
 

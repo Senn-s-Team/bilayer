@@ -5,7 +5,7 @@
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
 <!doctype html>
-<html lang="zh-Hans">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -19,29 +19,29 @@
         <header class="app-header">
           <div class="brand">
             <img class="brand-mark" src="../../icons/icon-48.png" width="32" height="32" alt="">
-            <h1>双字幕</h1>
+            <h1 data-i18n="popupBrand">双字幕</h1>
           </div>
         </header>
 
-        <nav class="tab-list" aria-label="设置分类" role="tablist" aria-orientation="vertical">
-          <button class="tab-button is-active" id="subtitlesTab" type="button" role="tab" aria-selected="true" aria-controls="subtitlesPanel" data-tab="subtitles">字幕</button>
-          <button class="tab-button" id="aiTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="aiPanel" data-tab="ai">AI 翻译</button>
-          <button class="tab-button" id="providerTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="providerPanel" data-tab="provider">翻译服务</button>
-          <button class="tab-button" id="stylesTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="stylesPanel" data-tab="styles">外观</button>
+        <nav class="tab-list" aria-label="设置分类" data-i18n-aria-label="popupNavAria" role="tablist" aria-orientation="vertical">
+          <button class="tab-button is-active" id="subtitlesTab" type="button" role="tab" aria-selected="true" aria-controls="subtitlesPanel" data-tab="subtitles" data-i18n="tabSubtitles">字幕</button>
+          <button class="tab-button" id="aiTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="aiPanel" data-tab="ai" data-i18n="tabAi">AI 翻译</button>
+          <button class="tab-button" id="providerTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="providerPanel" data-tab="provider" data-i18n="tabProviders">翻译服务</button>
+          <button class="tab-button" id="stylesTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="stylesPanel" data-tab="styles" data-i18n="tabStyles">外观</button>
         </nav>
         <div class="sidebar-tools">
-          <button class="sidebar-action" id="openOnboarding" type="button" aria-label="打开新手向导">向导 <span aria-hidden="true">↗</span></button>
-          <button class="sidebar-action" id="openRawDiagnostics" type="button" aria-label="打开诊断报文面板">诊断 <span aria-hidden="true">↗</span></button>
+          <button class="sidebar-action" id="openOnboarding" type="button" aria-label="打开新手向导" data-i18n-aria-label="popupOnboardingAria"><span data-i18n="popupOnboardingLabel">向导</span> <span aria-hidden="true">↗</span></button>
+          <button class="sidebar-action" id="openRawDiagnostics" type="button" aria-label="打开诊断报文面板" data-i18n-aria-label="popupDiagnosticsAria"><span data-i18n="popupDiagnosticsLabel">诊断</span> <span aria-hidden="true">↗</span></button>
         </div>
       </aside>
 
       <div class="workspace">
         <header class="workspace-header">
           <div class="workspace-heading">
-            <h2 id="activePageTitle">字幕</h2>
+            <h2 id="activePageTitle" data-i18n="tabSubtitles">字幕</h2>
             <div class="page-status" role="status" aria-live="polite">
               <span id="statusDot" class="status-dot" data-state="loading"></span>
-              <span id="pageStatus">正在连接 Netflix</span>
+              <span id="pageStatus" data-i18n="popupStatusConnecting">正在连接 Netflix</span>
             </div>
           </div>
         </header>
@@ -49,9 +49,9 @@
       <section id="subtitlesPanel" class="tab-panel" role="tabpanel" aria-labelledby="subtitlesTab" data-panel="subtitles">
         <div class="settings-list">
           <label class="setting-row" for="enabled">
-            <span><strong>启用字幕</strong><small>在 Netflix 播放页面显示双字幕</small></span>
+            <span><strong data-i18n="settingEnabledTitle">启用字幕</strong><small data-i18n="settingEnabledDesc">在 Netflix 播放页面显示双字幕</small></span>
             <span class="toggle">
-              <input id="enabled" type="checkbox" aria-label="启用字幕覆盖">
+              <input id="enabled" type="checkbox" aria-label="启用字幕覆盖" data-i18n-aria-label="settingEnabledAria">
               <span class="toggle-track" aria-hidden="true"></span>
             </span>
           </label>
@@ -59,56 +59,56 @@
         <section class="source-section" aria-labelledby="sourceTitle">
         <div class="section-heading">
           <div>
-            <h2 id="sourceTitle">字幕来源</h2>
+            <h2 id="sourceTitle" data-i18n="sectionSources">字幕来源</h2>
           </div>
           <div class="action-group">
-            <button id="swapTracks" class="icon-button" type="button" title="交换两行字幕及样式" aria-label="交换两行字幕及样式"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 6h13m-3-3 3 3-3 3M17 14H4m3-3-3 3 3 3"/></svg></button>
-            <button id="reloadTracks" class="icon-button" type="button" title="重新读取字幕" aria-label="重新读取字幕"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M16.5 8A6.5 6.5 0 1 0 17 11m-.5-7v4h-4"/></svg></button>
+            <button id="swapTracks" class="icon-button" type="button" title="交换两行字幕及样式" data-i18n-title="actionSwapTracks" aria-label="交换两行字幕及样式" data-i18n-aria-label="actionSwapTracks"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 6h13m-3-3 3 3-3 3M17 14H4m3-3-3 3 3 3"/></svg></button>
+            <button id="reloadTracks" class="icon-button" type="button" title="重新读取字幕" data-i18n-title="actionReloadTracks" aria-label="重新读取字幕" data-i18n-aria-label="actionReloadTracks"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M16.5 8A6.5 6.5 0 1 0 17 11m-.5-7v4h-4"/></svg></button>
           </div>
         </div>
 
-        <div class="card-grid" role="group" aria-label="字幕呈现模式">
+        <div class="card-grid" role="group" aria-label="字幕呈现模式" data-i18n-aria-label="modeGroupAria">
           <button type="button" class="select-card is-selected" id="nativeMode" aria-pressed="true">
-            <span class="card-badge">推荐</span>
-            <strong>双原生字幕</strong>
-            <span>叠加 Netflix 官方双语轨道，极速稳定、零额外开销。</span>
+            <span class="card-badge" data-i18n="modeRecommended">推荐</span>
+            <strong data-i18n="modeNativeTitle">双原生字幕</strong>
+            <span data-i18n="modeNativeDesc">叠加 Netflix 官方双语轨道，极速稳定、零额外开销。</span>
           </button>
           <button type="button" class="select-card" id="aiMode" aria-pressed="false">
             <span class="card-badge">BYOK</span>
-            <strong>AI 智能翻译</strong>
-            <span>大模型依据前后文生成生动口语译文，支持预翻译与模型切换。</span>
+            <strong data-i18n="modeAiTitle">AI 智能翻译</strong>
+            <span data-i18n="modeAiDesc">大模型依据前后文生成生动口语译文，支持预翻译与模型切换。</span>
           </button>
         </div>
         <div class="mode-help">
-          <p id="modeDescription" class="ai-consent">两行分别显示 Netflix 原生字幕。</p>
-          <button id="openAiSettings" class="inline-link" type="button" hidden>配置 AI 翻译 →</button>
+          <p id="modeDescription" class="ai-consent" data-i18n="modeDescriptionNative">两行分别显示 Netflix 原生字幕。</p>
+          <button id="openAiSettings" class="inline-link" type="button" hidden data-i18n="modeConfigureAi">配置 AI 翻译 →</button>
         </div>
-        <div id="trackGrid" class="track-grid" aria-label="字幕轨道">
+        <div id="trackGrid" class="track-grid" aria-label="字幕轨道" data-i18n-aria-label="trackGridAria">
           <article class="track-card">
             <label class="field" for="primaryTrackKey">
-              <span id="primaryTrackLabel" class="field-label">第一行字幕来源</span>
+              <span id="primaryTrackLabel" class="field-label" data-i18n="trackPrimaryLabel">第一行字幕来源</span>
               <select id="primaryTrackKey"></select>
             </label>
-            <p id="primaryStatus" class="track-status" data-state="idle">未选择</p>
+            <p id="primaryStatus" class="track-status" data-state="idle" data-i18n="statusNotSelected">未选择</p>
           </article>
 
           <article class="track-card">
             <label class="field" for="secondaryTrackKey">
-              <span id="secondaryTrackLabel" class="field-label">第二行字幕来源</span>
+              <span id="secondaryTrackLabel" class="field-label" data-i18n="trackSecondaryLabel">第二行字幕来源</span>
               <select id="secondaryTrackKey"></select>
             </label>
-            <p id="secondaryStatus" class="track-status" data-state="idle">未选择</p>
+            <p id="secondaryStatus" class="track-status" data-state="idle" data-i18n="statusNotSelected">未选择</p>
           </article>
         </div>
         </section>
 
         <section class="playback-section" aria-labelledby="playbackTitle">
-        <h2 id="playbackTitle">播放显示</h2>
+        <h2 id="playbackTitle" data-i18n="sectionPlayback">播放显示</h2>
         <div class="settings-list">
           <label class="setting-row" for="hideNativeSubtitles">
             <span>
-              <strong>隐藏原生字幕</strong>
-              <small>使用插件字幕替代 Netflix 字幕</small>
+              <strong data-i18n="settingHideNativeTitle">隐藏原生字幕</strong>
+              <small data-i18n="settingHideNativeDesc">使用插件字幕替代 Netflix 字幕</small>
             </span>
             <span class="toggle">
               <input id="hideNativeSubtitles" type="checkbox">
@@ -118,11 +118,11 @@
 
           <label class="setting-row" for="timingOffsetMs">
             <span>
-              <strong>时间偏移</strong>
-              <small>正值延后，负值提前</small>
+              <strong data-i18n="settingTimingTitle">时间偏移</strong>
+              <small data-i18n="settingTimingDesc">正值延后，负值提前</small>
             </span>
             <span class="number-control">
-              <input id="timingOffsetMs" type="number" step="100" aria-label="字幕时间偏移">
+              <input id="timingOffsetMs" type="number" step="100" aria-label="字幕时间偏移" data-i18n-aria-label="settingTimingAria">
               <span>ms</span>
             </span>
           </label>
@@ -132,28 +132,28 @@
       <section id="aiPanel" class="tab-panel ai-panel" role="tabpanel" aria-labelledby="aiTab" data-panel="ai" hidden>
         <!-- 卡片 1: 轨道与目标语言 -->
         <section class="ai-section" aria-labelledby="aiSettingsTitle">
-          <h2 id="aiSettingsTitle">字幕轨道与语言</h2>
+          <h2 id="aiSettingsTitle" data-i18n="sectionAiTracks">字幕轨道与语言</h2>
           <div class="ai-fields">
             <label class="field" for="aiSourceLanguage">
-              <span class="field-label">AI 源字幕轨道</span>
+              <span class="field-label" data-i18n="aiSourceTrack">AI 源字幕轨道</span>
               <select id="aiSourceLanguage"></select>
             </label>
             <label class="field" for="aiTargetLanguage">
-              <span class="field-label">目标语言</span>
+              <span class="field-label" data-i18n="aiTargetLanguage">目标语言</span>
               <select id="aiTargetLanguage">
-                <option value="zh-Hans">简体中文</option>
-                <option value="zh-Hant">繁體中文</option>
-                <option value="ja">日本語</option>
-                <option value="ko">한국어</option>
-                <option value="en">English</option>
-                <option value="es">Español</option>
-                <option value="fr">Français</option>
-                <option value="de">Deutsch</option>
-                <option value="it">Italiano</option>
-                <option value="pt-BR">Português (Brasil)</option>
-                <option value="ru">Русский</option>
-                <option value="ar">العربية</option>
-                <option value="hi">हिन्दी</option>
+                <option value="zh-Hans" data-i18n="langZhHans">简体中文</option>
+                <option value="zh-Hant" data-i18n="langZhHant">繁體中文</option>
+                <option value="ja" data-i18n="langJa">日本語</option>
+                <option value="ko" data-i18n="langKo">한국어</option>
+                <option value="en" data-i18n="langEn">English</option>
+                <option value="es" data-i18n="langEs">Español</option>
+                <option value="fr" data-i18n="langFr">Français</option>
+                <option value="de" data-i18n="langDe">Deutsch</option>
+                <option value="it" data-i18n="langIt">Italiano</option>
+                <option value="pt-BR" data-i18n="langPtBr">Português (Brasil)</option>
+                <option value="ru" data-i18n="langRu">Русский</option>
+                <option value="ar" data-i18n="langAr">العربية</option>
+                <option value="hi" data-i18n="langHi">हिन्दी</option>
               </select>
             </label>
           </div>
@@ -161,37 +161,37 @@
 
         <!-- 卡片 2: 预翻译调度与前后文 -->
         <section class="ai-section" aria-labelledby="aiScheduleTitle">
-          <h2 id="aiScheduleTitle">调度与语境</h2>
+          <h2 id="aiScheduleTitle" data-i18n="sectionAiSchedule">调度与语境</h2>
           <div class="ai-fields">
             <label class="field prefetch-field" for="aiPrefetchCount">
-              <span class="field-label">预翻译字幕句组</span>
+              <span class="field-label" data-i18n="aiPrefetchCount">预翻译字幕句组</span>
               <input id="aiPrefetchCount" type="number" min="0" max="50" step="1" value="10" inputmode="numeric">
             </label>
             <label class="field prefetch-field" for="aiContextCount">
-              <span class="field-label">前后文各取字幕条数</span>
+              <span class="field-label" data-i18n="aiContextCount">前后文各取字幕条数</span>
               <input id="aiContextCount" type="number" min="0" max="4" step="1" value="2" inputmode="numeric">
             </label>
           </div>
-          <p class="ai-consent">预翻译默认最多 10 组、限播放前方 60 秒；0 只翻译当前句。前后文默认每侧 2 条，仅用于语境消歧。</p>
+          <p class="ai-consent" data-i18n="aiScheduleHelp">预翻译默认最多 10 组、限播放前方 60 秒；0 只翻译当前句。前后文默认每侧 2 条，仅用于语境消歧。</p>
         </section>
 
         <!-- 卡片 3: 全局提示词 -->
         <section class="ai-section" aria-labelledby="aiPromptTitle">
-          <h2 id="aiPromptTitle">翻译提示词 (Prompt)</h2>
+          <h2 id="aiPromptTitle" data-i18n="sectionAiPrompt">翻译提示词 (Prompt)</h2>
           <label class="field" for="aiStyleGuide">
-            <span class="field-label">全局风格指导（不属于单个服务）</span>
-            <textarea id="aiStyleGuide" rows="3" maxlength="1000" placeholder="保持原意和人物语气，使用自然口语。"></textarea>
+            <span class="field-label" data-i18n="aiStyleGuide">全局风格指导（不属于单个服务）</span>
+            <textarea id="aiStyleGuide" rows="3" maxlength="1000" placeholder="保持原意和人物语气，使用自然口语。" data-i18n-placeholder="aiStyleGuidePlaceholder"></textarea>
           </label>
           <div class="settings-list ai-toggle-list" id="aiJapaneseRubyRow" hidden>
             <label class="setting-row" for="aiJapaneseRuby">
-              <span><strong id="aiJapaneseRubyTitle">日语字幕注音 (振假名)</strong><small id="aiJapaneseRubyDesc">为字幕中的日文汉字标注平假名读音</small></span>
+              <span><strong id="aiJapaneseRubyTitle" data-i18n="aiRubyTitle">日语字幕注音 (振假名)</strong><small id="aiJapaneseRubyDesc" data-i18n="aiRubyDesc">为字幕中的日文汉字标注平假名读音</small></span>
               <span class="toggle">
-                <input id="aiJapaneseRuby" type="checkbox" aria-label="日语字幕注音">
+                <input id="aiJapaneseRuby" type="checkbox" aria-label="日语字幕注音" data-i18n-aria-label="aiRubyAria">
                 <span class="toggle-track" aria-hidden="true"></span>
               </span>
             </label>
           </div>
-          <button id="openProviderSettings" class="inline-link section-link" type="button">配置翻译服务 →</button>
+          <button id="openProviderSettings" class="inline-link section-link" type="button" data-i18n="aiConfigureProviders">配置翻译服务 →</button>
         </section>
       </section>
 
@@ -199,15 +199,15 @@
         <div class="provider-split-view">
           <!-- 二级左侧分栏: 服务列表与底部 + / - -->
           <aside class="provider-master">
-            <div class="provider-master-header">已配置服务</div>
-            <div class="provider-master-list" role="listbox" aria-label="翻译服务列表" id="providerMasterList">
+            <div class="provider-master-header" data-i18n="providerConfigured">已配置服务</div>
+            <div class="provider-master-list" role="listbox" aria-label="翻译服务列表" data-i18n-aria-label="providerListAria" id="providerMasterList">
               <!-- JS 动态填充已保存服务列表项 -->
             </div>
             <div class="provider-master-toolbar">
-              <button id="addProvider" class="master-tool-btn" type="button" title="新增服务" aria-label="新增服务">
+              <button id="addProvider" class="master-tool-btn" type="button" title="新增服务" data-i18n-title="providerAdd" aria-label="新增服务" data-i18n-aria-label="providerAdd">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
               </button>
-              <button id="deleteProvider" class="master-tool-btn" type="button" title="删除当前服务" aria-label="删除当前服务">
+              <button id="deleteProvider" class="master-tool-btn" type="button" title="删除当前服务" data-i18n-title="providerDelete" aria-label="删除当前服务" data-i18n-aria-label="providerDelete">
                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 8h10"/></svg>
               </button>
             </div>
@@ -219,40 +219,40 @@
             <div id="providerDetailView" class="provider-detail-content">
               <div id="providerEditor" class="provider-editor">
                 <label class="field" for="providerName">
-                  <span class="field-label">服务名称</span>
-                  <input id="providerName" type="text" maxlength="48" autocomplete="off" placeholder="如 深度求索" spellcheck="false">
+                  <span class="field-label" data-i18n="providerName">服务名称</span>
+                  <input id="providerName" type="text" maxlength="48" autocomplete="off" placeholder="如 深度求索" data-i18n-placeholder="providerNamePlaceholder" spellcheck="false">
                 </label>
                 <label class="field" for="providerEndpoint">
-                  <span class="field-label">兼容接口地址（留空使用 OpenAI）</span>
+                  <span class="field-label" data-i18n="providerEndpoint">兼容接口地址（留空使用 OpenAI）</span>
                   <input id="providerEndpoint" type="url" maxlength="2048" autocomplete="url" spellcheck="false" placeholder="https://provider.example/v1/chat/completions">
                 </label>
                 <div class="field">
-                  <label class="field-label" for="providerModel">模型 ID</label>
+                  <label class="field-label" for="providerModel" data-i18n="providerModel">模型 ID</label>
                   <div class="provider-model-row">
-                    <button id="providerModel" class="model-trigger" type="button" aria-expanded="false" aria-controls="providerModelMenu">选择模型</button>
-                    <button id="fetchProviderModels" class="ai-button" type="button">获取模型</button>
+                    <button id="providerModel" class="model-trigger" type="button" aria-expanded="false" aria-controls="providerModelMenu" data-i18n="providerModelSelect">选择模型</button>
+                    <button id="fetchProviderModels" class="ai-button" type="button" data-i18n="providerModelFetch">获取模型</button>
                   </div>
                   <div id="providerModelMenu" class="model-menu" hidden>
-                    <input id="providerModelSearch" type="search" autocomplete="off" placeholder="过滤模型 ID" aria-label="过滤模型" spellcheck="false">
+                    <input id="providerModelSearch" type="search" autocomplete="off" placeholder="过滤模型 ID" data-i18n-placeholder="providerModelFilter" aria-label="过滤模型" data-i18n-aria-label="providerModelFilterAria" spellcheck="false">
                     <div id="providerModelList" class="model-options" role="listbox"></div>
                   </div>
                 </div>
               </div>
-              <p id="aiEndpointStatus" class="ai-consent" role="status" aria-live="polite">使用其他服务时，需要授权其域名；字幕文本与密钥会发送给该服务。</p>
+              <p id="aiEndpointStatus" class="ai-consent" role="status" aria-live="polite" data-i18n="providerEndpointNotice">使用其他服务时，需要授权其域名；字幕文本与密钥会发送给该服务。</p>
               <div class="ai-credential">
                 <label class="field" for="aiCredential">
-                  <span class="field-label">当前服务的 API 密钥</span>
-                  <input id="aiCredential" type="password" autocomplete="off" spellcheck="false" placeholder="输入新密钥后保存">
+                  <span class="field-label" data-i18n="providerCredential">当前服务的 API 密钥</span>
+                  <input id="aiCredential" type="password" autocomplete="off" spellcheck="false" placeholder="输入新密钥后保存" data-i18n-placeholder="providerCredentialPlaceholder">
                 </label>
                 <div class="ai-credential-actions">
-                  <span id="aiCredentialStatus" class="ai-credential-status" role="status" aria-live="polite">正在检查密钥</span>
-                  <button id="saveAiCredential" class="ai-button" type="button">保存密钥</button>
-                  <button id="deleteAiCredential" class="ai-button ai-button-quiet" type="button">删除密钥</button>
+                  <span id="aiCredentialStatus" class="ai-credential-status" role="status" aria-live="polite" data-i18n="providerCredentialChecking">正在检查密钥</span>
+                  <button id="saveAiCredential" class="ai-button" type="button" data-i18n="providerCredentialSave">保存密钥</button>
+                  <button id="deleteAiCredential" class="ai-button ai-button-quiet" type="button" data-i18n="providerCredentialDelete">删除密钥</button>
                 </div>
               </div>
-              <p class="ai-consent">启用 AI 后，源轨道字幕及邻句会发送给所选服务；使用自己的 API 密钥可能产生费用。</p>
+              <p class="ai-consent" data-i18n="providerConsent">启用 AI 后，源轨道字幕及邻句会发送给所选服务；使用自己的 API 密钥可能产生费用。</p>
               <div class="provider-test-row">
-                <button id="testProvider" class="ai-button" type="button">测试连通性</button>
+                <button id="testProvider" class="ai-button" type="button" data-i18n="providerTest">测试连通性</button>
                 <span id="providerTestStatus" class="ai-credential-status" role="status" aria-live="polite"></span>
               </div>
             </div>
@@ -260,53 +260,53 @@
             <!-- 2. 点击左下角 + 展开的新增草稿表单 (未保存前不加入列表) -->
             <div id="providerNewDraftView" class="provider-detail-content" hidden>
               <div class="new-draft-header">
-                <span class="new-draft-title">新增翻译服务</span>
-                <button id="cancelNewDraftTop" class="icon-button" type="button" title="取消">✕</button>
+                <span class="new-draft-title" data-i18n="providerNewDraft">新增翻译服务</span>
+                <button id="cancelNewDraftTop" class="icon-button" type="button" title="取消" data-i18n-title="commonCancel">✕</button>
               </div>
 
               <div class="field">
-                <span class="field-label">选择预设模板</span>
-                <div class="preset-pill-group" role="group" aria-label="服务预设模板">
-                  <button type="button" class="preset-pill is-active" data-draft-preset="openai">OpenAI 官方</button>
+                <span class="field-label" data-i18n="providerPresetTitle">选择预设模板</span>
+                <div class="preset-pill-group" role="group" aria-label="服务预设模板" data-i18n-aria-label="providerPresetAria">
+                  <button type="button" class="preset-pill is-active" data-draft-preset="openai" data-i18n="presetOpenAI">OpenAI 官方</button>
                   <button type="button" class="preset-pill" data-draft-preset="deepseek">DeepSeek</button>
                   <button type="button" class="preset-pill" data-draft-preset="openrouter">OpenRouter</button>
                   <button type="button" class="preset-pill" data-draft-preset="groq">Groq</button>
-                  <button type="button" class="preset-pill" data-draft-preset="siliconflow">硅基流动</button>
+                  <button type="button" class="preset-pill" data-draft-preset="siliconflow" data-i18n="presetSiliconFlow">硅基流动</button>
                   <button type="button" class="preset-pill" data-draft-preset="ollama">Ollama</button>
-                  <button type="button" class="preset-pill" data-draft-preset="custom">自定义</button>
+                  <button type="button" class="preset-pill" data-draft-preset="custom" data-i18n="presetCustom">自定义</button>
                 </div>
               </div>
 
               <label class="field" for="newDraftName">
-                <span class="field-label">服务名称</span>
-                <input id="newDraftName" type="text" maxlength="48" autocomplete="off" placeholder="服务名称" value="OpenAI 官方" spellcheck="false">
+                <span class="field-label" data-i18n="providerName">服务名称</span>
+                <input id="newDraftName" type="text" maxlength="48" autocomplete="off" placeholder="服务名称" data-i18n-placeholder="providerNewDraftNamePlaceholder" value="" spellcheck="false">
               </label>
 
               <label class="field" for="newDraftEndpoint">
-                <span class="field-label">兼容接口地址（留空使用 OpenAI）</span>
-                <input id="newDraftEndpoint" type="url" maxlength="2048" autocomplete="url" placeholder="留空使用 OpenAI 官方接口" spellcheck="false">
+                <span class="field-label" data-i18n="providerEndpoint">兼容接口地址（留空使用 OpenAI）</span>
+                <input id="newDraftEndpoint" type="url" maxlength="2048" autocomplete="url" placeholder="留空使用 OpenAI 官方接口" data-i18n-placeholder="providerNewDraftEndpointPlaceholder" spellcheck="false">
               </label>
 
               <div class="field">
-                <label class="field-label" for="newDraftModel">模型 ID</label>
+                <label class="field-label" for="newDraftModel" data-i18n="providerModel">模型 ID</label>
                 <div class="provider-model-row">
-                  <button id="newDraftModel" class="model-trigger" type="button" aria-expanded="false" aria-controls="newDraftModelMenu">选择模型</button>
-                  <button id="fetchNewDraftModels" class="ai-button" type="button">获取模型</button>
+                  <button id="newDraftModel" class="model-trigger" type="button" aria-expanded="false" aria-controls="newDraftModelMenu" data-i18n="providerModelSelect">选择模型</button>
+                  <button id="fetchNewDraftModels" class="ai-button" type="button" data-i18n="providerModelFetch">获取模型</button>
                 </div>
                 <div id="newDraftModelMenu" class="model-menu" hidden>
-                  <input id="newDraftModelSearch" type="search" autocomplete="off" placeholder="过滤模型 ID" aria-label="过滤模型" spellcheck="false">
+                  <input id="newDraftModelSearch" type="search" autocomplete="off" placeholder="过滤模型 ID" data-i18n-placeholder="providerModelFilter" aria-label="过滤模型" data-i18n-aria-label="providerModelFilterAria" spellcheck="false">
                   <div id="newDraftModelList" class="model-options" role="listbox"></div>
                 </div>
               </div>
 
               <label class="field" for="newDraftKey">
-                <span class="field-label">API 密钥 (API Key)</span>
+                <span class="field-label" data-i18n="providerNewDraftKey">API 密钥 (API Key)</span>
                 <input id="newDraftKey" type="password" autocomplete="off" placeholder="sk-..." spellcheck="false">
               </label>
 
               <div class="new-draft-actions">
-                <button id="saveNewDraftBtn" class="ai-button ai-button-primary" type="button">保存密钥并添加</button>
-                <button id="cancelNewDraftBtn" class="ai-button ai-button-quiet" type="button">取消</button>
+                <button id="saveNewDraftBtn" class="ai-button ai-button-primary" type="button" data-i18n="providerNewDraftSave">保存密钥并添加</button>
+                <button id="cancelNewDraftBtn" class="ai-button ai-button-quiet" type="button" data-i18n="commonCancel">取消</button>
               </div>
             </div>
           </div>
@@ -316,33 +316,33 @@
       <section id="stylesPanel" class="tab-panel styles-panel" role="tabpanel" aria-labelledby="stylesTab" data-panel="styles" hidden>
         <div class="style-stage">
           <div class="style-toolbar">
-            <div class="role-selector" role="group" aria-label="正在编辑的字幕">
-              <button class="is-active" type="button" data-style-role="primary" aria-pressed="true"><span class="role-swatch primary"></span>第一字幕</button>
-              <button type="button" data-style-role="secondary" aria-pressed="false"><span class="role-swatch secondary"></span>第二字幕</button>
+            <div class="role-selector" role="group" aria-label="正在编辑的字幕" data-i18n-aria-label="styleRoleAria">
+              <button class="is-active" type="button" data-style-role="primary" aria-pressed="true"><span class="role-swatch primary"></span><span data-i18n="stylePrimary">第一字幕</span></button>
+              <button type="button" data-style-role="secondary" aria-pressed="false"><span class="role-swatch secondary"></span><span data-i18n="styleSecondary">第二字幕</span></button>
             </div>
-            <button id="resetStyles" class="icon-button" type="button" title="恢复默认样式" aria-label="恢复默认样式"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 8A6.5 6.5 0 1 1 3 11m1-7v4h4"/></svg></button>
+            <button id="resetStyles" class="icon-button" type="button" title="恢复默认样式" data-i18n-title="styleReset" aria-label="恢复默认样式" data-i18n-aria-label="styleReset"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 8A6.5 6.5 0 1 1 3 11m1-7v4h4"/></svg></button>
           </div>
 
           <div id="stylePreview" class="preview" aria-hidden="true" data-layout="balanced">
-            <span class="preview-label">屏幕预览</span>
-            <div id="primaryPreview" class="preview-line primary is-editing">第一字幕</div>
+            <span class="preview-label" data-i18n="stylePreview">屏幕预览</span>
+            <div id="primaryPreview" class="preview-line primary is-editing" data-i18n="stylePrimary">第一字幕</div>
             <div id="secondaryPreview" class="preview-line secondary">Second subtitle</div>
           </div>
         </div>
 
         <div class="style-settings-scroll">
           <section class="style-section" aria-labelledby="layoutTitle">
-            <h2 id="layoutTitle">位置与尺寸</h2>
-            <div class="preset-list" role="group" aria-label="双字幕位置预设">
-              <button type="button" data-layout-preset="compact">紧凑</button>
-              <button type="button" data-layout-preset="balanced">标准</button>
-              <button type="button" data-layout-preset="spacious">舒展</button>
-              <button type="button" data-layout-preset="free">自由</button>
+            <h2 id="layoutTitle" data-i18n="styleLayoutTitle">位置与尺寸</h2>
+            <div class="preset-list" role="group" aria-label="双字幕位置预设" data-i18n-aria-label="styleLayoutAria">
+              <button type="button" data-layout-preset="compact" data-i18n="styleLayoutCompact">紧凑</button>
+              <button type="button" data-layout-preset="balanced" data-i18n="styleLayoutBalanced">标准</button>
+              <button type="button" data-layout-preset="spacious" data-i18n="styleLayoutSpacious">舒展</button>
+              <button type="button" data-layout-preset="free" data-i18n="styleLayoutFree">自由</button>
             </div>
             <div class="control-grid">
               <label class="range-field" for="styleFontSize">
                 <span class="range-heading">
-                  <span>字号</span>
+                  <span data-i18n="styleFontSize">字号</span>
                   <output id="styleFontSizeValue" for="styleFontSize">26 px</output>
                 </span>
                 <input id="styleFontSize" type="range" min="18" max="44" step="1">
@@ -350,7 +350,7 @@
 
               <label class="range-field" for="styleVerticalOffset">
                 <span class="range-heading">
-                  <span>自由位置</span>
+                  <span data-i18n="styleVerticalOffset">自由位置</span>
                   <output id="styleVerticalOffsetValue" for="styleVerticalOffset">26%</output>
                 </span>
                 <input id="styleVerticalOffset" type="range" min="8" max="42" step="1">
@@ -359,31 +359,31 @@
           </section>
 
           <section class="style-section" aria-labelledby="textStyleTitle">
-            <h2 id="textStyleTitle">文字</h2>
+            <h2 id="textStyleTitle" data-i18n="styleTextTitle">文字</h2>
             <div class="control-grid">
               <label class="compact-field" for="styleFontFamily">
-                <span>字体</span>
+                <span data-i18n="styleFontFamily">字体</span>
                 <select id="styleFontFamily">
-                  <option value="system">系统</option>
-                  <option value="sans">无衬线</option>
-                  <option value="serif">衬线</option>
-                  <option value="rounded">圆体</option>
+                  <option value="system" data-i18n="styleFontSystem">系统</option>
+                  <option value="sans" data-i18n="styleFontSans">无衬线</option>
+                  <option value="serif" data-i18n="styleFontSerif">衬线</option>
+                  <option value="rounded" data-i18n="styleFontRounded">圆体</option>
                 </select>
               </label>
 
               <label class="compact-field" for="styleFontWeight">
-                <span>字重</span>
+                <span data-i18n="styleFontWeight">字重</span>
                 <select id="styleFontWeight">
-                  <option value="500">中等</option>
-                  <option value="600">半粗</option>
-                  <option value="700">粗体</option>
-                  <option value="800">特粗</option>
+                  <option value="500" data-i18n="styleWeight500">中等</option>
+                  <option value="600" data-i18n="styleWeight600">半粗</option>
+                  <option value="700" data-i18n="styleWeight700">粗体</option>
+                  <option value="800" data-i18n="styleWeight800">特粗</option>
                 </select>
               </label>
 
               <label class="range-field" for="styleLineHeight">
                 <span class="range-heading">
-                  <span>行高</span>
+                  <span data-i18n="styleLineHeight">行高</span>
                   <output id="styleLineHeightValue" for="styleLineHeight">1.28</output>
                 </span>
                 <input id="styleLineHeight" type="range" min="1" max="1.6" step="0.05">
@@ -391,14 +391,14 @@
 
               <label class="range-field" for="styleMaxWidth">
                 <span class="range-heading">
-                  <span>最大宽度</span>
+                  <span data-i18n="styleMaxWidth">最大宽度</span>
                   <output id="styleMaxWidthValue" for="styleMaxWidth">86%</output>
                 </span>
                 <input id="styleMaxWidth" type="range" min="55" max="96" step="1">
               </label>
 
               <label class="compact-field" for="styleTextColor">
-                <span>文字颜色</span>
+                <span data-i18n="styleTextColor">文字颜色</span>
                 <span class="color-control">
                   <input id="styleTextColor" type="color" value="#ffffff">
                   <output id="styleTextColorValue" for="styleTextColor">#FFFFFF</output>
@@ -407,7 +407,7 @@
 
               <label class="range-field" for="styleTextOpacity">
                 <span class="range-heading">
-                  <span>文字透明度</span>
+                  <span data-i18n="styleTextOpacity">文字透明度</span>
                   <output id="styleTextOpacityValue" for="styleTextOpacity">100%</output>
                 </span>
                 <input id="styleTextOpacity" type="range" min="40" max="100" step="5">
@@ -416,10 +416,10 @@
           </section>
 
           <section class="style-section" aria-labelledby="effectsStyleTitle">
-            <h2 id="effectsStyleTitle">描边与背景</h2>
+            <h2 id="effectsStyleTitle" data-i18n="styleEffectsTitle">描边与背景</h2>
             <div class="control-grid">
               <label class="compact-field" for="styleStrokeColor">
-                <span>描边颜色</span>
+                <span data-i18n="styleStrokeColor">描边颜色</span>
                 <span class="color-control">
                   <input id="styleStrokeColor" type="color" value="#000000">
                   <output id="styleStrokeColorValue" for="styleStrokeColor">#000000</output>
@@ -428,14 +428,14 @@
 
               <label class="range-field" for="styleStrokeWidth">
                 <span class="range-heading">
-                  <span>描边宽度</span>
+                  <span data-i18n="styleStrokeWidth">描边宽度</span>
                   <output id="styleStrokeWidthValue" for="styleStrokeWidth">1 px</output>
                 </span>
                 <input id="styleStrokeWidth" type="range" min="0" max="4" step="0.5">
               </label>
 
               <label class="compact-field" for="styleBackgroundColor">
-                <span>背景颜色</span>
+                <span data-i18n="styleBackgroundColor">背景颜色</span>
                 <span class="color-control">
                   <input id="styleBackgroundColor" type="color" value="#000000">
                   <output id="styleBackgroundColorValue" for="styleBackgroundColor">#000000</output>
@@ -444,7 +444,7 @@
 
               <label class="range-field" for="styleBackgroundOpacity">
                 <span class="range-heading">
-                  <span>背景透明度</span>
+                  <span data-i18n="styleBackgroundOpacity">背景透明度</span>
                   <output id="styleBackgroundOpacityValue" for="styleBackgroundOpacity">64%</output>
                 </span>
                 <input id="styleBackgroundOpacity" type="range" min="0" max="90" step="5">
@@ -455,6 +455,7 @@
       </section>
       </div>
     </main>
+    <script src="../i18n.js"></script>
     <script src="./popup.js"></script>
   </body>
 </html>

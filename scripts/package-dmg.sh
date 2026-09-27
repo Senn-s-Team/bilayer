@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# [INPUT]: 已生成的 SafariApp Xcode 工程，以及 xcodebuild/hdiutil
+# [INPUT]: 已生成的 SafariApp Xcode 工程，以及 xcode-env.sh 定位到的 xcodebuild 与 hdiutil
 # [OUTPUT]: dist/Bilayer-<version>.dmg
 # [POS]: scripts 的本地 macOS 分发打包入口，被 npm run package:dmg 调用
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -22,7 +22,9 @@ if [[ ! -d "$PROJECT_FILE" ]]; then
   "$ROOT_DIR/scripts/create-safari-project.sh"
 fi
 
-if ! xcrun --find xcodebuild >/dev/null 2>&1; then
+source "$ROOT_DIR/scripts/xcode-env.sh"
+
+if ! resolve_developer_dir xcodebuild; then
   echo "xcodebuild is unavailable. Install full Xcode and select it with xcode-select."
   exit 1
 fi

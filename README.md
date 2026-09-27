@@ -15,7 +15,7 @@ This is a build-free WebExtension source project. `scripts/create-safari-project
 - `extension/src/page/`: page-world bridge that observes Netflix player metadata and subtitle requests.
 - `extension/src/content/`: isolated content script, subtitle loading, parsing, timing, and overlay rendering.
 - `extension/src/popup/`: extension popup for language and display settings.
-- `scripts/`: local validation, icon derivation, and Safari conversion helpers.
+- `scripts/`: local validation, icon derivation, Safari conversion, signing, and release helpers.
 
 ## Requirements
 
@@ -48,6 +48,40 @@ sudo xcode-select -s /Applications/Xcode-26.5.0.app/Contents/Developer
 Open the generated Xcode project under `SafariApp/`, enable the extension in Safari Settings, then test on `https://www.netflix.com/watch/...`.
 
 If using a Netflix Mac web app, enable the extension separately in **Netflix → Settings → Extensions**; web app extension settings are independent of Safari. If the popup reports a missing or unresponsive Netflix page, verify website access in the web app, then reload the video page. The popup checks active windows and accessible Netflix tabs before reporting a disconnection.
+
+## Release
+
+Pushing a `v*` tag runs the **Release** workflow on `macos-latest`, which validates the version, builds the Safari app and the DMG, then publishes them to GitHub Releases.
+
+1. Bump `version` in `extension/manifest.json`, keep `package.json` in sync, and merge to `main`.
+2. Tag and push: `git tag -a v0.3.0 -m "Bilayer 0.3.0" && git push origin v0.3.0`.
+3. The workflow runs `npm run check`, `npm test`, then `bash scripts/assert-release-version.sh`; the build fails when the tag (minus a leading `v`) does not equal `extension/manifest.json`.
+4. It then runs `npm run safari:project` and `npm run package:dmg`, creates (or updates) the GitHub Release for that tag, and attaches `dist/Bilayer-<version>.dmg`. A manual `workflow_dispatch` run publishes no release and uploads the DMG as a workflow artifact instead.
+5. `build/` and `dist/` are gitignored, so the DMG lives only in the GitHub Release or in a workflow artifact. Two tag builds never run at once (single `concurrency` group).
+
+**Gatekeeper:** release artifacts carry an ad-hoc "Sign to Run Locally" signature and are **not notarized** — see **Signing and Gatekeeper** below to run them or to build and sign locally. The app requires **macOS 12.4 or later**: `scripts/create-safari-project.sh` pins `MACOSX_DEPLOYMENT_TARGET` for the host app and the extension, because this MV3 manifest needs Safari 15.4+ and `optional_host_permissions` needs Safari 15.5, which ships with macOS 12.4.
+
+## Signing and Gatekeeper
+
+CI has no Developer ID certificate, so a DMG downloaded from a GitHub Release carries an ad-hoc "Sign to Run Locally" signature and has no notarization ticket. On another Mac, Gatekeeper blocks the first launch of that app ("unidentified developer" / "damaged").
+
+**Run the downloaded app.** macOS lets you allow this on your own machine:
+
+1. Right-click `Bilayer.app` in Finder, choose **Open**, then confirm in the dialog.
+2. Or clear the quarantine attribute first and then open it normally: `xattr -dr com.apple.quarantine /Applications/Bilayer.app`
+
+**Build and sign it yourself.** This is a supported, first-class path: a local build is signed with your own Apple certificate and is never quarantined in the first place.
+
+1. `security find-identity -v -p codesigning` lists the identities that can sign; if none is installed, `scripts/sign-app.sh` falls back to ad-hoc `-` and you are back in the downloaded-DMG situation.
+2. Build, sign, and install in one command — `scripts/sign-app.sh` automatically uses the first local `Apple Development` identity: `npm run install:app`
+3. Override the automatic choice with an explicit certificate: `CERT_NAME="Apple Development: you@example.com (XXXXXXXXXX)" npm run install:app`
+
+**Check what you actually got.** Both commands ship with macOS:
+
+1. `codesign -dv --verbose=4 /Applications/Bilayer.app` — a build signed with your certificate lists `Authority=Apple Development: you@example.com (XXXXXXXXXX)` and your own `TeamIdentifier`; a CI download instead reports `Signature=adhoc` and `TeamIdentifier=not set`.
+2. `spctl -a -vvv -t exec /Applications/Bilayer.app` — prints `rejected` for both, because neither an ad-hoc nor an `Apple Development` signature is a notarized distribution signature; a build signed with your own certificate adds `origin=Apple Development: you@example.com (XXXXXXXXXX)`, while the ad-hoc download prints a bare `rejected`. A locally signed build still opens because it was never quarantined; only a notarized Developer ID build reports `accepted` with a `source=` line.
+
+Producing a download that passes Gatekeeper on someone else's Mac requires all three of: a **Developer ID Application** certificate, a `xcrun notarytool submit` submission, and `xcrun stapler staple`. This repository does none of them and keeps no certificate secret in CI, so GitHub Release artifacts stay ad-hoc signed.
 
 ## AI Translation (Bring Your Own Key)
 

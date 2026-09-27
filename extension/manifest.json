@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Bilayer",
+  "default_locale": "en",
+  "name": "__MSG_extName__",
   "version": "0.3.0",
-  "description": "Bilingual subtitles with optional AI translation on streaming video pages.",
+  "description": "__MSG_extDescription__",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -16,7 +17,7 @@
   "host_permissions": ["https://netflix.com/*", "https://www.netflix.com/*", "https://*.nflxvideo.net/*", "https://api.openai.com/*"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
   "action": {
-    "default_title": "Bilayer",
+    "default_title": "__MSG_extActionTitle__",
     "default_popup": "src/popup/popup.html"
   },
   "background": {

@@ -2,6 +2,7 @@
 > L2 | 父级: ../CLAUDE.md
 
 成员清单
+i18n.js: 扩展页共享的国际化薄封装，读取 browser/chrome runtime.i18n 并把 data-i18n*/data-i18n-placeholder/title/aria-label 与 i18n.t(key, substitutions) 应用到 popup/onboarding/diagnostics
 background/: 扩展后台上下文，负责安装默认设置、旧键迁移、字幕下载兜底及多 provider BYOK 翻译请求
 content/: Netflix 页面隔离上下文，负责双原生/原生加 AI 互斥渲染、独立 AI 源轨道、可调前瞻、首句等待和 overlay
 diagnostics/: 独立扩展诊断页，开启后台原始报文采集并在宽屏面板查看完整请求体、响应体与请求头

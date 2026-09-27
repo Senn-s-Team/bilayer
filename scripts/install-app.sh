@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# [INPUT]: Xcode 工程、本地编译产物及本机 Apple 开发者证书
+# [INPUT]: Xcode 工程、xcode-env.sh 定位到的 xcodebuild、本地编译产物及本机 Apple 开发者证书
 # [OUTPUT]: 编译 Release 版本，自动覆盖到 /Applications/Bilayer.app 并完成重签名与 pluginkit 注册
 # [POS]: scripts 的一键构建与本地安装部署入口，被 npm run install:app 调用
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -22,7 +22,9 @@ if [[ ! -d "$PROJECT_FILE" ]]; then
   "$ROOT_DIR/scripts/create-safari-project.sh"
 fi
 
-if ! xcrun --find xcodebuild >/dev/null 2>&1; then
+source "$ROOT_DIR/scripts/xcode-env.sh"
+
+if ! resolve_developer_dir xcodebuild; then
   echo "错误: 未找到 xcodebuild，请确保安装了 Xcode 并设置了 xcode-select。"
   exit 1
 fi

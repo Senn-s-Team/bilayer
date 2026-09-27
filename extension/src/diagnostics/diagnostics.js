@@ -69,7 +69,7 @@ function showLocalPreview() {
   const body = JSON.stringify({
     model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: "请保持字幕自然、简洁。" },
+      { role: "system", content: i18n.t("diagSampleSystemPrompt") },
       { role: "user", content: JSON.stringify({ items: [{ id: "42", text: "We should get going." }], contextBefore: ["It's getting late."], contextAfter: ["The train leaves soon."] }) }
     ],
     temperature: 0.2
@@ -79,7 +79,7 @@ function showLocalPreview() {
     response: { status: 200, statusText: "OK", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ choices: [{ message: { role: "assistant", content: JSON.stringify({ items: [{ id: "42", text: "そろそろ行こう。" }] }) } }] }) }
   }];
   selectedId = 1;
-  elements.liveStatus.textContent = "界面预览 · 示例数据";
+  elements.liveStatus.textContent = i18n.t("diagLocalPreview");
   elements.liveStatus.dataset.state = "idle";
   elements.toggle.disabled = true;
   elements.refresh.disabled = true;
@@ -109,7 +109,7 @@ function bindControls() {
   });
   elements.toggleRaw.addEventListener("click", () => {
     showTree = !showTree;
-    elements.toggleRaw.textContent = showTree ? "格式化文本" : "切换折叠树";
+    elements.toggleRaw.textContent = showTree ? i18n.t("diagFormattedText") : i18n.t("diagToggleRaw");
     elements.toggleRaw.setAttribute("aria-pressed", String(showTree));
     renderDetail();
   });
@@ -118,20 +118,20 @@ function bindControls() {
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      elements.copyPayload.textContent = "已复制 ✓";
+      elements.copyPayload.textContent = i18n.t("diagCopied");
       setTimeout(() => {
-        elements.copyPayload.textContent = "复制报文";
+        elements.copyPayload.textContent = i18n.t("diagCopy");
       }, 1500);
     } catch {
-      elements.copyPayload.textContent = "复制失败";
+      elements.copyPayload.textContent = i18n.t("diagCopyFailed");
       setTimeout(() => {
-        elements.copyPayload.textContent = "复制报文";
+        elements.copyPayload.textContent = i18n.t("diagCopy");
       }, 1500);
     }
   });
   elements.exportCases?.addEventListener("click", () => {
     if (!records.length) {
-      alert("当前没有可导出的报文记录。请在 Netflix 播放片刻生成字幕翻译后再导出。");
+      alert(i18n.t("diagExportEmpty"));
       return;
     }
     const dateStr = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
@@ -140,12 +140,12 @@ function bindControls() {
     if (runtime.downloads?.download) {
       const url = `data:application/json;charset=utf-8,${encodeURIComponent(text)}`;
       runtime.downloads.download({ url, filename, saveAs: true }, () => {
-        if (runtime.runtime.lastError) alert("导出失败：请检查浏览器下载权限。");
+        if (runtime.runtime.lastError) alert(i18n.t("diagExportFailed"));
       });
       return;
     }
     if (!exportFrame.contentWindow?.downloadCases) {
-      alert("导出组件尚未就绪，请稍后重试。");
+      alert(i18n.t("diagExportNotReady"));
       return;
     }
     exportFrame.contentWindow.downloadCases(filename, text);
@@ -174,7 +174,7 @@ function bindControls() {
 async function refresh() {
   const result = await send({ type: "BILAYER_GET_RAW_DIAGNOSTICS", version });
   if (!result?.ok) {
-    elements.liveStatus.textContent = "后台连接失败";
+    elements.liveStatus.textContent = i18n.t("diagLiveFailed");
     elements.liveStatus.dataset.state = "error";
     return;
   }
@@ -185,10 +185,10 @@ async function refresh() {
     version = result.version;
     render();
   }
-  elements.liveStatus.textContent = result.enabled ? "原始采集中" : "未开启采集";
+  elements.liveStatus.textContent = result.enabled ? i18n.t("diagLiveCapturing") : i18n.t("diagLiveOff");
   elements.liveStatus.dataset.state = result.enabled ? "ready" : "idle";
   elements.toggle.dataset.enabled = String(result.enabled);
-  elements.toggle.textContent = result.enabled ? "停止采集" : "开始采集";
+  elements.toggle.textContent = result.enabled ? i18n.t("diagCaptureStop") : i18n.t("diagCaptureStart");
 }
 
 function render() {
@@ -203,10 +203,10 @@ function render() {
     button.setAttribute("aria-current", String(record.id === selectedId));
     button.dataset.state = record.validated ? "success" : record.failure || record.error ? "error" : "loading";
     const status = formatFailureStatus(record);
-    const duration = record.completedAt && record.at ? `${record.completedAt - record.at} ms` : "进行中";
+    const duration = record.completedAt && record.at ? `${record.completedAt - record.at} ms` : i18n.t("diagInProgress");
     const request = record.request ?? {};
     button.title = request.url ?? "";
-    button.innerHTML = `<span class="record-top"><strong>请求 ${escapeHtml(record.id)}</strong><time>${escapeHtml(new Date(record.at ?? Date.now()).toLocaleTimeString())}</time></span><span class="record-model">${escapeHtml(requestModel(request.body))}</span><span class="record-state"><em>${escapeHtml(status)}</em><span>${escapeHtml(duration)}</span></span>`;
+    button.innerHTML = `<span class="record-top"><strong>${escapeHtml(i18n.t("diagRequestNumber", [record.id]))}</strong><time>${escapeHtml(new Date(record.at ?? Date.now()).toLocaleTimeString())}</time></span><span class="record-model">${escapeHtml(requestModel(request.body))}</span><span class="record-state"><em>${escapeHtml(status)}</em><span>${escapeHtml(duration)}</span></span>`;
     button.addEventListener("click", () => {
       selectedId = record.id;
       elements.recordList.querySelectorAll(".record-item").forEach((item) => {
@@ -225,9 +225,9 @@ function render() {
 function requestModel(body) {
   try {
     const model = JSON.parse(body)?.model;
-    return typeof model === "string" && model ? model : "未指定模型";
+    return typeof model === "string" && model ? model : i18n.t("diagModelUnspecified");
   } catch {
-    return "未指定模型";
+    return i18n.t("diagModelUnspecified");
   }
 }
 
@@ -241,21 +241,21 @@ function renderDetail() {
   const response = record.response;
   const status = formatFailureStatus(record);
   elements.detailMeta.textContent = new Date(record.at ?? Date.now()).toLocaleString();
-  elements.detailTitle.textContent = `请求 ${record.id}`;
+  elements.detailTitle.textContent = i18n.t("diagRequestNumber", [record.id]);
   elements.detailResult.textContent = status;
   elements.detailResult.dataset.state = record.validated ? "success" : record.failure || record.error ? "error" : "loading";
-  elements.transportSummary.textContent = `${request.method ?? "请求"} · ${response?.status ?? "等待响应"} · ${record.completedAt && record.at ? `${record.completedAt - record.at} ms` : "进行中"}`;
+  elements.transportSummary.textContent = `${request.method ?? i18n.t("diagRequestGeneric")} · ${response?.status ?? i18n.t("diagAwaitingResponse")} · ${record.completedAt && record.at ? `${record.completedAt - record.at} ms` : i18n.t("diagInProgress")}`;
   elements.requestMeta.replaceChildren(
     meta("URL", request.url ?? ""),
-    meta("方法", request.method ?? ""),
-    meta("请求体字节", byteLength(request.body)),
-    meta("响应状态", response ? `${response.status} ${response.statusText ?? ""}`.trim() : "等待响应"),
-    meta("响应体字节", byteLength(response?.body)),
-    meta("完整耗时", record.completedAt && record.at ? `${record.completedAt - record.at} ms` : "进行中")
+    meta(i18n.t("diagMethod"), request.method ?? ""),
+    meta(i18n.t("diagReqBodyBytes"), byteLength(request.body)),
+    meta(i18n.t("diagResStatus"), response ? `${response.status} ${response.statusText ?? ""}`.trim() : i18n.t("diagAwaitingResponse")),
+    meta(i18n.t("diagResBodyBytes"), byteLength(response?.body)),
+    meta(i18n.t("diagTotalDuration"), record.completedAt && record.at ? `${record.completedAt - record.at} ms` : i18n.t("diagInProgress"))
   );
   elements.headersView.textContent = JSON.stringify({ request: request.headers, response: response?.headers ?? null }, null, 2);
   const body = payloadKind === "request" ? request.body : response?.body;
-  const text = body ?? (record.error ? `请求未收到响应：${record.error}` : "响应尚未返回");
+  const text = body ?? (record.error ? i18n.t("diagRequestFailed", [record.error]) : i18n.t("diagNoResponse"));
   renderPayload(record.id, text);
 }
 
@@ -269,14 +269,14 @@ function renderPayload(recordId, text) {
     elements.jsonPath.hidden = true;
     elements.jsonTools.hidden = true;
     elements.toggleRaw.hidden = true;
-    elements.payloadShape.textContent = "字幕视效 UI";
+    elements.payloadShape.textContent = i18n.t("diagUiShape");
     const record = records.find((item) => item.id === recordId);
     if (record) elements.payloadView.append(renderUiPreview(record));
     return;
   }
 
   elements.toggleRaw.hidden = false;
-  elements.toggleRaw.textContent = showTree ? "格式化文本" : "切换折叠树";
+  elements.toggleRaw.textContent = showTree ? i18n.t("diagFormattedText") : i18n.t("diagToggleRaw");
   elements.toggleRaw.setAttribute("aria-pressed", String(showTree));
 
   const parsed = parseFormattedJson(text);
@@ -293,7 +293,7 @@ function renderPayload(recordId, text) {
     elements.jsonTools.hidden = true;
     searchMatches = [];
     activeMatch = -1;
-    elements.payloadShape.textContent = parsed ? `格式化 JSON · ${describeJson(parsed.value)}` : "原始文本";
+    elements.payloadShape.textContent = parsed ? i18n.t("diagFormattedJson", [describeJson(parsed.value)]) : i18n.t("diagRawText");
 
     const formattedText = parsed ? JSON.stringify(parsed.value, null, 2) : text;
     const raw = document.createElement("pre");
@@ -311,7 +311,7 @@ function getActivePayloadText() {
     const choice = resParsed?.choices?.[0];
     const resData = tryParseJson(choice?.message?.content);
     const items = Array.isArray(resData?.items) ? resData.items : [];
-    return items.map((item) => `[#${item.id}]\n原文: ${item.ruby || item.text}\n译文: ${item.text}`).join("\n\n");
+    return items.map((item) => `[#${item.id}]\n${i18n.t("diagCopySourceLabel", [item.ruby || item.text])}\n${i18n.t("diagCopyTargetLabel", [item.text])}`).join("\n\n");
   }
   const text = payloadKind === "request" ? record.request?.body : record.response?.body;
   if (!text) return "";
@@ -320,8 +320,8 @@ function getActivePayloadText() {
 }
 
 function describeJson(value) {
-  if (Array.isArray(value)) return `JSON 数组 · ${value.length} 项`;
-  if (value !== null && typeof value === "object") return `JSON 对象 · ${Object.keys(value).length} 个字段`;
+  if (Array.isArray(value)) return i18n.t("diagJsonArray", [value.length]);
+  if (value !== null && typeof value === "object") return i18n.t("diagJsonObject", [Object.keys(value).length]);
   return `JSON · ${value === null ? "null" : typeof value}`;
 }
 
@@ -458,20 +458,20 @@ function renderUiPreview(record) {
   const model = reqParsed?.model || requestModel(record.request?.body);
   const duration = record.completedAt && record.at ? `${record.completedAt - record.at} ms` : "-";
   const statusBadge = record.validated
-    ? "校验通过 ✓"
-    : (record.failure ? `校验失败 (${record.failure.reason || record.failure})` : (record.error || "进行中"));
+    ? i18n.t("diagUiValid")
+    : (record.failure ? i18n.t("diagUiFailed", [record.failure.reason || record.failure]) : (record.error || i18n.t("diagInProgress")));
 
   const bannerTitle = document.createElement("div");
   bannerTitle.className = "ui-banner-title";
   bannerTitle.innerHTML = `
-    <strong>双语字幕视效预览</strong>
+    <strong>${i18n.t("diagUiBannerTitle")}</strong>
     <span class="ui-banner-tag">${escapeHtml(sourceLang)} → ${escapeHtml(targetLang)}</span>
     <span class="ui-banner-badge ${record.validated ? 'is-valid' : 'is-error'}">${escapeHtml(statusBadge)}</span>
   `;
 
   const bannerMeta = document.createElement("div");
   bannerMeta.className = "ui-banner-meta";
-  bannerMeta.textContent = `模型: ${model} · 耗时: ${duration} · 共 ${responseItems.length || requestItems.length} 句字幕`;
+  bannerMeta.textContent = i18n.t("diagUiBannerMeta", [model, duration, responseItems.length || requestItems.length]);
 
   banner.append(bannerTitle, bannerMeta);
   container.append(banner);
@@ -483,7 +483,7 @@ function renderUiPreview(record) {
   if (allIds.length === 0) {
     const empty = document.createElement("div");
     empty.className = "ui-empty-msg";
-    empty.textContent = "未能解析出结构化字幕条目。请切换至「响应体」查看报文文本。";
+    empty.textContent = i18n.t("diagUiEmpty");
     list.append(empty);
   } else {
     for (const id of allIds) {
@@ -499,7 +499,7 @@ function renderUiPreview(record) {
       cardHeader.className = "ui-card-header";
       cardHeader.innerHTML = `<span class="ui-card-id">#${escapeHtml(id)}</span>`;
       if (!resItem) {
-        cardHeader.innerHTML += `<span class="ui-card-missing">未返回译文</span>`;
+        cardHeader.innerHTML += `<span class="ui-card-missing">${i18n.t("diagUiMissingTranslation")}</span>`;
       }
       card.append(cardHeader);
 
@@ -529,7 +529,7 @@ function renderUiPreview(record) {
         if (cleanRuby !== sourceText) {
           const srcRow = document.createElement("div");
           srcRow.className = "ui-source-hint";
-          srcRow.textContent = `原文参照: ${sourceText}`;
+          srcRow.textContent = i18n.t("diagUiSourceRef", [sourceText]);
           card.append(srcRow);
         }
       }
@@ -647,10 +647,10 @@ function createJsonNode(value, label, path, depth) {
     bracket.textContent = isArray ? "[" : "{";
     const type = document.createElement("span");
     type.className = "json-type";
-    type.textContent = isArray ? "数组" : "对象";
+    type.textContent = isArray ? i18n.t("diagTreeArray") : i18n.t("diagTreeObject");
     const count = document.createElement("span");
     count.className = "json-count";
-    count.textContent = `${isArray ? value.length : Object.keys(value).length} ${isArray ? "项" : "字段"}`;
+    count.textContent = i18n.t(isArray ? "diagTreeItems" : "diagTreeFields", [isArray ? value.length : Object.keys(value).length]);
     row.append(bracket, type, count);
     const children = document.createElement("div");
     children.className = "json-children";
@@ -670,12 +670,12 @@ function createJsonNode(value, label, path, depth) {
       button.type = "button";
       button.className = "json-string-button";
       button.setAttribute("aria-expanded", "false");
-      button.setAttribute("aria-label", `展开 ${path} 的完整字符串`);
+      button.setAttribute("aria-label", i18n.t("diagExpandString", [path]));
       button.textContent = `${JSON.stringify(value.slice(0, 160))}…`;
       button.addEventListener("click", () => {
         const expanded = button.getAttribute("aria-expanded") === "true";
         button.setAttribute("aria-expanded", String(!expanded));
-        button.setAttribute("aria-label", `${expanded ? "展开" : "收起"} ${path} 的完整字符串`);
+        button.setAttribute("aria-label", i18n.t(expanded ? "diagExpandString" : "diagCollapseString", [path]));
         button.textContent = expanded ? `${JSON.stringify(value.slice(0, 160))}…` : JSON.stringify(value);
       });
       row.append(button);
@@ -699,7 +699,7 @@ function updateSearch() {
   for (const row of searchMatches) row.classList.add("is-match");
   elements.previousMatch.disabled = !searchMatches.length;
   elements.nextMatch.disabled = !searchMatches.length;
-  elements.searchStatus.textContent = !query ? "搜索 JSON" : searchMatches.length ? `1 / ${searchMatches.length}` : "无匹配";
+  elements.searchStatus.textContent = !query ? i18n.t("diagSearchStatus") : searchMatches.length ? `1 / ${searchMatches.length}` : i18n.t("diagSearchNoMatch");
   if (searchMatches.length) revealSearchMatch(false);
 }
 
@@ -777,16 +777,16 @@ function send(message) {
 }
 
 function formatFailureStatus(record) {
-  if (record.validated) return "成功";
+  if (record.validated) return i18n.t("diagStatusSuccess");
   if (record.failure) {
-    const code = record.failure.errorCode || "失败";
+    const code = record.failure.errorCode || i18n.t("diagStatusFailed");
     const reason = record.failure.reason;
     if (reason === "items_mismatch") {
-      return `${code} (条数不符: 期望${record.failure.expectedCount || "?"}条/实收${record.failure.receivedCount ?? 0}条)`;
+      return i18n.t("diagStatusCountMismatch", [code, record.failure.expectedCount || "?", record.failure.receivedCount ?? 0]);
     }
-    if (reason) return `${code} (${reason})`;
+    if (reason) return i18n.t("diagStatusReason", [code, reason]);
     return code;
   }
-  if (record.error) return `失败: ${record.error}`;
-  return record.response ? "已返回，未完成校验" : "请求中";
+  if (record.error) return i18n.t("diagStatusError", [record.error]);
+  return record.response ? i18n.t("diagStatusReturnedUnvalidated") : i18n.t("diagStatusRequesting");
 }

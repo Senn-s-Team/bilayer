@@ -1,0 +1,1070 @@
+{
+  "extName": {
+    "message": "Bilayer"
+  },
+  "extDescription": {
+    "message": "Bilingual subtitles with optional AI translation on streaming video pages."
+  },
+  "extActionTitle": {
+    "message": "Bilayer"
+  },
+  "commonCancel": {
+    "message": "Cancel"
+  },
+  "popupBrand": {
+    "message": "Dual subtitles"
+  },
+  "popupNavAria": {
+    "message": "Settings categories"
+  },
+  "tabSubtitles": {
+    "message": "Subtitles"
+  },
+  "tabAi": {
+    "message": "AI Translation"
+  },
+  "tabProviders": {
+    "message": "Translation Services"
+  },
+  "tabStyles": {
+    "message": "Appearance"
+  },
+  "popupOnboardingLabel": {
+    "message": "Guide"
+  },
+  "popupOnboardingAria": {
+    "message": "Open the setup guide"
+  },
+  "popupDiagnosticsLabel": {
+    "message": "Diagnostics"
+  },
+  "popupDiagnosticsAria": {
+    "message": "Open the diagnostics payload panel"
+  },
+  "popupStatusConnecting": {
+    "message": "Connecting to Netflix"
+  },
+  "popupLocalPreviewStatus": {
+    "message": "UI preview · configure settings inside the Safari extension"
+  },
+  "popupLocalPreviewCredential": {
+    "message": "Configure the key inside the Safari extension"
+  },
+  "popupLocalPreviewTest": {
+    "message": "Test the connection inside the Safari extension"
+  },
+  "sectionSources": {
+    "message": "Subtitle sources"
+  },
+  "sectionPlayback": {
+    "message": "Playback display"
+  },
+  "sectionAiTracks": {
+    "message": "Subtitle track & language"
+  },
+  "sectionAiSchedule": {
+    "message": "Scheduling & context"
+  },
+  "sectionAiPrompt": {
+    "message": "Translation prompt"
+  },
+  "settingEnabledTitle": {
+    "message": "Enable subtitles"
+  },
+  "settingEnabledDesc": {
+    "message": "Show dual subtitles on Netflix playback pages"
+  },
+  "settingEnabledAria": {
+    "message": "Enable subtitle overlay"
+  },
+  "settingHideNativeTitle": {
+    "message": "Hide native subtitles"
+  },
+  "settingHideNativeDesc": {
+    "message": "Replace Netflix subtitles with extension subtitles"
+  },
+  "settingTimingTitle": {
+    "message": "Timing offset"
+  },
+  "settingTimingDesc": {
+    "message": "Positive delays, negative advances"
+  },
+  "settingTimingAria": {
+    "message": "Subtitle timing offset"
+  },
+  "modeGroupAria": {
+    "message": "Subtitle mode"
+  },
+  "modeRecommended": {
+    "message": "Recommended"
+  },
+  "modeNativeTitle": {
+    "message": "Dual native subtitles"
+  },
+  "modeNativeDesc": {
+    "message": "Overlay Netflix's official bilingual tracks: fast, stable, zero extra cost."
+  },
+  "modeAiTitle": {
+    "message": "AI translation"
+  },
+  "modeAiDesc": {
+    "message": "An LLM generates natural spoken translations from context, with pre-translation and model switching."
+  },
+  "modeDescriptionNative": {
+    "message": "Both lines show Netflix native subtitles."
+  },
+  "modeDescriptionNativeSwitch": {
+    "message": "Both lines show Netflix native subtitles; switching modes keeps your tracks and translation settings."
+  },
+  "modeDescriptionAi": {
+    "message": "One line keeps the Netflix subtitle; the other is generated in real time by the selected AI model."
+  },
+  "modeConfigureAi": {
+    "message": "Configure AI translation →"
+  },
+  "trackGridAria": {
+    "message": "Subtitle tracks"
+  },
+  "trackPrimaryLabel": {
+    "message": "First line source"
+  },
+  "trackSecondaryLabel": {
+    "message": "Second line source"
+  },
+  "trackPrimaryAi": {
+    "message": "First line · AI translation"
+  },
+  "trackPrimaryNative": {
+    "message": "First line · Netflix subtitle"
+  },
+  "trackSecondaryAi": {
+    "message": "Second line · AI translation"
+  },
+  "trackSecondaryNative": {
+    "message": "Second line · Netflix subtitle"
+  },
+  "trackSelectAi": {
+    "message": "AI translation"
+  },
+  "trackSelectNone": {
+    "message": "Hidden"
+  },
+  "trackSelectSourcePlaceholder": {
+    "message": "Choose a source-language track"
+  },
+  "trackSelectRuntime": {
+    "message": "Choose a track during playback"
+  },
+  "trackSelectSourceRuntime": {
+    "message": "Choose a source track during playback"
+  },
+  "actionSwapTracks": {
+    "message": "Swap the two subtitle lines and styles"
+  },
+  "actionReloadTracks": {
+    "message": "Reload subtitles"
+  },
+  "statusNotSelected": {
+    "message": "Not selected"
+  },
+  "statusNotConnected": {
+    "message": "Not connected to a Netflix page"
+  },
+  "statusNotConnectedHint": {
+    "message": "Not connected to a Netflix page; open the popup from the video window"
+  },
+  "statusOpenMovie": {
+    "message": "Open a video to choose subtitles"
+  },
+  "statusWaitingPlayback": {
+    "message": "Waiting for playback"
+  },
+  "statusReading": {
+    "message": "Reading subtitles"
+  },
+  "statusReloading": {
+    "message": "Reloading subtitles"
+  },
+  "statusWaitingTracks": {
+    "message": "Waiting for subtitle tracks"
+  },
+  "statusLoading": {
+    "message": "Loading"
+  },
+  "statusLoadedCount": {
+    "message": "Loaded $1"
+  },
+  "statusDetected": {
+    "message": "Detected $1 subtitles"
+  },
+  "statusDetectedWithError": {
+    "message": "Detected $1, but the native subtitle failed to load"
+  },
+  "statusAiWaitingSource": {
+    "message": "AI waiting for source subtitle"
+  },
+  "statusAiTranslated": {
+    "message": "AI translated $1"
+  },
+  "statusAiTranslating": {
+    "message": "AI translating · $1"
+  },
+  "statusAiFailed": {
+    "message": "AI translation failed: $1"
+  },
+  "statusAiCheckSettings": {
+    "message": "Check your key and settings"
+  },
+  "errorNoSubtitleText": {
+    "message": "Track has no text subtitles"
+  },
+  "errorDownloadFailed": {
+    "message": "Subtitle download failed"
+  },
+  "errorTimeout": {
+    "message": "Subtitle read timed out"
+  },
+  "errorLoadFailed": {
+    "message": "Subtitle load failed"
+  },
+  "netflixNotResponding": {
+    "message": "The Netflix page is not responding; refresh the video and check the Web App extension permission"
+  },
+  "netflixNotFound": {
+    "message": "No Netflix playback page found; check the Web App extension permission"
+  },
+  "aiSourceTrack": {
+    "message": "AI source subtitle track"
+  },
+  "aiTargetLanguage": {
+    "message": "Target language"
+  },
+  "aiPrefetchCount": {
+    "message": "Pre-translate subtitle groups"
+  },
+  "aiContextCount": {
+    "message": "Context subtitles per side"
+  },
+  "aiScheduleHelp": {
+    "message": "Pre-translation covers up to 10 groups within the next 60 seconds; 0 translates only the current line. Context defaults to 2 lines per side, used only for disambiguation."
+  },
+  "aiStyleGuide": {
+    "message": "Global style guide (not tied to one service)"
+  },
+  "aiStyleGuidePlaceholder": {
+    "message": "Keep the meaning and character tone, in natural spoken language."
+  },
+  "aiRubyTitle": {
+    "message": "Japanese subtitle readings (furigana)"
+  },
+  "aiRubyDesc": {
+    "message": "Add hiragana readings to kanji in the subtitles"
+  },
+  "aiRubyAria": {
+    "message": "Japanese subtitle readings"
+  },
+  "aiRubyTitleTarget": {
+    "message": "Japanese translation readings (furigana)"
+  },
+  "aiRubyDescTarget": {
+    "message": "Add hiragana readings to kanji in the AI-generated Japanese translation"
+  },
+  "aiRubyTitleSource": {
+    "message": "Japanese source subtitle readings (furigana)"
+  },
+  "aiRubyDescSource": {
+    "message": "When the source is Japanese, add hiragana readings to kanji in the source subtitles"
+  },
+  "aiConfigureProviders": {
+    "message": "Configure translation services →"
+  },
+  "providerConfigured": {
+    "message": "Configured services"
+  },
+  "providerListAria": {
+    "message": "Translation service list"
+  },
+  "providerAdd": {
+    "message": "Add service"
+  },
+  "providerDelete": {
+    "message": "Delete current service"
+  },
+  "providerName": {
+    "message": "Service name"
+  },
+  "providerNamePlaceholder": {
+    "message": "e.g. DeepSeek"
+  },
+  "providerEndpoint": {
+    "message": "Compatible endpoint (leave blank for OpenAI)"
+  },
+  "providerModel": {
+    "message": "Model ID"
+  },
+  "providerModelSelect": {
+    "message": "Select model"
+  },
+  "providerModelFetch": {
+    "message": "Fetch models"
+  },
+  "providerModelFilter": {
+    "message": "Filter model IDs"
+  },
+  "providerModelFilterAria": {
+    "message": "Filter models"
+  },
+  "providerEndpointNotice": {
+    "message": "Custom services require domain permission; subtitle text and your key are sent to that service."
+  },
+  "providerCredential": {
+    "message": "API key for this service"
+  },
+  "providerCredentialPlaceholder": {
+    "message": "Enter a new key, then save"
+  },
+  "providerCredentialChecking": {
+    "message": "Checking key"
+  },
+  "providerCredentialConfigured": {
+    "message": "Key configured"
+  },
+  "providerCredentialMissing": {
+    "message": "No key configured"
+  },
+  "providerCredentialSave": {
+    "message": "Save key"
+  },
+  "providerCredentialDelete": {
+    "message": "Delete key"
+  },
+  "providerConsent": {
+    "message": "With AI enabled, source-track subtitles and neighboring lines are sent to the selected service; using your own API key may incur charges."
+  },
+  "providerTest": {
+    "message": "Test connection"
+  },
+  "providerTesting": {
+    "message": "Testing…"
+  },
+  "providerNewDraft": {
+    "message": "Add translation service"
+  },
+  "providerPresetTitle": {
+    "message": "Choose a preset"
+  },
+  "providerPresetAria": {
+    "message": "Service presets"
+  },
+  "providerNewDraftNamePlaceholder": {
+    "message": "Service name"
+  },
+  "providerNewDraftEndpointPlaceholder": {
+    "message": "Leave blank for the official OpenAI API"
+  },
+  "providerNewDraftKey": {
+    "message": "API key"
+  },
+  "providerNewDraftSave": {
+    "message": "Save key and add"
+  },
+  "providerUnnamed": {
+    "message": "Unnamed service"
+  },
+  "providerNewName": {
+    "message": "New service"
+  },
+  "providerSavedHost": {
+    "message": "Saved $1; grant domain permission before use"
+  },
+  "providerUseOpenAI": {
+    "message": "Using the official OpenAI API"
+  },
+  "providerModelsFetching": {
+    "message": "Fetching model list…"
+  },
+  "providerModelsNeedKey": {
+    "message": "Enter an API key first"
+  },
+  "providerModelsFetched": {
+    "message": "Fetched $1 models; choose one from the list"
+  },
+  "providerModelsFailed": {
+    "message": "Failed: $1; you can retry fetching models"
+  },
+  "providerModelsFailedShort": {
+    "message": "Failed to fetch models"
+  },
+  "providerEndpointNeedHttps": {
+    "message": "Enter an HTTPS base URL (/v1/chat/completions is appended)"
+  },
+  "providerEndpointNoPermissionApi": {
+    "message": "This browser cannot request domain permission for this service"
+  },
+  "providerEndpointRequesting": {
+    "message": "Requesting service domain permission"
+  },
+  "providerEndpointDenied": {
+    "message": "Domain not authorized; subtitles and the key will not be sent"
+  },
+  "providerEndpointGranted": {
+    "message": "Authorized $1; using $2"
+  },
+  "providerJsonSchema": {
+    "message": "JSON Schema supported (strict mode)"
+  },
+  "providerJsonObject": {
+    "message": "JSON Object mode supported"
+  },
+  "providerJsonNone": {
+    "message": "⚠️ No structured JSON support: parsing errors or missing AI subtitles may occur"
+  },
+  "providerConnectSchema": {
+    "message": "Connected · JSON Schema supported (strict mode)"
+  },
+  "providerConnectObject": {
+    "message": "Connected · JSON Object mode supported"
+  },
+  "providerConnectNone": {
+    "message": "Connected, but the model lacks structured JSON support. Parsing errors may drop AI subtitles"
+  },
+  "providerFailPrefix": {
+    "message": "Failed: $1"
+  },
+  "providerFailGeneric": {
+    "message": "Request failed"
+  },
+  "providerErrorAuth": {
+    "message": "Invalid API key"
+  },
+  "providerErrorRateLimit": {
+    "message": "Too many requests"
+  },
+  "providerErrorQuota": {
+    "message": "Insufficient quota"
+  },
+  "providerErrorPermissionDenied": {
+    "message": "Service domain not authorized"
+  },
+  "providerErrorConfiguration": {
+    "message": "Enter a valid model, endpoint, and key first"
+  },
+  "providerErrorUnavailable": {
+    "message": "Service unreachable"
+  },
+  "providerErrorInvalidResponse": {
+    "message": "Invalid service response"
+  },
+  "statusErrorAuth": {
+    "message": "Invalid API key"
+  },
+  "statusErrorQuota": {
+    "message": "API quota exhausted"
+  },
+  "statusErrorUnavailable": {
+    "message": "Compatible service network unavailable"
+  },
+  "statusErrorConfiguration": {
+    "message": "Check the endpoint, key, model, and settings"
+  },
+  "statusErrorPermissionDenied": {
+    "message": "Compatible service domain not authorized"
+  },
+  "statusErrorSourceUnavailable": {
+    "message": "Choose an AI source subtitle track"
+  },
+  "statusErrorInitialTimeout": {
+    "message": "First batch timed out; continuing with the source text"
+  },
+  "statusErrorBudgetExceeded": {
+    "message": "Translation budget exhausted for this episode"
+  },
+  "providerConnectionFailed": {
+    "message": "Connection failed"
+  },
+  "providerValidEndpoint": {
+    "message": "Enter a valid HTTPS base URL endpoint"
+  },
+  "providerNeedKeyToList": {
+    "message": "Enter an API key below to fetch the model list"
+  },
+  "providerEndpointDeniedModels": {
+    "message": "Endpoint domain not authorized; cannot fetch models"
+  },
+  "providerKeyInvalidModels": {
+    "message": "Invalid API key; cannot fetch models"
+  },
+  "providerModelsListFailed": {
+    "message": "Failed to fetch models; check the endpoint and network"
+  },
+  "providerFetchingShort": {
+    "message": "Fetching…"
+  },
+  "providerLocalNoKey": {
+    "message": "Local services need no key; leave blank"
+  },
+  "providerTestIdle": {
+    "message": "Click the button on the right to test the endpoint connection"
+  },
+  "providerTestRunning": {
+    "message": "Testing endpoint connection…"
+  },
+  "providerTestDenied": {
+    "message": "Failed: service domain permission not granted"
+  },
+  "providerTestBadUrl": {
+    "message": "Failed: invalid endpoint URL"
+  },
+  "providerTestNeedKey": {
+    "message": "Enter a valid API key before testing"
+  },
+  "providerTestOkSchema": {
+    "message": "Connected · JSON Schema strict mode supported"
+  },
+  "providerTestOkObject": {
+    "message": "Connected · JSON Object mode supported"
+  },
+  "providerTestOkNone": {
+    "message": "Connected, but the model lacks structured JSON support; parsing errors may hide AI subtitles"
+  },
+  "providerTestMockOk": {
+    "message": "Connected · 142 ms latency · model responded"
+  },
+  "providerTestServiceName": {
+    "message": "Test service"
+  },
+  "providerSavedKeyPlaceholder": {
+    "message": "Existing key saved (enter a new one to replace)"
+  },
+  "providerEnterKeyPlaceholder": {
+    "message": "Enter this service's API key"
+  },
+  "presetOpenAI": {
+    "message": "OpenAI (official)"
+  },
+  "presetSiliconFlow": {
+    "message": "SiliconFlow"
+  },
+  "presetOllama": {
+    "message": "Ollama (local)"
+  },
+  "presetCustom": {
+    "message": "Custom"
+  },
+  "presetCustomEndpoint": {
+    "message": "Custom endpoint"
+  },
+  "styleRoleAria": {
+    "message": "Subtitle being edited"
+  },
+  "stylePrimary": {
+    "message": "First subtitle"
+  },
+  "styleSecondary": {
+    "message": "Second subtitle"
+  },
+  "styleReset": {
+    "message": "Reset to defaults"
+  },
+  "styleResetOnboarding": {
+    "message": "Reset this subtitle to its default look"
+  },
+  "styleResetShort": {
+    "message": "Reset"
+  },
+  "stylePreview": {
+    "message": "Screen preview"
+  },
+  "styleLayoutTitle": {
+    "message": "Position & size"
+  },
+  "styleLayoutAria": {
+    "message": "Dual subtitle layout presets"
+  },
+  "styleLayoutOnboardingAria": {
+    "message": "Layout presets"
+  },
+  "styleLayoutCompact": {
+    "message": "Compact"
+  },
+  "styleLayoutBalanced": {
+    "message": "Balanced"
+  },
+  "styleLayoutSpacious": {
+    "message": "Spacious"
+  },
+  "styleLayoutFree": {
+    "message": "Free"
+  },
+  "styleFontSize": {
+    "message": "Font size"
+  },
+  "styleVerticalOffset": {
+    "message": "Free position"
+  },
+  "styleVerticalOffsetOnboarding": {
+    "message": "Free vertical position"
+  },
+  "styleTextTitle": {
+    "message": "Text"
+  },
+  "styleFontFamily": {
+    "message": "Font"
+  },
+  "styleFontSystem": {
+    "message": "System"
+  },
+  "styleFontSans": {
+    "message": "Sans-serif"
+  },
+  "styleFontSerif": {
+    "message": "Serif"
+  },
+  "styleFontRounded": {
+    "message": "Rounded"
+  },
+  "styleFontWeight": {
+    "message": "Weight"
+  },
+  "styleWeight500": {
+    "message": "Medium"
+  },
+  "styleWeight600": {
+    "message": "Semibold"
+  },
+  "styleWeight700": {
+    "message": "Bold"
+  },
+  "styleWeight800": {
+    "message": "Extra bold"
+  },
+  "styleLineHeight": {
+    "message": "Line height"
+  },
+  "styleMaxWidth": {
+    "message": "Max width"
+  },
+  "styleTextColor": {
+    "message": "Text color"
+  },
+  "styleTextOpacity": {
+    "message": "Text opacity"
+  },
+  "styleEffectsTitle": {
+    "message": "Outline & background"
+  },
+  "styleStrokeColor": {
+    "message": "Outline color"
+  },
+  "styleStrokeWidth": {
+    "message": "Outline width"
+  },
+  "styleBackgroundColor": {
+    "message": "Background color"
+  },
+  "styleBackgroundOpacity": {
+    "message": "Background opacity"
+  },
+  "langZhHans": {
+    "message": "Simplified Chinese"
+  },
+  "langZhHant": {
+    "message": "Traditional Chinese"
+  },
+  "langJa": {
+    "message": "Japanese"
+  },
+  "langKo": {
+    "message": "Korean"
+  },
+  "langEn": {
+    "message": "English"
+  },
+  "langEs": {
+    "message": "Spanish"
+  },
+  "langFr": {
+    "message": "French"
+  },
+  "langDe": {
+    "message": "German"
+  },
+  "langIt": {
+    "message": "Italian"
+  },
+  "langPtBr": {
+    "message": "Portuguese (Brazil)"
+  },
+  "langRu": {
+    "message": "Russian"
+  },
+  "langAr": {
+    "message": "Arabic"
+  },
+  "langHi": {
+    "message": "Hindi"
+  },
+  "sampleNative": {
+    "message": "Never tell me the odds."
+  },
+  "sampleAi": {
+    "message": "Don't tell me the odds."
+  },
+  "onboardingTitle": {
+    "message": "Bilayer · Setup guide"
+  },
+  "onboardingBrand": {
+    "message": "Bilayer Setup Wizard"
+  },
+  "onboardingStepperAria": {
+    "message": "Setup steps"
+  },
+  "onboardingStepEnv": {
+    "message": "1. Environment"
+  },
+  "onboardingStepMode": {
+    "message": "2. Mode"
+  },
+  "onboardingStepVisual": {
+    "message": "3. Look"
+  },
+  "onboardingEnvTitle": {
+    "message": "Check Netflix readiness"
+  },
+  "onboardingEnvSubtitle": {
+    "message": "The extension needs Safari permission to run on netflix.com; start using it once a video is playing."
+  },
+  "onboardingEnvReady": {
+    "message": "Netflix playback page detected; subtitle engine ready"
+  },
+  "onboardingEnvConnected": {
+    "message": "Connected to a Netflix playback page; subtitle engine ready"
+  },
+  "onboardingEnvDetected": {
+    "message": "Netflix page detected; start a video to get ready"
+  },
+  "onboardingEnvMissing": {
+    "message": "No Netflix page detected; use the button to open one"
+  },
+  "onboardingOpenNetflix": {
+    "message": "Open Netflix ↗"
+  },
+  "onboardingPermissionTitle": {
+    "message": "Safari permission setup"
+  },
+  "onboardingPermissionDesc": {
+    "message": "In Safari Settings → Extensions, choose “Always Allow on Every Website” or “Always Allow on netflix.com”."
+  },
+  "onboardingWebappTitle": {
+    "message": "Standalone Web App users"
+  },
+  "onboardingWebappDesc": {
+    "message": "If you use the Netflix app added to the Dock, enable the extension separately from that window's settings menu."
+  },
+  "onboardingModeTitle": {
+    "message": "Choose a dual subtitle mode"
+  },
+  "onboardingModeSubtitle": {
+    "message": "Dual native suits titles with official multi-language tracks; AI translation produces tailored spoken translation from the original audio."
+  },
+  "onboardingModeNativeDesc": {
+    "message": "Fast and stable: directly overlays Netflix's official second-language subtitle track, with zero wait and zero extra cost."
+  },
+  "onboardingModeAiDesc": {
+    "message": "Connects to a large language model to generate vivid spoken translations from the film's context, with pre-translation and model switching."
+  },
+  "onboardingPresetTitle": {
+    "message": "Common service presets"
+  },
+  "onboardingPresetNote": {
+    "message": "Your key is stored only in local Safari storage"
+  },
+  "onboardingKeyToggle": {
+    "message": "Toggle plain text"
+  },
+  "onboardingBaseUrl": {
+    "message": "Base URL endpoint"
+  },
+  "onboardingVisualTitle": {
+    "message": "Live look calibration"
+  },
+  "onboardingVisualSubtitle": {
+    "message": "Both subtitle lines are ready; preview on-screen stacking and typography below."
+  },
+  "onboardingVisualSubtitleAi": {
+    "message": "AI translation mode is ready; while the main subtitle plays, the second line is generated in real time by the selected model."
+  },
+  "onboardingVisualSubtitleNative": {
+    "message": "Dual native subtitles are ready; both lines are driven by Netflix's official audio tracks."
+  },
+  "onboardingAiStream": {
+    "message": "AI live translation stream"
+  },
+  "onboardingBack": {
+    "message": "Back"
+  },
+  "onboardingSkip": {
+    "message": "Skip guide"
+  },
+  "onboardingNext": {
+    "message": "Next"
+  },
+  "onboardingFinish": {
+    "message": "Finish and start watching"
+  },
+  "onboardingSaved": {
+    "message": "Ready ✓"
+  },
+  "onboardingSkipped": {
+    "message": "Skipped..."
+  },
+  "diagTitle": {
+    "message": "Raw translation payloads · Bilayer"
+  },
+  "diagHeading": {
+    "message": "Raw translation payloads"
+  },
+  "diagSubtitle": {
+    "message": "Last 20 requests · extension memory only · payloads contain subtitle text"
+  },
+  "diagLiveConnecting": {
+    "message": "Connecting to background"
+  },
+  "diagLiveFailed": {
+    "message": "Background connection failed"
+  },
+  "diagLiveCapturing": {
+    "message": "Capturing raw payloads"
+  },
+  "diagLiveOff": {
+    "message": "Capture off"
+  },
+  "diagCaptureStop": {
+    "message": "Stop capture"
+  },
+  "diagCaptureStart": {
+    "message": "Start capture"
+  },
+  "diagRefresh": {
+    "message": "Refresh"
+  },
+  "diagExport": {
+    "message": "Export cases to disk ↓"
+  },
+  "diagExportTitle": {
+    "message": "Export all captured payloads to disk as cases"
+  },
+  "diagClear": {
+    "message": "Clear records"
+  },
+  "diagGridAria": {
+    "message": "Raw translation payloads"
+  },
+  "diagRequests": {
+    "message": "Requests"
+  },
+  "diagRecordListAria": {
+    "message": "Translation request records"
+  },
+  "diagEmpty": {
+    "message": "Waiting for translation requests. Keep this page open and play subtitles; records appear here automatically."
+  },
+  "diagDetailEmptyTitle": {
+    "message": "Waiting for the first translation request"
+  },
+  "diagDetailEmptyDesc": {
+    "message": "Keep this page open; enable AI translation on the Netflix page and play subtitles."
+  },
+  "diagTransport": {
+    "message": "Connection info"
+  },
+  "diagHeaders": {
+    "message": "Request / response headers (Authorization removed)"
+  },
+  "diagTabResponse": {
+    "message": "Response"
+  },
+  "diagTabRequest": {
+    "message": "Request"
+  },
+  "diagTabUi": {
+    "message": "Render as UI"
+  },
+  "diagCopy": {
+    "message": "Copy payload"
+  },
+  "diagCopied": {
+    "message": "Copied ✓"
+  },
+  "diagCopyFailed": {
+    "message": "Copy failed"
+  },
+  "diagToggleRaw": {
+    "message": "Toggle tree view"
+  },
+  "diagFormattedText": {
+    "message": "Formatted text"
+  },
+  "diagSearchPlaceholder": {
+    "message": "Search keys, values, or paths"
+  },
+  "diagSearchAria": {
+    "message": "Search JSON keys, values, or paths"
+  },
+  "diagSearchStatus": {
+    "message": "Search JSON"
+  },
+  "diagSearchNoMatch": {
+    "message": "No matches"
+  },
+  "diagPrevMatch": {
+    "message": "Previous match"
+  },
+  "diagNextMatch": {
+    "message": "Next match"
+  },
+  "diagExpandAll": {
+    "message": "Expand all"
+  },
+  "diagCollapse": {
+    "message": "Collapse levels"
+  },
+  "diagShortcuts": {
+    "message": "↑↓ navigate · ←→ collapse/expand"
+  },
+  "diagPayloadAria": {
+    "message": "Payload content"
+  },
+  "diagRequestNumber": {
+    "message": "Request $1"
+  },
+  "diagInProgress": {
+    "message": "In progress"
+  },
+  "diagModelUnspecified": {
+    "message": "No model specified"
+  },
+  "diagRequestGeneric": {
+    "message": "Request"
+  },
+  "diagAwaitingResponse": {
+    "message": "Awaiting response"
+  },
+  "diagMethod": {
+    "message": "Method"
+  },
+  "diagReqBodyBytes": {
+    "message": "Request body bytes"
+  },
+  "diagResStatus": {
+    "message": "Response status"
+  },
+  "diagResBodyBytes": {
+    "message": "Response body bytes"
+  },
+  "diagTotalDuration": {
+    "message": "Total duration"
+  },
+  "diagNoResponse": {
+    "message": "Response not returned yet"
+  },
+  "diagRequestFailed": {
+    "message": "No response received: $1"
+  },
+  "diagUiShape": {
+    "message": "Subtitle UI preview"
+  },
+  "diagFormattedJson": {
+    "message": "Formatted JSON · $1"
+  },
+  "diagRawText": {
+    "message": "Raw text"
+  },
+  "diagJsonArray": {
+    "message": "JSON array · $1 items"
+  },
+  "diagJsonObject": {
+    "message": "JSON object · $1 fields"
+  },
+  "diagUiBannerTitle": {
+    "message": "Bilingual subtitle UI preview"
+  },
+  "diagUiValid": {
+    "message": "Validated ✓"
+  },
+  "diagUiFailed": {
+    "message": "Validation failed ($1)"
+  },
+  "diagUiBannerMeta": {
+    "message": "Model: $1 · Duration: $2 · $3 subtitle lines"
+  },
+  "diagUiEmpty": {
+    "message": "No structured subtitle items could be parsed. Switch to “Response” to view the raw payload text."
+  },
+  "diagUiMissingTranslation": {
+    "message": "No translation returned"
+  },
+  "diagUiSourceRef": {
+    "message": "Source: $1"
+  },
+  "diagTreeArray": {
+    "message": "array"
+  },
+  "diagTreeObject": {
+    "message": "object"
+  },
+  "diagTreeItems": {
+    "message": "$1 items"
+  },
+  "diagTreeFields": {
+    "message": "$1 fields"
+  },
+  "diagExpandString": {
+    "message": "Expand the full string at $1"
+  },
+  "diagCollapseString": {
+    "message": "Collapse the full string at $1"
+  },
+  "diagStatusSuccess": {
+    "message": "Success"
+  },
+  "diagStatusFailed": {
+    "message": "Failed"
+  },
+  "diagStatusCountMismatch": {
+    "message": "$1 (count mismatch: expected $2, received $3)"
+  },
+  "diagStatusReason": {
+    "message": "$1 ($2)"
+  },
+  "diagStatusError": {
+    "message": "Failed: $1"
+  },
+  "diagStatusReturnedUnvalidated": {
+    "message": "Returned, not validated"
+  },
+  "diagStatusRequesting": {
+    "message": "Requesting"
+  },
+  "diagLocalPreview": {
+    "message": "UI preview · sample data"
+  },
+  "diagExportEmpty": {
+    "message": "There are no payload records to export. Play subtitles on Netflix for a moment, then export."
+  },
+  "diagExportFailed": {
+    "message": "Export failed: check the browser download permission."
+  },
+  "diagExportNotReady": {
+    "message": "The export component is not ready yet; try again shortly."
+  },
+  "diagSampleSystemPrompt": {
+    "message": "Keep subtitles natural and concise."
+  },
+  "diagCopySourceLabel": {
+    "message": "Source: $1"
+  },
+  "diagCopyTargetLabel": {
+    "message": "Translation: $1"
+  }
+}

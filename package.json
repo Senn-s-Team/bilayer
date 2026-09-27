@@ -29,7 +29,6 @@
     "test": "node --test scripts/*.test.mjs",
     "safari:project": "bash scripts/create-safari-project.sh",
     "package:dmg": "bash scripts/package-dmg.sh",
-    "update:app": "bash scripts/update-app.sh",
     "install:app": "bash scripts/install-app.sh"
   }
 }
