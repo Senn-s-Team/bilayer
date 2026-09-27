@@ -251,6 +251,7 @@ function createLine(cue) {
 function renderRubyText(container, rawText) {
   let text = rawText.replace(/<ruby>\s*([^<]+?)\s*<rt>\s*([^<]+?)\s*<\/rt>\s*<\/ruby>/gi, "{$1|$2}");
   text = text.replace(/\{([一-龯々〆ヵヶ]+)[(（]([ぁ-ん]+)[)）]\}/g, "{$1|$2}");
+  text = text.replace(/\{([^|{}]+)\|([^|{}]*[一-龯々〆ヵヶ][^|{}]*)\}/g, "$1$2");
   text = text.replace(/\{([^{}|]+)\}/g, "$1");
   const rubyPattern = /\{([^|{}]+)\|([^|{}]+)\}/g;
   let lastIndex = 0;

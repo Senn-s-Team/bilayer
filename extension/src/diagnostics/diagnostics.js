@@ -505,8 +505,8 @@ function renderUiPreview(record) {
 function renderRubyTextTo(container, rawText) {
   let text = String(rawText ?? "").replace(/<ruby>\s*([^<]+?)\s*<rt>\s*([^<]+?)\s*<\/rt>\s*<\/ruby>/gi, "{$1|$2}");
   text = text.replace(/\{([一-龯々〆ヵヶ]+)[(（]([ぁ-ん]+)[)）]\}/g, "{$1|$2}");
+  text = text.replace(/\{([^|{}]+)\|([^|{}]*[一-龯々〆ヵヶ][^|{}]*)\}/g, "$1$2");
   text = text.replace(/\{([^{}|]+)\}/g, "$1");
-  const rubyPattern = /\{([^|{}]+)\|([^|{}]+)\}/g;
   let lastIndex = 0;
   let match;
 

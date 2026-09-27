@@ -112,3 +112,20 @@ test("cues with orphan braces without vertical bar are stripped safely", () => {
   assert.equal(line.children[0].children[0].tagName, "RT");
   assert.equal(line.children[0].children[0].textContent, "わたし");
 });
+
+test("cues with invalid kanji in furigana position like {1|人} are healed to plain text", () => {
+  const { overlay, primary } = createOverlay();
+  const badCue = {
+    text: "そしてもう1人 前歴のない指紋が付着していました",
+    ruby: "そしてもう{1|人} {前歴|ぜんれき}のない{指紋|しもん}が{付着|ふちゃく}していました"
+  };
+  overlay.render({ primaryCues: [badCue], secondaryCues: [] });
+  const line = primary.children[0];
+  assert.ok(line);
+  assert.equal(line.textContent.includes("1人"), true);
+  assert.equal(line.textContent.includes("1人 前歴ぜんれきのない指紋しもんが付着ふちゃくしていました"), true);
+  assert.equal(line.children.length, 3);
+  assert.equal(line.children[0].textContent, "前歴ぜんれき");
+  assert.equal(line.children[1].textContent, "指紋しもん");
+  assert.equal(line.children[2].textContent, "付着ふちゃく");
+});
