@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node.js test/vm 与真实 overlay.js，模拟 Shadow DOM 中的字幕节点
- * [OUTPUT]: 验证相同字幕（含 ruby 注音）不重复替换节点、ruby/rt 元素生成、文字变化与字幕消失仍正确更新画面
+ * [OUTPUT]: 验证相同字幕（含 ruby/readings 注音）不重复替换节点、ruby/rt 元素生成、文字/读音变化与字幕消失更新、最长前缀匹配与外观布局参数生效
  * [POS]: scripts 的字幕呈现回归测试，覆盖播放帧与真实 DOM 更新边界
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -47,15 +47,22 @@ function createOverlay() {
         };
         return el;
       }
-      host = { id: "", style: { setProperty() {} }, dataset: {}, isConnected: false,
-        attachShadow() { return root; } };
+      host = {
+        id: "",
+        style: {
+          setProperty(key, value) { this[key] = value; }
+        },
+        dataset: {},
+        isConnected: false,
+        attachShadow() { return root; }
+      };
       return host;
     },
     documentElement: { append(node) { node.isConnected = true; } }
   };
   const window = {};
   runInNewContext(source, { window, document }, { filename: "overlay.js" });
-  return { overlay: window.NetflixDualSubtitles.createSubtitleOverlay(), primary, secondary };
+  return { overlay: window.NetflixDualSubtitles.createSubtitleOverlay(), primary, secondary, host };
 }
 
 test("unchanged subtitles retain their DOM nodes across playback frames", () => {
@@ -146,4 +153,99 @@ test("cues with readings map preserve all punctuation and annotate kanji words",
   assert.equal(line.children[0].children[0].textContent, "こえ");
   assert.equal(line.children[1].children[0].textContent, "ひとり");
   assert.equal(line.children[2].children[0].textContent, "ぜんれき");
+});
+
+test("readings map matches longest kanji word first and ignores unused keys", () => {
+  const { overlay, primary } = createOverlay();
+  const cue = {
+    text: "長野県警と東京都",
+    readings: { "県警": "けんけい", "長野県警": "ながのけんけい", "東京": "とうきょう", "未使用": "みしよう" }
+  };
+  overlay.render({ primaryCues: [cue] });
+  const line = primary.children[0];
+  assert.equal(line.children.length, 2);
+  assert.equal(line.children[0].textContent, "長野県警ながのけんけい");
+  assert.equal(line.children[1].textContent, "東京とうきょう");
+  assert.equal(line.textContent, "長野県警ながのけんけいと東京とうきょう都");
+});
+
+test("cues with readings retain DOM nodes across frames and update when readings change", () => {
+  const { overlay, primary } = createOverlay();
+  const cue1 = { text: "警察", readings: { "警察": "けいさつ" } };
+  overlay.render({ primaryCues: [cue1] });
+  const original = primary.children[0];
+
+  overlay.render({ primaryCues: [{ text: "警察", readings: { "警察": "けいさつ" } }] });
+  assert.equal(primary.children[0], original);
+  assert.equal(primary.replacements, 1);
+
+  overlay.render({ primaryCues: [{ text: "警察", readings: { "警察": "ポリ" } }] });
+  assert.notEqual(primary.children[0], original);
+  assert.equal(primary.children[0].children[0].children[0].textContent, "ポリ");
+  assert.equal(primary.replacements, 2);
+});
+
+test("multiple concurrent cues render as multiple line elements and manage visibility", () => {
+  const { overlay, primary } = createOverlay();
+  overlay.render({ primaryCues: [{ text: "Line 1" }, { text: "Line 2" }] });
+  assert.equal(primary.children.length, 2);
+  assert.equal(primary.children[0].textContent, "Line 1");
+  assert.equal(primary.children[1].textContent, "Line 2");
+  assert.equal(primary.hidden, false);
+
+  overlay.render({ primaryCues: [] });
+  assert.equal(primary.children.length, 0);
+  assert.equal(primary.hidden, true);
+});
+
+test("applySettings configures host layout, vertical offsets and role styles with opacity", () => {
+  const { overlay, host } = createOverlay();
+  overlay.applySettings({
+    subtitleLayoutPreset: "free",
+    primaryVerticalOffset: 30,
+    secondaryVerticalOffset: 15,
+    primaryFontSize: 32,
+    primaryTextColor: "#ff0000",
+    primaryTextOpacity: 80,
+    primaryBackgroundColor: "#fff",
+    primaryBackgroundOpacity: 50,
+    primaryFontFamily: "rounded",
+    primaryFontWeight: 800,
+    primaryLineHeight: 1.4,
+    primaryStrokeWidth: 2,
+    primaryStrokeColor: "#000000",
+    primaryMaxWidth: 80,
+    secondaryFontSize: 24,
+    secondaryTextColor: "#ffffff",
+    secondaryTextOpacity: 100,
+    secondaryBackgroundColor: "#000000",
+    secondaryBackgroundOpacity: 64,
+    secondaryFontFamily: "system",
+    secondaryFontWeight: 700,
+    secondaryLineHeight: 1.28,
+    secondaryStrokeWidth: 1,
+    secondaryStrokeColor: "#000000",
+    secondaryMaxWidth: 86
+  });
+
+  assert.equal(host.dataset.layout, "free");
+  assert.equal(host.style["--primary-subtitle-offset"], "30vh");
+  assert.equal(host.style["--secondary-subtitle-offset"], "15vh");
+  assert.equal(host.style["--primary-subtitle-size"], "32px");
+  assert.equal(host.style["--primary-subtitle-color"], "rgba(255, 0, 0, 0.8)");
+  assert.equal(host.style["--primary-subtitle-background"], "rgba(255, 255, 255, 0.5)");
+  assert.match(host.style["--primary-subtitle-font-family"], /SF Pro Rounded/);
+  assert.equal(host.style["--primary-subtitle-stroke-width"], "2px");
+});
+
+test("handles full-width parentheses furigana and regex special characters in readings safely", () => {
+  const { overlay, primary } = createOverlay();
+  overlay.render({ primaryCues: [{ text: "明日", ruby: "{明日（あした）}" }] });
+  assert.equal(primary.children[0].children[0].tagName, "RUBY");
+  assert.equal(primary.children[0].children[0].children[0].textContent, "あした");
+
+  overlay.render({ primaryCues: [{ text: "C++とC#", readings: { "C++": "シープラ", "C#": "シーシャープ" } }] });
+  assert.equal(primary.children[0].children.length, 2);
+  assert.equal(primary.children[0].children[0].textContent, "C++シープラ");
+  assert.equal(primary.children[0].children[1].textContent, "C#シーシャープ");
 });
