@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 browser/chrome storage、permissions API 与 host_permissions/optional_host_permissions 的跨域 fetch 能力
- * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译（支持日文源字幕 ruby 振假名输出）、兼容服务对象序列规范化、诊断、连通性测试与旧键迁移
+ * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译（日文源/目标注音请求使用定长字段的 readings 条目数组，兼容旧字典/字符串回包供 ruby 渲染）、兼容服务对象序列规范化、诊断、连通性测试与旧键迁移
  * [POS]: background 生命周期入口；凭证仅存于 provider 条目且只在 worker 内读取，兼容服务必须通过端点校验与运行时域名授权
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -319,8 +319,13 @@ async function translateBatch(message, sender, testProviderId = "") {
                             id: { type: "string" },
                             text: { type: "string" },
                             readings: {
-                              type: "object",
-                              additionalProperties: { type: "string" }
+                              type: "array",
+                              items: {
+                                type: "object",
+                                properties: { surface: { type: "string" }, reading: { type: "string" } },
+                                required: ["surface", "reading"],
+                                additionalProperties: false
+                              }
                             }
                           } : {
                             id: { type: "string" },
@@ -347,12 +352,12 @@ async function translateBatch(message, sender, testProviderId = "") {
           {
             role: "system",
             content: "你是一位专业的影视字幕翻译员，也是目标语言的母语使用者。" +
-              "只翻译 items[].text；contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。" +
+              "text 字段只放译文；若要求日语注音，readings 是独立于译文的必填结果，不得省略。contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。" +
               "保持每个 id、数量和顺序完全一致，不合并、不拆分、不遗漏字幕。" +
               buildRubyPromptSection(message, settings) +
               "保留人名、专有名词和既有译名；结合上下文处理代词、时态、人物关系和语气。" +
               (isJapanese(message.sourceLanguage) ? buildKatakanaGuide() : "") +
-              "使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、注释、时间戳或额外字段。" +
+              "使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、时间戳或契约之外的字段。" +
               `源语言：${message.sourceLanguage}；目标语言：${message.targetLanguage}。` +
               `上下文只用于消歧。${customStyleGuide ? `自定义风格要求：${customStyleGuide}` : ""}`
           },
@@ -517,8 +522,13 @@ function normalizeTranslationItem(item) {
     } else if (clean === "text" || clean === "translation" || clean === "content") {
       normalized.text = typeof value === "string" ? value : String(value ?? "");
     } else if (clean === "readings" || clean === "reading" || clean === "furigana") {
-      if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      if (Array.isArray(value)) {
+        normalized.readings = value.every((entry) => entry && typeof entry.surface === "string" && typeof entry.reading === "string")
+          ? Object.fromEntries(value.map(({ surface, reading }) => [surface, reading])) : value;
+      } else if (typeof value === "object" && value !== null) {
         normalized.readings = value;
+      } else if (clean === "furigana" && typeof value === "string") {
+        normalized.ruby = value;
       }
     } else if (clean === "ruby") {
       normalized.ruby = typeof value === "string" ? value : String(value ?? "");
@@ -802,15 +812,15 @@ function buildRubyPromptSection(message, settings) {
 
   if (isTargetJp) {
     return "【注音契约】" +
-      "目标语言为日语，已开启振假名注音功能。请在 text 字段输出纯文本日文译文，并在 readings 字段输出该译文中所有日文汉字词汇（包含数字量词）到平假名读音的键值对字典（例如 {\"前歴\":\"ぜんれき\",\"指紋\":\"しもん\"}）。" +
-      "读音约束：readings 字典的值必须且严格只能是纯平假名，键必须是译文中完整出现的汉字词汇。" +
-      "只返回 JSON 对象 {\"items\":[{\"id\":\"原字幕 id\",\"text\":\"纯文本日文译文\",\"readings\":{\"汉字词\":\"平假名读音\"}}]}，items 包含本次请求的全部字幕。";
+      "目标语言为日语：text 是不带注音标记的日文译文；readings 必须基于译文 text 中出现的日文汉字，而不是英文原文。" +
+      "readings 是 [{\"surface\":\"汉字词\",\"reading\":\"平假名\"}] 数组，surface 必须在译文中完整出现，reading 必须是纯平假名；例如 text=\"私は学生です\" 时 readings=[{\"surface\":\"私\",\"reading\":\"わたし\"},{\"surface\":\"学生\",\"reading\":\"がくせい\"}]。" +
+      "译文含日文汉字（包括数字量词）时不得返回空数组；只有译文完全没有日文汉字时才返回 []。每条 item 均输出 id、text、readings。";
   }
 
   return "【注音契约】" +
-    "源语言为日语，已开启振假名注音功能。除了在 text 字段输出目标语言译文外，还必须在 readings 字段提供 items[].text 原文中所有日文汉字词汇（包含数字量词）到平假名读音的键值对字典（例如 {\"前歴\":\"ぜんれき\",\"指紋\":\"しもん\"}）。" +
-    "读音约束：readings 字典的值必须且严格只能是纯平假名，键必须是原文中完整出现的汉字词汇。" +
-    "只返回 JSON 对象 {\"items\":[{\"id\":\"原字幕 id\",\"text\":\"译文\",\"readings\":{\"汉字词\":\"平假名读音\"}}]}，items 包含本次请求的全部字幕。";
+    "源语言为日语：text 只放目标语言译文；readings 必须读取请求里同一 id 的原文 items[].text 中的日文汉字，绝不能依据译文 text（例如中文译文）来判断是否需要注音。" +
+    "readings 是 [{\"surface\":\"原文汉字词\",\"reading\":\"平假名\"}] 数组，surface 必须在该条日文原文中完整出现，reading 必须是纯平假名；例如原文\"私は田中です\"译为\"我是田中\"时 readings=[{\"surface\":\"私\",\"reading\":\"わたし\"},{\"surface\":\"田中\",\"reading\":\"たなか\"}]。" +
+    "原文含日文汉字（包括数字量词）时不得返回空数组；只有原文完全没有日文汉字时才返回 []。每条 item 均输出 id、text、readings。";
 }
 
 function buildKatakanaGuide() {

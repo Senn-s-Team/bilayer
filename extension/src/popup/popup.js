@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API 及 popup.html 的侧栏导航、翻译与 provider 控件；跨窗口发现 Netflix Web App 的可响应页面
- * [OUTPUT]: 提供四页签导航、直达报文面板的入口，以及扩展内的字幕模式与 provider 操作
+ * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API 及 popup.html 的导航、翻译和模型下拉控件；保存服务的模型目录由 background 读取密钥并发现
+ * [OUTPUT]: 提供四页签导航、只读模型选择、按服务缓存的模型目录及菜单内过滤与扩展内的字幕/provider 操作
  * [POS]: popup 交互层；字幕模式由 aiRole 单一状态表示，翻译设置全局共享，密钥和端点只属于所选 provider
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -250,6 +250,7 @@ let pollTimer = 0;
 let currentWatchId = "";
 let connectedTabId = null;
 let connectionHint = "未连接 Netflix 页面；请在影片窗口打开弹窗";
+const providerModelCatalog = new Map();
 
 bindNavigation();
 void init();
@@ -287,7 +288,10 @@ function showLocalPreview() {
   }
   providerControls.editor.hidden = false;
   providerControls.name.value = DEFAULT_PROVIDERS[0].name;
-  providerControls.model.value = DEFAULT_PROVIDERS[0].model;
+  setSelectedModel(providerControls.model, DEFAULT_PROVIDERS[0].model);
+  setModelOptions(elements.providerModelList, LLM_PRESETS.openai.models);
+  bindModelPicker(providerControls.model, elements.providerModelList, document.querySelector("#providerModelMenu"), document.querySelector("#providerModelSearch"), () => {});
+  bindModelPicker(newDraftControls.model, newDraftControls.modelList, document.querySelector("#newDraftModelMenu"), document.querySelector("#newDraftModelSearch"), () => {});
   elements.aiCredentialStatus.textContent = "在 Safari 扩展中配置密钥";
   elements.testProvider.addEventListener("click", () => {
     elements.providerTestStatus.textContent = "请在 Safari 扩展中测试连通性";
@@ -369,11 +373,12 @@ function bindControls() {
     button.addEventListener("click", () => selectDraftPreset(button.dataset.draftPreset));
   });
   providerControls.name.addEventListener("change", () => void updateProviderField("name", providerControls.name.value.trim()));
-  providerControls.model.addEventListener("change", () => void updateProviderField("model", providerControls.model.value.trim()));
+  bindModelPicker(providerControls.model, elements.providerModelList, document.querySelector("#providerModelMenu"), document.querySelector("#providerModelSearch"), (model) => void updateProviderField("model", model, false), () => void fetchProviderModels());
+  bindModelPicker(newDraftControls.model, newDraftControls.modelList, document.querySelector("#newDraftModelMenu"), document.querySelector("#newDraftModelSearch"), () => {});
   providerControls.endpoint.addEventListener("change", updateEndpoint);
   providerControls.test = elements.testProvider;
   providerControls.test.addEventListener("click", () => void testProviderConnection());
-  elements.fetchProviderModels.addEventListener("click", () => void fetchProviderModels());
+  elements.fetchProviderModels.addEventListener("click", () => void fetchProviderModels(true));
   providerControls.source.addEventListener("change", () => {
     const track = currentTracks.find((item) => item.key === providerControls.source.value);
     const update = {
@@ -549,9 +554,61 @@ function normalizeProviderEndpoint(raw) {
   url.pathname = `${base.endsWith("/v1") ? base : `${base}/v1`}/chat/completions`;
   return url.href;
 }
-async function fetchProviderModels() {
+
+function setSelectedModel(trigger, model) {
+  trigger.dataset.value = model;
+  trigger.textContent = model || "选择模型";
+}
+
+function setModelOptions(list, models) {
+  list.replaceChildren(...[...new Set(models.filter(Boolean))].map((model) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "model-option";
+    button.setAttribute("role", "option");
+    button.textContent = model;
+    return button;
+  }));
+  list.previousElementSibling.value = "";
+}
+
+function bindModelPicker(trigger, list, menu, search, onSelect, onOpen) {
+  const close = () => {
+    menu.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  };
+  trigger.addEventListener("click", () => {
+    menu.hidden = !menu.hidden;
+    trigger.setAttribute("aria-expanded", String(!menu.hidden));
+    if (!menu.hidden) {
+      search.value = "";
+      for (const option of list.children) option.hidden = false;
+      search.focus();
+      onOpen?.();
+    }
+  });
+  search.addEventListener("input", () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    for (const option of list.children) option.hidden = !option.textContent.toLocaleLowerCase().includes(query);
+  });
+  list.addEventListener("click", (event) => {
+    const option = event.target.closest(".model-option");
+    if (!option) return;
+    setSelectedModel(trigger, option.textContent);
+    close();
+    onSelect(option.textContent);
+    trigger.focus();
+  });
+  menu.addEventListener("keydown", (event) => { if (event.key === "Escape") { close(); trigger.focus(); } });
+  document.addEventListener("click", (event) => { if (!menu.contains(event.target) && event.target !== trigger) close(); });
+}
+async function fetchProviderModels(force = false) {
   const provider = selectedProvider();
-  if (!provider) return Promise.resolve();
+  if (!provider) return;
+  const providerId = provider.id;
+  const cached = providerModelCatalog.get(providerId);
+  if (!force && cached?.endpoint === provider.endpoint && cached?.credential === provider.credential && !elements.aiCredential.value.trim()) return;
+  if (cached?.pending && cached.endpoint === provider.endpoint && cached.credential === provider.credential) return;
 
   const typedKey = elements.aiCredential.value.trim();
   if (typedKey) {
@@ -559,44 +616,39 @@ async function fetchProviderModels() {
     await updateProviderField("credential", typedKey, false);
     readCredentialStatus();
   }
-
-  const credential = provider.credential;
-  if (!credential && provider.endpoint !== "http://localhost:11434/v1/chat/completions") {
+  const active = selectedProvider();
+  if (!active || active.id !== providerId) return;
+  if (!active.credential && active.endpoint !== "http://localhost:11434/v1/chat/completions") {
     elements.providerTestStatus.textContent = "请先输入 API 密钥";
-    elements.aiCredential.focus();
-    return Promise.resolve();
+    return;
   }
 
+  const request = { endpoint: active.endpoint, credential: active.credential, pending: true, models: cached?.endpoint === active.endpoint && cached?.credential === active.credential ? cached.models : null };
+  providerModelCatalog.set(providerId, request);
   elements.fetchProviderModels.disabled = true;
   elements.providerTestStatus.textContent = "正在获取模型列表…";
-
-  const message = {
-    type: "NETFLIX_DUAL_SUBTITLES_LIST_MODELS",
-    providerId: provider.id,
-    credential: provider.credential,
-    endpoint: provider.endpoint
-  };
-
-  return new Promise((resolve) => {
-    runtime.runtime.sendMessage(message, async (result) => {
-      elements.fetchProviderModels.disabled = false;
-      if (runtime.runtime.lastError || !result?.ok) {
-        const errorMsg = result?.errorCode === "auth" ? "密钥无效" :
-                         result?.errorCode === "permission_denied" ? "未授权服务域名" : "获取模型失败";
-        elements.providerTestStatus.textContent = `失败：${errorMsg}`;
+  await new Promise((resolve) => {
+    runtime.runtime.sendMessage({ type: "NETFLIX_DUAL_SUBTITLES_LIST_MODELS", providerId }, (result) => {
+      request.pending = false;
+      const current = selectedProvider();
+      if (providerModelCatalog.get(providerId) !== request || current?.id !== providerId || current.endpoint !== request.endpoint || current.credential !== request.credential) {
         resolve();
         return;
       }
-      elements.providerModelList.replaceChildren(...result.models.map((model) => {
-        const option = document.createElement("option");
-        option.value = model;
-        return option;
-      }));
-      if (result.models.length > 0) {
-        providerControls.model.value = result.models[0];
-        await updateProviderField("model", result.models[0]);
+      elements.fetchProviderModels.disabled = false;
+      if (runtime.runtime.lastError || !result?.ok || !Array.isArray(result.models)) {
+        const errorMsg = result?.errorCode === "auth" ? "密钥无效" :
+          result?.errorCode === "permission_denied" ? "未授权服务域名" : "获取模型失败";
+        elements.providerTestStatus.textContent = `失败：${errorMsg}；可重试获取模型`;
+      } else {
+        request.models = result.models;
+        const search = elements.providerModelList.previousElementSibling;
+        const query = search.value.trim().toLocaleLowerCase();
+        setModelOptions(elements.providerModelList, [current.model, ...result.models]);
+        search.value = query;
+        for (const option of elements.providerModelList.children) option.hidden = !option.textContent.toLocaleLowerCase().includes(query);
+        elements.providerTestStatus.textContent = `已获取 ${result.models.length} 个模型，请从列表选择`;
       }
-      elements.providerTestStatus.textContent = `已获取 ${result.models.length} 个模型，已选择第 1 个`;
       resolve();
     });
   });
@@ -764,24 +816,18 @@ function writeProviderControls() {
     providerControls.detailView.hidden = false;
     providerControls.draftView.hidden = true;
     providerControls.name.value = selected.name ?? "";
-    providerControls.model.value = selected.model ?? "";
+    setSelectedModel(providerControls.model, selected.model ?? "");
     providerControls.endpoint.value = selected.endpoint ?? "";
 
     const matchedPreset = Object.values(LLM_PRESETS).find((p) => p.endpoint === (selected.endpoint ?? ""));
-    const hintModel = matchedPreset?.model || "gpt-4o-mini";
-    providerControls.model.placeholder = `推荐如 ${hintModel}，可点击获取模型`;
-
     elements.aiEndpointStatus.textContent = selected.endpoint
       ? `已保存 ${new URL(selected.endpoint).host}；使用前需获得域名授权`
       : "使用 OpenAI 官方接口";
 
-    if (matchedPreset && elements.providerModelList) {
-      elements.providerModelList.replaceChildren(...matchedPreset.models.map((m) => {
-        const opt = document.createElement("option");
-        opt.value = m;
-        return opt;
-      }));
-    }
+    const catalog = providerModelCatalog.get(selected.id);
+    const discovered = catalog?.endpoint === selected.endpoint && catalog?.credential === selected.credential ? catalog.models : null;
+    setModelOptions(elements.providerModelList, [selected.model, ...(discovered ?? matchedPreset?.models ?? [])]);
+    elements.fetchProviderModels.disabled = Boolean(catalog?.pending);
     if (selected.jsonMode) {
       if (selected.jsonMode === "json_schema") {
         elements.providerTestStatus.dataset.state = "success";
@@ -829,16 +875,9 @@ function selectDraftPreset(presetKey) {
 
   newDraftControls.name.value = preset.name;
   newDraftControls.endpoint.value = preset.endpoint;
-  newDraftControls.model.value = "";
-  newDraftControls.model.placeholder = `推荐如 ${preset.model || "gpt-4o-mini"}，可点击获取模型`;
-
-  if (newDraftControls.modelList && preset.models) {
-    newDraftControls.modelList.replaceChildren(...preset.models.map((m) => {
-      const opt = document.createElement("option");
-      opt.value = m;
-      return opt;
-    }));
-  }
+  setSelectedModel(newDraftControls.model, "");
+  newDraftControls.model.dataset.fallback = preset.model || "gpt-4o-mini";
+  setModelOptions(newDraftControls.modelList, preset.models ?? []);
 
   if (presetKey === "ollama") {
     newDraftControls.key.placeholder = "本地服务无需密钥，可留空";
@@ -862,8 +901,7 @@ async function saveNewDraftProvider() {
     }
   }
 
-  const model = newDraftControls.model.value.trim() ||
-    newDraftControls.model.placeholder.match(/推荐如 ([^\s，]+)/)?.[1] || "gpt-4o-mini";
+  const model = newDraftControls.model.dataset.value || newDraftControls.model.dataset.fallback || "gpt-4o-mini";
 
   if (endpoint && runtime.permissions?.request) {
     try {
@@ -939,14 +977,7 @@ async function fetchNewDraftModels() {
       alert(result?.errorCode === "auth" ? "密钥无效，无法获取模型" : "获取模型列表失败，请检查端点与网络");
       return;
     }
-    newDraftControls.modelList.replaceChildren(...result.models.map((m) => {
-      const opt = document.createElement("option");
-      opt.value = m;
-      return opt;
-    }));
-    if (result.models.length > 0) {
-      newDraftControls.model.value = result.models[0];
-    }
+    setModelOptions(newDraftControls.modelList, result.models);
   });
 }
 

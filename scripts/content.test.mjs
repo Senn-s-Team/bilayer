@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node.js test/vm 与扩展 content.js 源码，使用可控浏览器消息和字幕加载器
- * [OUTPUT]: 验证凭证隔离、独立 AI 源、日文源字幕 ruby 注音回填、provider 重译、预取变更不丢译文、上下文变更重译及脱敏日志
+ * [OUTPUT]: 验证凭证隔离、独立 AI 源、日文源/目标字幕 readings 注音与 ruby 回填、provider 重译、预取变更不丢译文、上下文变更重译及脱敏日志
  * [POS]: scripts 的内容脚本行为回归检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -421,4 +421,36 @@ test("AI Japanese translation annotates original Japanese subtitle row with ruby
   assert.equal(latestFrame?.secondaryCues?.[0]?.text, "我是田中");
   assert.equal(latestFrame?.primaryCues?.[0]?.text, "私は田中です");
   assert.equal(latestFrame?.primaryCues?.[0]?.ruby, "{私|わたし}は{田中|たなか}です");
+});
+
+test("Japanese ruby setting carries source readings and annotates the displayed original without changing translation", async () => {
+  const page = await createPage({ primaryTrackKey: "ja", aiSourceTrackKey: "ja", aiRole: "secondary", aiJapaneseRuby: true });
+  page.loads.set("ja", deferred());
+  page.announce([{ key: "ja", language: "ja", label: "Japanese" }]);
+  page.loads.get("ja").resolve([{ startMs: 1000, endMs: 2000, text: "私は田中です" }]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(page.translationMessages[0].message.japaneseRuby, true);
+  page.translationMessages[0].callback({ ok: true, items: [{ id: "0", text: "我是田中", readings: { "私": "わたし", "田中": "たなか" } }] });
+  await new Promise((resolve) => setImmediate(resolve));
+  const frame = page.frames.at(-1);
+  assert.equal(frame.primaryCues[0].text, "私は田中です");
+  assert.deepEqual(JSON.parse(JSON.stringify(frame.primaryCues[0].readings)), { "私": "わたし", "田中": "たなか" });
+  assert.equal(frame.secondaryCues[0].text, "我是田中");
+});
+
+test("Japanese target readings annotate translated row and leave native source unchanged", async () => {
+  const page = await createPage({ primaryTrackKey: "en", aiSourceTrackKey: "en", aiRole: "secondary", aiTargetLanguage: "ja", aiJapaneseRuby: true });
+  page.loads.set("en", deferred());
+  page.announce([{ key: "en", language: "en", label: "English" }]);
+  page.loads.get("en").resolve([{ startMs: 1000, endMs: 2000, text: "I am Tanaka." }]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(page.translationMessages[0].message.targetLanguage, "ja");
+  assert.equal(page.translationMessages[0].message.japaneseRuby, true);
+  page.translationMessages[0].callback({ ok: true, items: [{ id: "0", text: "私は田中です", readings: { "私": "わたし", "田中": "たなか" } }] });
+  await new Promise((resolve) => setImmediate(resolve));
+  const frame = page.frames.at(-1);
+  assert.equal(frame.primaryCues[0].text, "I am Tanaka.");
+  assert.equal(frame.primaryCues[0].readings, undefined);
+  assert.equal(frame.secondaryCues[0].text, "私は田中です");
+  assert.deepEqual(JSON.parse(JSON.stringify(frame.secondaryCues[0].readings)), { "私": "わたし", "田中": "たなか" });
 });

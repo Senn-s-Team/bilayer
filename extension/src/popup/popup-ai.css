@@ -426,10 +426,53 @@
   gap: 7px;
 }
 
-.provider-switcher select, .provider-model-row input {
+.provider-model-row .model-trigger {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface, transparent);
+  color: inherit;
+  cursor: pointer;
 }
+
+.model-menu:not([hidden]) {
+  display: grid;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+}
+
+.model-menu input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.model-options {
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.model-option {
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-option:hover, .model-option:focus-visible { background: var(--line); }
 
 .provider-switcher .ai-button {
   width: 31px;

@@ -229,10 +229,13 @@
                 <div class="field">
                   <label class="field-label" for="providerModel">模型 ID</label>
                   <div class="provider-model-row">
-                    <input id="providerModel" list="providerModelList" type="text" maxlength="120" autocomplete="off" placeholder="输入模型 ID 或点击获取模型" spellcheck="false">
+                    <button id="providerModel" class="model-trigger" type="button" aria-expanded="false" aria-controls="providerModelMenu">选择模型</button>
                     <button id="fetchProviderModels" class="ai-button" type="button">获取模型</button>
                   </div>
-                  <datalist id="providerModelList"></datalist>
+                  <div id="providerModelMenu" class="model-menu" hidden>
+                    <input id="providerModelSearch" type="search" autocomplete="off" placeholder="过滤模型 ID" aria-label="过滤模型" spellcheck="false">
+                    <div id="providerModelList" class="model-options" role="listbox"></div>
+                  </div>
                 </div>
               </div>
               <p id="aiEndpointStatus" class="ai-consent" role="status" aria-live="polite">使用其他服务时，需要授权其域名；字幕文本与密钥会发送给该服务。</p>
@@ -287,10 +290,13 @@
               <div class="field">
                 <label class="field-label" for="newDraftModel">模型 ID</label>
                 <div class="provider-model-row">
-                  <input id="newDraftModel" list="newDraftModelList" type="text" maxlength="120" autocomplete="off" placeholder="输入模型 ID 或点击获取模型" spellcheck="false">
+                  <button id="newDraftModel" class="model-trigger" type="button" aria-expanded="false" aria-controls="newDraftModelMenu">选择模型</button>
                   <button id="fetchNewDraftModels" class="ai-button" type="button">获取模型</button>
                 </div>
-                <datalist id="newDraftModelList"></datalist>
+                <div id="newDraftModelMenu" class="model-menu" hidden>
+                  <input id="newDraftModelSearch" type="search" autocomplete="off" placeholder="过滤模型 ID" aria-label="过滤模型" spellcheck="false">
+                  <div id="newDraftModelList" class="model-options" role="listbox"></div>
+                </div>
               </div>
 
               <label class="field" for="newDraftKey">

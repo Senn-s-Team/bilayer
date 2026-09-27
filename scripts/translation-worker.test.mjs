@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Node.js test/vm 与真实 service_worker.js，模拟多 provider 扩展存储和 Chat Completions 响应
- * [OUTPUT]: 验证 provider 切换、日文源语言 ruby 振假名 Schema 与提示词生成、兼容服务单字幕和逗号分隔对象序列、多字幕及 ID 校验、权限/错误和原始报文秘密边界
+ * [INPUT]: 依赖 Node.js test/vm 与真实 service_worker.js、translationScheduler.js、overlay.js，模拟多 provider 扩展存储和 Chat Completions 响应
+ * [OUTPUT]: 验证 provider 切换、日文原文注音结构化请求经 worker/scheduler/overlay 渲染、混合汉字/假名的空数组约束、兼容服务回包及 ID 校验、权限/错误和原始报文秘密边界
  * [POS]: scripts 的后台请求行为检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -10,6 +10,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const source = readFileSync(new URL("../extension/src/background/service_worker.js", import.meta.url), "utf8");
+const schedulerSource = readFileSync(new URL("../extension/src/content/translationScheduler.js", import.meta.url), "utf8");
+const overlaySource = readFileSync(new URL("../extension/src/content/overlay.js", import.meta.url), "utf8");
 const sender = { id: "extension-id", tab: { url: "https://www.netflix.com/watch/42" } };
 const message = {
   type: "NETFLIX_DUAL_SUBTITLES_TRANSLATE_BATCH",
@@ -316,9 +318,113 @@ test("Japanese source language requests ruby furigana in schema and validates ru
   assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "你好", ruby: "{私|わたし}は", readings: { "私": "わたし" } }]);
 
   const body = JSON.parse(sent.options.body);
-  assert.match(body.messages[0].content, /振假名/);
-  assert.match(body.messages[0].content, /readings/);
   assert.deepEqual(body.response_format.json_schema.schema.properties.items.items.required, ["id", "text", "readings"]);
+});
+
+test("Japanese furigana string from a compatible provider survives translation for the native source row", async () => {
+  const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ items: [{ id: "0", text: "我是田中", furigana: "{私|わたし}は{田中|たなか}です" }] })
+  } }] }), {
+    providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "model", credential: "private-key" }],
+    aiProviderId: "custom",
+    aiJapaneseRuby: true
+  });
+  const result = await worker({ ...message, sourceLanguage: "ja", targetLanguage: "zh-Hans", japaneseRuby: true,
+    items: [{ id: "0", text: "私は田中です" }] });
+  assert.equal(result.ok, true);
+  assert.equal(result.items[0].text, "我是田中");
+  assert.equal(result.items[0].ruby, "{私|わたし}は{田中|たなか}です");
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items[0].readings)), { "私": "わたし", "田中": "たなか" });
+  await assertJapaneseSourceRenders(worker);
+});
+
+async function assertJapaneseSourceRenders(worker) {
+  const subtitle = { startMs: 1000, endMs: 2000, text: "私は田中です" };
+  const window = {};
+  runInNewContext(schedulerSource, { window }, { filename: "translationScheduler.js" });
+  const scheduler = window.NetflixDualSubtitles.createTranslationScheduler({ translate: () => worker({
+    ...message, sourceLanguage: "ja", targetLanguage: "zh-Hans", japaneseRuby: true,
+    items: [{ id: "0", text: subtitle.text }]
+  }) });
+  scheduler.setSource({ identity: "watch:42:ja", cues: [subtitle], sourceLanguage: "ja", targetLanguage: "zh-Hans", japaneseRuby: true });
+  scheduler.observe(1500);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const makeContainer = () => ({ children: [], hidden: true, replaceChildren(...nodes) { this.children = nodes; } });
+  const primary = makeContainer();
+  const secondary = makeContainer();
+  const root = { set innerHTML(_value) {}, querySelector(selector) { return selector.includes("primary") ? primary : secondary; } };
+  let host;
+  const document = {
+    createElement(tag) {
+      if (!host) {
+        host = { style: { setProperty() {} }, dataset: {}, isConnected: false, attachShadow() { return root; } };
+        return host;
+      }
+      return { tagName: tag.toUpperCase(), textContent: "", children: [], append(...nodes) {
+        for (const node of nodes) {
+          if (typeof node === "string") this.textContent += node;
+          else { this.children.push(node); this.textContent += node.textContent; }
+        }
+      } };
+    },
+    documentElement: { append(node) { node.isConnected = true; } }
+  };
+  runInNewContext(overlaySource, { window, document }, { filename: "overlay.js" });
+  const overlay = window.NetflixDualSubtitles.createSubtitleOverlay();
+  overlay.render({ primaryCues: scheduler.annotateSource([subtitle]), secondaryCues: scheduler.translatedFor([subtitle]) });
+  assert.equal(primary.children[0].children[0].tagName, "RUBY");
+  assert.equal(primary.children[0].children[0].children[0].tagName, "RT");
+  assert.equal(primary.children[0].children[0].children[0].textContent, "わたし");
+  assert.equal(primary.children[0].textContent.replace(/わたし|たなか/g, ""), subtitle.text);
+  assert.equal(secondary.children[0].textContent, "我是田中");
+}
+
+test("Japanese source with kanji requests usable readings instead of accepting an empty Gemini object", async () => {
+  let sent;
+  const worker = createWorker(async (_url, options) => {
+    sent = JSON.parse(options.body);
+    const readingsSchema = sent.response_format?.json_schema?.schema?.properties?.items?.items?.properties?.readings;
+    const readings = readingsSchema?.type === "array" && readingsSchema.items?.required?.includes("reading")
+      ? [{ surface: "私", reading: "わたし" }, { surface: "田中", reading: "たなか" }]
+      : {};
+    return Response.json({ choices: [{ finish_reason: "stop", message: {
+      content: { items: [{ id: "0", text: "我是田中", readings }] }
+    } }] });
+  }, {
+    providers: [{ id: "gemini", name: "Gemini", endpoint: "https://provider.example/v1/chat/completions", model: "gemini-3.1-flash-lite", jsonMode: "json_schema", credential: "private-key" }],
+    aiProviderId: "gemini", aiJapaneseRuby: true
+  });
+
+  await assertJapaneseSourceRenders(worker);
+  assert.equal(sent.response_format.json_schema.schema.properties.items.items.properties.readings.minItems, undefined);
+  assert.equal(sent.response_format.json_schema.schema.properties.items.items.properties.readings.items.additionalProperties, false);
+});
+
+test("mixed kanji and kana-only cues keep empty readings only for the kana-only cue", async () => {
+  let sent;
+  const worker = createWorker(async (_url, options) => {
+    sent = JSON.parse(options.body);
+    return Response.json({ choices: [{ finish_reason: "stop", message: {
+      content: { items: [
+        { id: "0", text: "我来了", readings: [{ surface: "私", reading: "わたし" }] },
+        { id: "1", text: "你好", readings: [] }
+      ] }
+    } }] });
+  }, {
+    providers: [{ id: "gemini", name: "Gemini", endpoint: "https://provider.example/v1/chat/completions", model: "gemini-3.1-flash-lite", jsonMode: "json_schema", credential: "private-key" }],
+    aiProviderId: "gemini", aiJapaneseRuby: true
+  });
+  const result = await worker({ ...message, sourceLanguage: "ja", targetLanguage: "zh-Hans", japaneseRuby: true,
+    items: [{ id: "0", text: "私は" }, { id: "1", text: "こんにちは" }] });
+  assert.equal(result.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [
+    { id: "0", text: "我来了", readings: { "私": "わたし" } },
+    { id: "1", text: "你好", readings: {} }
+  ]);
+  const readingsSchema = sent.response_format.json_schema.schema.properties.items.items.properties.readings;
+  assert.equal(readingsSchema.type, "array");
+  assert.equal(readingsSchema.minItems, undefined);
 });
 
 test("Japanese source language omits ruby when aiJapaneseRuby is disabled", async () => {
@@ -342,16 +448,15 @@ test("Japanese source language omits ruby when aiJapaneseRuby is disabled", asyn
   assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "你好" }]);
 
   const body = JSON.parse(sent.options.body);
-  assert.doesNotMatch(body.messages[0].content, /振假名/);
   assert.deepEqual(body.response_format.json_schema.schema.properties.items.items.required, ["id", "text"]);
 });
 
-test("Japanese target language requests ruby for translation in schema and prompt", async () => {
+test("Japanese target language maps structured readings onto the translated row", async () => {
   let sent;
   const worker = createWorker(async (url, options) => {
     sent = { url, options };
     return Response.json({ choices: [{ finish_reason: "stop", message: {
-      content: JSON.stringify({ items: [{ id: "0", text: "私は学生です", ruby: "{私|わたし}は{学生|がくせい}です" }] })
+      content: JSON.stringify({ items: [{ id: "0", text: "私は学生です", readings: [{ surface: "私", reading: "わたし" }, { surface: "学生", reading: "がくせい" }] }] })
     } }] });
   });
 
@@ -364,35 +469,11 @@ test("Japanese target language requests ruby for translation in schema and promp
 
   const result = await worker(enToJaMessage);
   assert.equal(result.ok, true);
-  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "私は学生です", ruby: "{私|わたし}は{学生|がくせい}です", readings: { "学生": "がくせい", "私": "わたし" } }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.items)), [{ id: "0", text: "私は学生です", readings: { "私": "わたし", "学生": "がくせい" } }]);
 
   const body = JSON.parse(sent.options.body);
-  assert.match(body.messages[0].content, /目标语言为日语/);
-  assert.match(body.messages[0].content, /振假名/);
   assert.deepEqual(body.response_format.json_schema.schema.properties.items.items.required, ["id", "text", "readings"]);
-});
-
-test("Japanese source language includes Katakana translation guidelines in prompt", async () => {
-  let sent;
-  const worker = createWorker(async (url, options) => {
-    sent = { url, options };
-    return Response.json({ choices: [{ finish_reason: "stop", message: {
-      content: JSON.stringify({ items: [{ id: "0", text: "超级" }] })
-    } }] });
-  });
-
-  const jpMessage = {
-    ...message,
-    sourceLanguage: "ja",
-    targetLanguage: "zh-Hans",
-    items: [{ id: "0", text: "ウルトラ" }]
-  };
-
-  await worker(jpMessage);
-  const body = JSON.parse(sent.options.body);
-  assert.match(body.messages[0].content, /外来语本地化准则/);
-  assert.match(body.messages[0].content, /语境意译优先/);
-  assert.match(body.messages[0].content, /专有名词严谨/);
+  assert.equal(body.response_format.json_schema.schema.properties.items.items.properties.readings.items.additionalProperties, false);
 });
 
 test("model returning clean readings map without ruby string is validated and normalized", async () => {

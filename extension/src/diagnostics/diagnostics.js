@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 browser/chrome runtime 消息 API 与 diagnostics.html 的报文面板
- * [OUTPUT]: 轮询原始报文，提供紧凑检查器、可搜索 JSON 树、层级控制及逐字原文切换
+ * [INPUT]: 依赖 browser/chrome runtime 消息及同源 export.html 下载框架
+ * [OUTPUT]: 轮询原始报文，提供 JSON 检查器及不导航主页面的导出入口
  * [POS]: diagnostics 模块的交互层，只允许扩展诊断页读取 background 内存记录
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -48,6 +48,10 @@ let searchMatches = [];
 let activeMatch = -1;
 
 void init();
+const exportFrame = document.createElement("iframe");
+exportFrame.hidden = true;
+exportFrame.src = "./export.html";
+document.body.append(exportFrame);
 
 async function init() {
   bindControls();
@@ -132,13 +136,19 @@ function bindControls() {
     }
     const dateStr = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const filename = `netflix-subtitles-cases-${dateStr}.json`;
-    const blob = new Blob([JSON.stringify(records, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const text = JSON.stringify(records, null, 2);
+    if (runtime.downloads?.download) {
+      const url = `data:application/json;charset=utf-8,${encodeURIComponent(text)}`;
+      runtime.downloads.download({ url, filename, saveAs: true }, () => {
+        if (runtime.runtime.lastError) alert("导出失败：请检查浏览器下载权限。");
+      });
+      return;
+    }
+    if (!exportFrame.contentWindow?.downloadCases) {
+      alert("导出组件尚未就绪，请稍后重试。");
+      return;
+    }
+    exportFrame.contentWindow.downloadCases(filename, text);
   });
   elements.jsonSearch.addEventListener("input", updateSearch);
   elements.jsonSearch.addEventListener("keydown", (event) => {
