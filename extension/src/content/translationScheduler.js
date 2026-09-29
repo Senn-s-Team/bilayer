@@ -1,24 +1,38 @@
 /**
- * [INPUT]: 依赖已解析的 Netflix cue 时间轴与注入的批量翻译请求
- * [OUTPUT]: 对 window.Bilayer 提供 createTranslationScheduler，支持当前句优先、预取双上限、可调邻句、预算与逐请求耗时日志，并输出日文源字幕 ruby 注音回填能力 annotateSource
- * [POS]: content 的纯调度层，不接触密钥、提供商协议或字幕原文日志
+ * [INPUT]: 依赖已解析的 Netflix cue 时间轴与注入的批量翻译请求，预算上限经 setBudget 由 content 的 aiRequestBudget/aiCharacterBudget 注入，持久化用量视图经 setUsage 与可选 syncUsage 闸门注入
+ * [OUTPUT]: 对 window.Bilayer 提供 createTranslationScheduler，支持当前句优先、预取双上限、可调邻句、可配置请求/字符预算（null 为不限）与逐请求耗时日志，status() 附带 usage 与 exhausted 原因的 budget 快照；用量以 budgetKey（content 传入的计量窗口键）为边界，clear() 与同一窗口内的设置变更不重置用量；setUsage 让外部持久化视图与本地视图取较大值合并，syncUsage 在每次派发前回调以便扣费前对齐另一标签页的消耗；pendingRoles(activeCues) 报告仍在等译文的 AI 字幕行角色；并输出日文源字幕 ruby 注音回填能力 annotateSource
+ * [POS]: content 的纯调度层，不接触密钥、提供商协议、存储或字幕原文日志，计量的持久化与窗口归属由调用方 content 决定
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 window.Bilayer ??= {};
-window.Bilayer.createTranslationScheduler = function createTranslationScheduler({ translate, onUpdate }) {
-  const MAX_REQUESTS = 80;
-  const MAX_CHARACTERS = 40000;
+window.Bilayer.createTranslationScheduler = function createTranslationScheduler({ translate, onUpdate, syncUsage = null }) {
+  // 与 content 的 DEFAULT_SETTINGS 一致：未调用 setBudget 时保持既有 80/40000 行为。
+  const DEFAULT_REQUEST_LIMIT = 80;
+  const DEFAULT_CHARACTER_LIMIT = 40000;
   const MAX_BATCH_ITEMS = 12;
   const MAX_BATCH_CHARACTERS = 600;
   let cues = [];
   let groups = [];
+  // 字幕 id -> 所属分组：pendingRoles 每帧按活跃行查等待状态，避免线性扫描分组表。
+  let groupIds = new Map();
   let identity = "";
   let budgetKey = "";
+  // AI 翻译占用的字幕行角色（primary/secondary），由 content 注入，仅用于报告等待占位。
+  let aiRole = "";
   let sourceLanguage = "";
   let targetLanguage = "";
   let generation = 0;
   let requests = 0;
   let sentCharacters = 0;
+  let requestLimit = DEFAULT_REQUEST_LIMIT;
+  let characterLimit = DEFAULT_CHARACTER_LIMIT;
+  // 派发闸门与单飞：syncUsage 注入后派发要跨 await，重入的 observe 只排队一次，避免同批重复计费。
+  const usageSync = typeof syncUsage === "function" ? syncUsage : null;
+  let pumping = false;
+  let pumpQueued = false;
+  // 最近一次被预算挡下的原因（含“本批次放不下”的字符前瞻判定）；setSource（换源/换邻句）与上限变化会重算，
+  // clear() 不清算已用额度也不清掉这个原因：设置变更发生在同一计量窗口内，守住的是按窗口计的 runaway 成本。
+  let budgetStop = null;
   let inFlight = 0;
   let positionMs = 0;
   let leadMs = 60000;
@@ -41,6 +55,67 @@ window.Bilayer.createTranslationScheduler = function createTranslationScheduler(
 
   const notify = () => onUpdate?.(status());
 
+  // null 表示不限；0 不在 setBudget 里代表不限（0 由 content 从设置转换为 null），非正整数视为无效并保留当前值。
+  const normalizeLimit = (value, current) => {
+    if (value === null) return null;
+    if (Number.isInteger(value) && value > 0) return value;
+    return current;
+  };
+
+  // 已消耗量本身是否已经顶到上限：降额到已消耗量以下时无需等到下一次派发即可上报原因。
+  function exhaustedNow() {
+    if (requestLimit !== null && requests >= requestLimit) return "requests";
+    if (characterLimit !== null && sentCharacters >= characterLimit) return "characters";
+    return null;
+  }
+
+  const normalizeCounter = (value) => (Number.isFinite(value) && value > 0 ? Math.floor(value) : 0);
+
+  function budgetState() {
+    return {
+      requestsUsed: requests,
+      charactersUsed: sentCharacters,
+      requestLimit,
+      characterLimit,
+      exhausted: budgetStop ?? exhaustedNow()
+    };
+  }
+
+  // 外部（content 的持久化存储与其它标签页）看到的用量视图。窗口不同则换锚并按该视图重新起算；
+  // 窗口相同则逐项取较大值——两个标签页各自只记自己的消耗，取大值即并集，避免上限被翻倍。
+  function setUsage(windowKey, usage) {
+    if (!windowKey || typeof windowKey !== "string") return;
+    const nextRequests = normalizeCounter(usage?.requests);
+    const nextCharacters = normalizeCounter(usage?.characters);
+    if (windowKey !== budgetKey) {
+      budgetKey = windowKey;
+      requests = nextRequests;
+      sentCharacters = nextCharacters;
+      budgetStop = null;
+      if (failure === "budget_exceeded" && exhaustedNow() === null) failure = "";
+      notify();
+      return;
+    }
+    if (nextRequests <= requests && nextCharacters <= sentCharacters) return;
+    requests = Math.max(requests, nextRequests);
+    sentCharacters = Math.max(sentCharacters, nextCharacters);
+    // 另一标签页把用量推到上限后不必等到下一次派发才撤销预算错误。
+    if (failure === "budget_exceeded" && exhaustedNow() === null) failure = "";
+    notify();
+  }
+
+  function setBudget(next = {}) {
+    const nextRequestLimit = normalizeLimit(next.requestLimit, requestLimit);
+    const nextCharacterLimit = normalizeLimit(next.characterLimit, characterLimit);
+    if (nextRequestLimit === requestLimit && nextCharacterLimit === characterLimit) return;
+    requestLimit = nextRequestLimit;
+    characterLimit = nextCharacterLimit;
+    budgetStop = null;
+    // 提额且已不再顶格时必须撤掉预算错误，否则调度恢复但状态仍停在 error。
+    if (failure === "budget_exceeded" && exhaustedNow() === null) failure = "";
+    notify();
+  }
+
   function status() {
     return {
       phase: !identity ? "off" : failure ? "error" : inFlight ? "translating" : translations.size ? "ready" : "waiting",
@@ -48,6 +123,9 @@ window.Bilayer.createTranslationScheduler = function createTranslationScheduler(
       error: failure,
       requests,
       sentCharacters,
+      budget: budgetState(),
+      // 当前计量的窗口键：content 据此判断这份用量属于哪个窗口，避免跨窗口写入。
+      budgetKey,
       logs: logs.map((entry) => ({ ...entry }))
     };
   }
@@ -58,6 +136,7 @@ window.Bilayer.createTranslationScheduler = function createTranslationScheduler(
     contextCount = Number.isInteger(source.contextCount) && source.contextCount >= 0 && source.contextCount <= 4
       ? source.contextCount : 2;
     japaneseRuby = source.japaneseRuby !== false;
+    aiRole = source.role === "primary" || source.role === "secondary" ? source.role : "";
     if (source.identity === identity && source.cues === cues) return;
     const cancelledRequests = inFlight;
     generation++;
@@ -67,12 +146,17 @@ window.Bilayer.createTranslationScheduler = function createTranslationScheduler(
       requests = 0;
       sentCharacters = 0;
     }
+    budgetStop = null;
     identity = source.identity;
     cues = source.cues;
     sourceLanguage = source.sourceLanguage;
     targetLanguage = source.targetLanguage;
     cueIds = new WeakMap(cues.map((cue, index) => [cue, String(index)]));
     groups = buildGroups(cues);
+    groupIds = new Map();
+    for (const group of groups) {
+      for (const id of group.ids) groupIds.set(id, group);
+    }
     translations = new Map();
     readingsMap = new Map();
     rubies = new Map();
@@ -90,12 +174,14 @@ window.Bilayer.createTranslationScheduler = function createTranslationScheduler(
     identity = "";
     cues = [];
     groups = [];
+    groupIds = new Map();
     japaneseRuby = true;
     cueIds = new WeakMap();
     translations.clear();
     readingsMap.clear();
     rubies.clear();
     failed.clear();
+    pending.clear();
     inFlight = 0;
     failure = "";
     logs = [];
@@ -110,13 +196,40 @@ window.Bilayer.createTranslationScheduler = function createTranslationScheduler(
     pump();
   }
 
+  // 派发入口：syncUsage 注入后派发要跨 await，因此用单飞 + 一次排队保证重入的 observe 不会重复计费。
   function pump() {
     if (!identity) return;
+    if (pumping) {
+      pumpQueued = true;
+      return;
+    }
+    void drain();
+  }
+
+  async function drain() {
+    pumping = true;
+    try {
+      await pumpBatches();
+    } catch {
+      // 派发循环里的意外异常只影响本轮：恢复 pumping 后由 observe / finally 再次触发。
+    } finally {
+      pumping = false;
+    }
+    if (pumpQueued) {
+      pumpQueued = false;
+      pump();
+    }
+  }
+
+  async function pumpBatches() {
+    if (!identity) return;
+    const loopGeneration = generation;
     const start = groups.findIndex((group) => group.endMs >= positionMs);
     if (start < 0) return;
     const last = Math.min(groups.length - 1, start + prefetchCount);
     const maxConcurrent = urgentSeek ? 2 : 1;
     while (inFlight < maxConcurrent) {
+      if (loopGeneration !== generation) return;
       let first = -1;
       for (let index = start; index <= last && groups[index].startMs <= positionMs + leadMs; index++) {
         if (!isDone(groups[index])) { first = index; break; }
@@ -144,12 +257,39 @@ window.Bilayer.createTranslationScheduler = function createTranslationScheduler(
       const after = contextCount === 0 ? [] : groups.slice(lastGroup + 1, lastGroup + 1 + contextCount)
         .flatMap((group) => group.ids).slice(0, contextCount).map((id) => cues[Number(id)].text);
       const totalCharacters = characters + before.join("").length + after.join("").length;
-      if (requests >= MAX_REQUESTS || sentCharacters + totalCharacters > MAX_CHARACTERS) {
+      // 扣费前先与持久化用量对齐：另一个标签页可能已经花掉额度，也可能刚跨过窗口边界。
+      if (usageSync) {
+        const windowBefore = budgetKey;
+        let merged = null;
+        try {
+          merged = await usageSync({ windowKey: budgetKey, requests, characters: sentCharacters });
+        } catch {
+          merged = null;
+        }
+        if (loopGeneration !== generation) return;
+        if (merged) {
+          const mergedRequests = normalizeCounter(merged.requests);
+          const mergedCharacters = normalizeCounter(merged.characters);
+          if (budgetKey === windowBefore) {
+            requests = Math.max(requests, mergedRequests);
+            sentCharacters = Math.max(sentCharacters, mergedCharacters);
+          } else {
+            requests = mergedRequests;
+            sentCharacters = mergedCharacters;
+          }
+        }
+      }
+      const stopReason = requestLimit !== null && requests >= requestLimit ? "requests"
+        : characterLimit !== null && sentCharacters + totalCharacters > characterLimit ? "characters"
+        : null;
+      if (stopReason) {
+        budgetStop = stopReason;
         failure = "budget_exceeded";
         addLog("budget_exceeded", "本集翻译预算已用尽", { requests, sentCharacters });
         notify();
         break;
       }
+      budgetStop = null;
       const requestNumber = ++requests;
       sentCharacters += totalCharacters;
       inFlight++;
@@ -214,6 +354,14 @@ window.Bilayer.createTranslationScheduler = function createTranslationScheduler(
 
   const isJp = (lang) => /^(ja|jp)($|[-_])/i.test(String(lang ?? "").trim());
 
+  // 活跃字幕对象可能来自外部重建的列表（overlay 桥接），先按对象身份找，再按时间与文本回退。
+  function cueIdOf(cue) {
+    const direct = cueIds.get(cue);
+    if (direct !== undefined) return direct;
+    const found = cues.findIndex((candidate) => Math.abs(candidate.startMs - cue.startMs) < 200 && candidate.text === cue.text);
+    return found >= 0 ? String(found) : undefined;
+  }
+
   function translatedFor(activeCues) {
     const result = [];
     const targetIsJp = isJp(targetLanguage);
@@ -235,17 +383,26 @@ window.Bilayer.createTranslationScheduler = function createTranslationScheduler(
     return result;
   }
 
+  // 该行是否还在等一个可能到达的译文：分组在途且未译出为 true；已译出、已永久失败、
+  // 以及根本没被派出（例如额度断流）都是 false，overlay 因此不会留下永不消失的占位。
+  function pendingRoles(activeCues) {
+    if (!identity || !aiRole || !Array.isArray(activeCues) || activeCues.length === 0) return {};
+    const awaiting = activeCues.some((cue) => {
+      const id = cueIdOf(cue);
+      if (id === undefined || translations.has(id)) return false;
+      const group = groupIds.get(id);
+      return Boolean(group) && pending.has(group) && !failed.has(group);
+    });
+    return awaiting ? { [aiRole]: true } : {};
+  }
+
   function annotateSource(activeCues) {
     const sourceIsJp = isJp(sourceLanguage);
     if (!japaneseRuby || !sourceIsJp || (readingsMap.size === 0 && rubies.size === 0) || !Array.isArray(activeCues)) {
       return activeCues;
     }
     return activeCues.map((cue) => {
-      let id = cueIds.get(cue);
-      if (id === undefined) {
-        const found = cues.findIndex((candidate) => Math.abs(candidate.startMs - cue.startMs) < 200 && candidate.text === cue.text);
-        if (found >= 0) id = String(found);
-      }
+      const id = cueIdOf(cue);
       const readings = id !== undefined ? readingsMap.get(id) : undefined;
       const ruby = id !== undefined ? rubies.get(id) : undefined;
       if (readings || ruby) {
@@ -259,7 +416,7 @@ window.Bilayer.createTranslationScheduler = function createTranslationScheduler(
     });
   }
 
-  return { setSource, clear, observe, readyAt, translatedFor, annotateSource, status };
+  return { setSource, setBudget, setUsage, clear, observe, readyAt, translatedFor, annotateSource, pendingRoles, status };
 };
 
 function collapseLines(text) {

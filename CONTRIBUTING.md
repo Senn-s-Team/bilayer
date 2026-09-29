@@ -23,7 +23,7 @@ There is nothing to install — the project has no runtime or dev dependencies.
 ## Layout
 
 - `extension/` — the WebExtension source. This is the only place extension behavior lives.
-- `extension/icons/` — `icon.svg` is the single hand-maintained icon source. Never edit
+- `extension/icons/` — `icon-source.png` is the single hand-maintained icon source. Never edit
   the PNGs directly; run `npm run icons` instead.
 - `scripts/` — local checks, icon derivation, and Safari project generation. Nothing here
   ships inside the extension.

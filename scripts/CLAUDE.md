@@ -3,9 +3,11 @@
 
 成员清单
 check.mjs: 零依赖项目检查器，验证 manifest 结构、manifest↔package 版本一致、图标引用存在与 JavaScript 语法
-build-icons.sh: 图标派生器，从 extension/icons/icon.svg 唯一手工源经 sips 生成 16/32/48/96/128/256/512 PNG，并校验 manifest 引用与产物一致
+build-icons.sh: 图标派生器，从 extension/icons/icon-source.png 唯一手工源经 sips 生成 16/32/48/96/128/256/512 PNG（派生前拒收被压平或缺 alpha、非方形的源图；SIZES 不含 1024，因为 manifest 的 1024 条目本就指向源图），并校验 manifest 引用与产物一致
 xcode-env.sh: Xcode 定位公共层，被 source 后提供 resolve_developer_dir；先确认 xcrun 解析结果落在某个 X.app/Contents/Developer 下（xcrun 会回退到 PATH），否则扫描 /Applications/Xcode.app 与按版本号从新到旧的 Xcode-<ver>.app / Xcode_<ver>.app 并导出 DEVELOPER_DIR
 sign-app.sh: 签名与注册公共层，注入 entitlements、深层签名 .app 与嵌套 .appex、清除隔离属性并刷新 pluginkit；证书按 CERT_NAME > 本机 Apple Development > ad-hoc 顺序解析
+i18n.test.mjs: 驱动真实扩展页 i18n 模块与真实 _locales 报文，验证 uiLanguage 偏好解析、包内文案同步解析与降级、浏览器语言归一、$1 替换及 [data-i18n-language] 切换器的填充/选中/持久化
+onboarding.test.mjs: 解析真实 onboarding.html 构造迷你 DOM，验证向导完成态在标签页 API 失效时仍写入配置并进入可交互完成态、外观控件与位置预设语义、预览渲染数学、模型发现 BILAYER_LIST_MODELS 协议与原生/AI 模式 1→2→3 全路径无异常
 content.test.mjs: 驱动真实内容脚本，验证独立源、日文源字幕 ruby 注音回填、provider 切换、预取热更新、上下文重译与凭证隔离
 overlay.test.mjs: 运行真实字幕层并模拟 Shadow DOM，验证相同字幕节点复用（含 ruby 注音）、ruby/rt 元素生成及单行更新、消失状态
 subtitle-store.test.mjs: 驱动真实字幕存储，验证同轨并发请求合并、切集后缓存失效以及 subtitleParser 多行字幕单行化折叠

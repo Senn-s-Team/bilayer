@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 browser/chrome storage、permissions API 与 host_permissions/optional_host_permissions 的跨域 fetch 能力
- * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译（日文源/目标注音请求使用定长字段的 readings 条目数组，兼容旧字典/字符串回包供 ruby 渲染）、兼容服务对象序列规范化、诊断、连通性测试与旧键迁移
+ * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译（日文源/目标注音请求使用定长字段的 readings 条目数组，兼容旧字典/字符串回包供 ruby 渲染）、兼容服务对象序列规范化、AI 就绪度查询（BILAYER_AI_READINESS：只读 provider 条目、aiProviderId 与界面语言偏好 uiLanguage（同一次 storage.local.get），不触网不缓存，返回 {configured, notice, tracksNotice, unreadNotice}，提示句跟随 storage.local.uiLanguage：auto 走 runtime.i18n.getMessage、具体语言异步解析包内 _locales/<code>/messages.json 并缓存，缺失逐级回落 getMessage→空串，语义对齐 src/i18n.js）、诊断（采集开关未知即关闭：读取成功才采用持久化值、读取失败不缓存并在下次调用重试、用户显式切换立即落盘且优先于尚未落地的读取；开关值未知时缓冲落盘一律省略 `__raw_capture_enabled__`，GET/CLEAR 均先 await 单飞读取，采集判断前同样必须 await）、连通性测试与旧键迁移
  * [POS]: background 生命周期入口；凭证仅存于 provider 条目且只在 worker 内读取，兼容服务必须通过端点校验与运行时域名授权
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -8,7 +8,17 @@
 const runtime = globalThis.browser ?? globalThis.chrome;
 const TRANSLATE_MESSAGE = "BILAYER_TRANSLATE_BATCH";
 const OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+// 无需凭证的本地端点（popup/onboarding 的 Ollama 预设）：就绪度判定与 popup 的「获取模型/测试连通性」门槛同一规则。
+const KEYLESS_ENDPOINTS = new Set(["http://localhost:11434/v1/chat/completions"]);
 const DEFAULT_PROVIDER_ID = "openai";
+// 后台 UI 文案的语言来源 = 扩展自身的界面语言偏好 runtime.storage.local.uiLanguage，与 extension/src/i18n.js 同一语义。
+// auto：跟随浏览器语言（runtime.i18n.getMessage）；en/zh_CN：取包内 _locales/<code>/messages.json。
+// 与 i18n.js 相比这里是刻意的重复实现：service worker 没有 DOM 与 localStorage，无法加载 i18n.js（其解析期
+// 依赖同步 XHR），平台也拒绝 worker 里的同步请求，故只能异步 fetch 包内文件并各自维护缓存。
+const UI_LANGUAGE_AUTO = "auto";
+const BUNDLED_UI_LOCALES = Object.freeze(["en", "zh_CN"]);
+// locale → Promise<bundle|null>：同一语言只取一次，成功与不可用都缓存，worker 生命周期内复用。
+const localeBundles = new Map();
 const DEFAULT_TRANSLATION_PROMPT = "你是一位专业的影视字幕翻译员，也是目标语言的母语使用者。只翻译 items[].text；contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。保持每个 id、数量和顺序完全一致，不合并、不拆分、不遗漏字幕。保留人名、专有名词和既有译名；结合上下文处理代词、时态、人物关系和语气。使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、注释、时间戳或额外字段。";
 const LEGACY_TRANSLATION_PROMPT = "请将字幕准确翻译成目标语言。保持原意、人物语气和上下文，使用自然口语；保留人名、专有名词与格式；不要添加解释或额外内容。";
 const MAX_BATCH_ITEMS = 20;
@@ -24,28 +34,45 @@ const ONBOARDING_PAGE = "src/onboarding/onboarding.html";
 const rawDiagnostics = [];
 const MAX_RAW_DIAGNOSTICS = 20;
 let rawDiagnosticsVersion = 0;
-let rawCaptureEnabled = true;
 let rawDiagnosticSequence = 0;
-let diagnosticsLoaded = false;
+// 采集开关以“未知即关闭”为初值：读取成功或用户显式切换之前，任何请求都不得采集。
+let rawCaptureEnabled = false;
+// 单飞读取：仅成功时缓存；失败清空缓存，下一次调用必须重试，绝不把失败钉成“已加载”。
+let rawDiagnosticsLoad = null;
+// 本 worker 生命周期内用户显式切换过开关；用户意图优先于之后才落地的读取结果。
+let capturePreferenceSetByUser = false;
+// 采集开关值是否已知（读取成功，或用户在本 worker 内切换过）。未知时绝不把
+// fail-closed 占位值写进存储，否则清理缓冲会把用户从未读到的偏好静默翻转。
+let rawCapturePreferenceKnown = false;
 
 function loadRawDiagnosticsIfNeeded() {
-  if (diagnosticsLoaded) return Promise.resolve();
-  return new Promise((resolve) => {
+  if (rawDiagnosticsLoad) return rawDiagnosticsLoad;
+  const attempt = new Promise((resolve) => {
     try {
-      runtime.storage.local.get(["__raw_diagnostics__", "__raw_diagnostics_version__", "__raw_diagnostic_seq__"], (stored) => {
-        diagnosticsLoaded = true;
+      runtime.storage.local.get(["__raw_diagnostics__", "__raw_diagnostics_version__", "__raw_diagnostic_seq__", "__raw_capture_enabled__"], (stored) => {
+        if (runtime.runtime?.lastError) { resolve(false); return; }
+        if (!capturePreferenceSetByUser) rawCaptureEnabled = stored?.__raw_capture_enabled__ !== false;
+        rawCapturePreferenceKnown = true;
         if (Array.isArray(stored?.__raw_diagnostics__) && stored.__raw_diagnostics__.length) {
           rawDiagnostics.splice(0, rawDiagnostics.length, ...stored.__raw_diagnostics__.slice(-MAX_RAW_DIAGNOSTICS));
           rawDiagnosticsVersion = stored.__raw_diagnostics_version__ ?? rawDiagnostics.length;
           rawDiagnosticSequence = stored.__raw_diagnostic_seq__ ?? rawDiagnostics.length;
         }
-        resolve();
+        resolve(true);
       });
     } catch {
-      diagnosticsLoaded = true;
-      resolve();
+      resolve(false);
     }
   });
+  rawDiagnosticsLoad = attempt.then((loaded) => { if (!loaded) rawDiagnosticsLoad = null; });
+  return rawDiagnosticsLoad;
+}
+
+// 切换开关只写开关键，避免在缓冲尚未读回时用空缓冲覆盖 `__raw_diagnostics__`。
+function persistRawCapturePreference() {
+  try {
+    runtime.storage.local.set({ __raw_capture_enabled__: rawCaptureEnabled });
+  } catch {}
 }
 
 function persistRawDiagnostics() {
@@ -53,7 +80,9 @@ function persistRawDiagnostics() {
     runtime.storage.local.set({
       __raw_diagnostics__: rawDiagnostics.slice(-MAX_RAW_DIAGNOSTICS),
       __raw_diagnostics_version__: rawDiagnosticsVersion,
-      __raw_diagnostic_seq__: rawDiagnosticSequence
+      __raw_diagnostic_seq__: rawDiagnosticSequence,
+      // 只在开关值已知时一并写入；未知时省略该键，避免用 fail-closed 占位值覆盖用户偏好。
+      ...(rawCapturePreferenceKnown ? { __raw_capture_enabled__: rawCaptureEnabled } : {})
     });
   } catch {}
 }
@@ -102,6 +131,9 @@ const DEFAULT_SETTINGS = {
   aiProviderId: DEFAULT_PROVIDER_ID,
   aiPrefetchCount: 10,
   aiContextCount: 2,
+  // 0 表示不限（content 侧 budgetLimits() 把它转成 null 上限交给调度器）
+  aiRequestBudget: 80,
+  aiCharacterBudget: 40000,
   aiStyleGuide: "",
   aiJapaneseRuby: true
 };
@@ -161,6 +193,17 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "BILAYER_AI_READINESS") {
+    if (!isReadinessSender(sender)) {
+      sendResponse({ ok: false, errorCode: "configuration" });
+      return true;
+    }
+    void aiReadinessSnapshot()
+      .then((snapshot) => sendResponse({ ok: true, ...snapshot }))
+      .catch(() => sendResponse({ ok: false, errorCode: "unavailable" }));
+    return true;
+  }
+
   if (message?.type === "BILAYER_GET_RAW_DIAGNOSTICS") {
     if (!isDiagnosticsSender(sender)) {
       sendResponse({ ok: false, errorCode: "configuration" });
@@ -181,7 +224,11 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, errorCode: "configuration" });
       return true;
     }
+    // 用户意图立即生效并立即落盘，不等待仍未完成的读取；该读取落地时不得覆盖此值。
+    capturePreferenceSetByUser = true;
+    rawCapturePreferenceKnown = true;
     rawCaptureEnabled = message.enabled;
+    persistRawCapturePreference();
     sendResponse({ ok: true, enabled: rawCaptureEnabled });
     return true;
   }
@@ -190,10 +237,13 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, errorCode: "configuration" });
       return true;
     }
-    rawDiagnostics.length = 0;
-    rawDiagnosticsVersion++;
-    persistRawDiagnostics();
-    sendResponse({ ok: true });
+    // 与 GET 一致先读回开关，避免清理缓冲时把未知的 fail-closed 值当成用户偏好落盘。
+    void loadRawDiagnosticsIfNeeded().then(() => {
+      rawDiagnostics.length = 0;
+      rawDiagnosticsVersion++;
+      persistRawDiagnostics();
+      sendResponse({ ok: true });
+    });
     return true;
   }
   if (message?.type !== "BILAYER_FETCH_SUBTITLE") return false;
@@ -374,6 +424,7 @@ async function translateBatch(message, sender, testProviderId = "") {
         ]
       })
     };
+    await loadRawDiagnosticsIfNeeded();
     if (rawCaptureEnabled) {
       rawRecord = {
         id: ++rawDiagnosticSequence,
@@ -707,6 +758,93 @@ function pickProvider(providers, providerId) {
   if (!Array.isArray(providers)) return null;
   return providers.find((item) => item && typeof item === "object" &&
     typeof item.id === "string" && PROVIDER_PATTERN.test(item.id) && item.id === providerId) ?? null;
+}
+
+// 缺失/非法偏好一律按 auto 处理（与 i18n.js 的 normalizePreference 同一规则）。
+function normalizeUiLanguage(value) {
+  const code = typeof value === "string" ? value.trim() : "";
+  return BUNDLED_UI_LOCALES.includes(code) ? code : UI_LANGUAGE_AUTO;
+}
+
+// 包内报文的取值形状与 i18n.js 的 fromBundle 一致：字符串，或 { message } 对象。
+function bundleMessage(bundle, key) {
+  const entry = bundle?.[key];
+  const value = typeof entry === "string" ? entry : entry?.message;
+  return typeof value === "string" ? value : "";
+}
+
+// 单飞加载包内报文：成功缓存解析结果，不可用（缺文件、非 2xx、非法 JSON、抛错）也缓存 null，
+// 避免 popup 的轮询把不可用变成反复失败的网络请求；worker 回收重启后缓存清空，自然重试。
+// 绝不让失败变成异常：调用方拿到的永远是 bundle 或 null。
+function loadLocaleBundle(locale) {
+  if (localeBundles.has(locale)) return localeBundles.get(locale);
+  const attempt = (async () => {
+    try {
+      if (typeof fetch !== "function") return null;
+      const url = runtime.runtime?.getURL?.(`_locales/${locale}/messages.json`) ?? "";
+      if (!url) return null;
+      const response = await fetch(url);
+      if (!response?.ok) return null;
+      const parsed = JSON.parse(await response.text());
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  })();
+  localeBundles.set(locale, attempt);
+  return attempt;
+}
+
+// UI 文案的唯一来源，语义对齐 extension/src/i18n.js：auto 只走 runtime.i18n.getMessage（绝不加载包），
+// 具体语言先取包内报文，缺失时逐级回落 getMessage → ""。任一环节不可用都只降级，绝不抛错、绝不返回半句话。
+async function localizedMessage(key, uiLanguage) {
+  if (BUNDLED_UI_LOCALES.includes(uiLanguage)) {
+    const message = bundleMessage(await loadLocaleBundle(uiLanguage), key);
+    if (message) return message;
+  }
+  try {
+    return runtime.i18n?.getMessage?.(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+// provider 是否“真的能用”：有凭证，或落在无需凭证的本地端点上（与 popup 的选取门槛同一规则，不另立判据）。
+function providerIsConfigured(provider) {
+  if (!provider || typeof provider !== "object") return false;
+  if (typeof provider.credential === "string" && provider.credential.trim()) return true;
+  return typeof provider.endpoint === "string" && KEYLESS_ENDPOINTS.has(provider.endpoint);
+}
+
+// 就绪度快照：只读设置、不触网（仅按需取一次包内文案）、不缓存（调用方会反复问，任何缓存都可能过期）。
+// 文案缺失（本地化键未落地）时按“无提示”处理，绝不返回半句话。
+async function aiReadinessSnapshot() {
+  const stored = await new Promise((resolve, reject) => {
+    // uiLanguage 与 providers/aiProviderId 同一次读取，不额外增加一次存储往返。
+    runtime.storage.local.get({ providers: [], aiProviderId: DEFAULT_PROVIDER_ID, uiLanguage: UI_LANGUAGE_AUTO }, (value) => {
+      if (runtime.runtime.lastError) reject(new Error("storage unavailable"));
+      else resolve(value);
+    });
+  });
+  const configured = providerIsConfigured(pickProvider(stored.providers, stored.aiProviderId));
+  const uiLanguage = normalizeUiLanguage(stored.uiLanguage);
+  const missingProvider = configured ? "" : await localizedMessage("noticeProviderMissing", uiLanguage);
+  const tracksNotice = await localizedMessage("noticeSubtitleTracksMissing", uiLanguage);
+  // “读不到轨道清单”（content 侧的 unread：超时未收到 player-api 载荷）与“本片没有轨道”（none）证据不同，
+  // 文案也分开；恒为字符串，content 侧只在 subtitleAvailability === "unread" 时使用。
+  const unreadNotice = await localizedMessage("noticeSubtitleTracksUnread", uiLanguage);
+  return {
+    configured,
+    // 文案缺失（本地化键未落地）时按“无提示”处理，绝不返回半句话。
+    notice: missingProvider || null,
+    tracksNotice,
+    unreadNotice
+  };
+}
+
+// 就绪度查询的授权边界：观剧页内容脚本（isAllowedSender）与扩展自有页面（popup/onboarding/diagnostics）。
+function isReadinessSender(sender) {
+  return isAllowedSender(sender) || isAllowedTestSender(sender) || isDiagnosticsSender(sender);
 }
 function isAllowedTestSender(sender) {
   if (sender?.id !== runtime.runtime.id) return false;

@@ -1,7 +1,7 @@
 <!--
-  [INPUT]: 依赖 popup.css 与 popup-ai.css 的 macOS 设置面板样式及 popup.js 的模式、provider、翻译参数和日志交互
-  [OUTPUT]: 提供四个设置页签、直达报文面板的侧栏操作与独立工作区
-  [POS]: popup 模块的 DOM 壳；翻译提示词和前瞻参数位于 provider 表单之外，由 manifest action.default_popup 加载
+  [INPUT]: 依赖 popup.css 与 popup-ai.css 的 macOS 设置面板样式及 popup.js 的模式、provider、翻译参数、会话额度与日志交互
+  [OUTPUT]: 提供四个设置页签、会话翻译额度字段及其用量读数、AI 页顶部「翻译服务」卡片中的当前翻译服务选择器（#aiProviderSelect，选项由 popup.js 依 currentProviders 写入）、字幕页模式卡片下与 AI 页共用的 AI 不可用提示块（#modeAvailability/#aiAvailability，覆盖无轨道/读不到轨道/未配置服务）、侧栏界面语言切换与直达报文面板的侧栏操作及独立工作区
+  [POS]: popup 模块的 DOM 壳；翻译提示词、前瞻参数与会话额度位于 provider 表单之外，由 manifest action.default_popup 加载
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
 <!doctype html>
@@ -30,6 +30,8 @@
           <button class="tab-button" id="stylesTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="stylesPanel" data-tab="styles" data-i18n="tabStyles">外观</button>
         </nav>
         <div class="sidebar-tools">
+          <label class="field-label sidebar-language-label" for="uiLanguage" data-i18n="uiLanguageLabel">界面语言</label>
+          <select class="sidebar-language-select" id="uiLanguage" data-i18n-language aria-label="界面语言" data-i18n-aria-label="uiLanguageAria"></select>
           <button class="sidebar-action" id="openOnboarding" type="button" aria-label="打开新手向导" data-i18n-aria-label="popupOnboardingAria"><span data-i18n="popupOnboardingLabel">向导</span> <span aria-hidden="true">↗</span></button>
           <button class="sidebar-action" id="openRawDiagnostics" type="button" aria-label="打开诊断报文面板" data-i18n-aria-label="popupDiagnosticsAria"><span data-i18n="popupDiagnosticsLabel">诊断</span> <span aria-hidden="true">↗</span></button>
         </div>
@@ -78,6 +80,12 @@
             <strong data-i18n="modeAiTitle">AI 智能翻译</strong>
             <span data-i18n="modeAiDesc">大模型依据前后文生成生动口语译文，支持预翻译与模型切换。</span>
           </button>
+        </div>
+        <!-- AI 不可用提示（字幕页）：由 popup.js 依页面状态的 subtitleAvailability/providerReadiness 填文，
+             条件不成立时保持 hidden，因此不会出现陈旧警告 -->
+        <div id="modeAvailability" class="availability" role="status" aria-live="polite" hidden>
+          <p id="modeAvailabilityLabel" class="availability-label"></p>
+          <p id="modeAvailabilityHint" class="availability-hint"></p>
         </div>
         <div class="mode-help">
           <p id="modeDescription" class="ai-consent" data-i18n="modeDescriptionNative">两行分别显示 Netflix 原生字幕。</p>
@@ -130,6 +138,23 @@
         </section>
       </section>
       <section id="aiPanel" class="tab-panel ai-panel" role="tabpanel" aria-labelledby="aiTab" data-panel="ai" hidden>
+        <!-- AI 不可用提示（AI 页）：与字幕页模式卡片下同源的文案；缺少翻译服务时末尾的
+             「配置翻译服务」直达翻译服务页签，缺少 Netflix 轨道时隐藏该按钮（换片/换集在扩展之外） -->
+        <div id="aiAvailability" class="availability" role="status" aria-live="polite" tabindex="-1" hidden>
+          <p id="aiAvailabilityLabel" class="availability-label"></p>
+          <p id="aiAvailabilityHint" class="availability-hint"></p>
+          <button id="aiAvailabilityAction" class="inline-link" type="button" hidden data-i18n="aiConfigureProviders">配置翻译服务 →</button>
+        </div>
+        <!-- 卡片 0: 当前翻译服务：与「翻译服务」页签主列表同源（currentProviders + aiProviderId），
+             选项由 popup.js 写入，绝不读取或显示凭证；无已配置服务时禁用并给出解释 -->
+        <section class="ai-section" aria-labelledby="aiProviderTitle">
+          <h2 id="aiProviderTitle" data-i18n="aiProviderSection">翻译服务</h2>
+          <label class="field" for="aiProviderSelect">
+            <span class="field-label" data-i18n="aiProviderSelect">当前翻译服务</span>
+            <select id="aiProviderSelect"></select>
+          </label>
+          <p class="ai-consent" data-i18n="aiProviderHelp">当前配置使用哪一个已添加服务进行翻译，与「翻译服务」页签双向保持同步。</p>
+        </section>
         <!-- 卡片 1: 轨道与目标语言 -->
         <section class="ai-section" aria-labelledby="aiSettingsTitle">
           <h2 id="aiSettingsTitle" data-i18n="sectionAiTracks">字幕轨道与语言</h2>
@@ -171,8 +196,33 @@
               <span class="field-label" data-i18n="aiContextCount">前后文各取字幕条数</span>
               <input id="aiContextCount" type="number" min="0" max="4" step="1" value="2" inputmode="numeric">
             </label>
+            <label class="field prefetch-field" for="aiRequestBudget">
+              <span class="field-label" data-i18n="aiRequestBudget">请求上限</span>
+              <input id="aiRequestBudget" type="number" min="0" max="1000" step="1" value="80" inputmode="numeric">
+            </label>
+            <label class="field prefetch-field" for="aiCharacterBudget">
+              <span class="field-label" data-i18n="aiCharacterBudget">字符上限</span>
+              <input id="aiCharacterBudget" type="number" min="0" max="1000000" step="1000" value="40000" inputmode="numeric">
+            </label>
+            <!-- 两项上限共用的计量周期；新值经 change 写入存储，读数前缀随之切换 -->
+            <label class="field prefetch-field budget-window-field" for="aiBudgetWindow">
+              <span class="field-label" data-i18n="aiBudgetWindow">额度统计窗口</span>
+              <select id="aiBudgetWindow">
+                <option value="session" data-i18n="aiBudgetWindowSession">本次观看</option>
+                <option value="hour" data-i18n="aiBudgetWindowHour">本小时</option>
+                <option value="day" data-i18n="aiBudgetWindowDay">本日</option>
+              </select>
+            </label>
+          </div>
+          <!-- 额度用量读数：随既有状态轮询刷新，窗口取自页面状态 translationBudget.window，缺失时取存储设置；
+               无连接页面时显示 0 用量与配置上限 -->
+          <div id="aiBudget" class="ai-budget" data-state="ok">
+            <p id="aiBudgetUsage" class="ai-budget-usage" role="status" aria-live="polite">—</p>
+            <p id="aiBudgetExhausted" class="ai-budget-exhausted" hidden></p>
           </div>
           <p class="ai-consent" data-i18n="aiScheduleHelp">预翻译默认最多 10 组、限播放前方 60 秒；0 只翻译当前句。前后文默认每侧 2 条，仅用于语境消歧。</p>
+          <p class="ai-consent" data-i18n="aiBudgetHelp">两项上限互不影响，任一项设为 0 即表示该项不限。计数包含前后文。</p>
+          <p class="ai-consent" data-i18n="aiBudgetWindowHelp">统计窗口是两项上限共用的计量周期，且跨重新加载保留：本次观看在刷新同一剧集页面后继续累计，本小时与本日按本机时间分桶。用量会持久化保存，关闭弹窗不会重置。</p>
         </section>
 
         <!-- 卡片 3: 全局提示词 -->

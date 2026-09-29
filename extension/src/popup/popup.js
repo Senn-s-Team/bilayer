@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API 及 popup.html 的导航、翻译和模型下拉控件；保存服务的模型目录由 background 读取密钥并发现
- * [OUTPUT]: 提供四页签导航、只读模型选择、按服务缓存的模型目录及菜单内过滤与扩展内的字幕/provider 操作
- * [POS]: popup 交互层；字幕模式由 aiRole 单一状态表示，翻译设置全局共享，密钥和端点只属于所选 provider
+ * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API 及 popup.html 的导航、翻译、会话额度字段（含额度统计窗口选择器）、AI 页当前翻译服务选择器（#aiProviderSelect）和模型下拉控件；保存服务的模型目录由 background 读取密钥并发现，BILAYER_GET_STATE 的 translationBudget 提供当前窗口用量与有效窗口，subtitleAvailability（unknown/unread/none/available）/providerReadiness 提供字幕轨道可用性与翻译服务就绪状态
+ * [OUTPUT]: 提供四页签导航、只读模型选择、按服务缓存的模型目录及菜单内过滤、AI 页当前翻译服务选择（写 aiProviderId，与翻译服务页签的主列表双向同步）、会话额度设置（上限与计量窗口）与实时用量读数、AI 不可用提示（无字幕轨道/读不到轨道/未配置服务）与扩展内的字幕/provider 操作
+ * [POS]: popup 交互层；字幕模式由 aiRole 单一状态表示，翻译设置、输入额度与统计窗口全局共享，密钥和端点只属于所选 provider；额度读数与不可用提示只读页面状态，不自行计数也不自行探测
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -69,6 +69,9 @@ const DEFAULT_SETTINGS = {
   aiProviderId: "openai",
   aiPrefetchCount: 10,
   aiContextCount: 2,
+  aiRequestBudget: 80,
+  aiCharacterBudget: 40000,
+  aiBudgetWindow: "session",
   aiStyleGuide: DEFAULT_TRANSLATION_PROMPT,
   aiJapaneseRuby: true,
   primaryFontSize: 26,
@@ -97,6 +100,22 @@ const DEFAULT_SETTINGS = {
   primaryMaxWidth: 86,
   secondaryMaxWidth: 86,
   timingOffsetMs: 0
+};
+
+// 数值设置的合法上界（下界恒为 0）：输入校验与存储归一化共用同一张表，避免两处范围漂移
+const NUMBER_RANGES = {
+  aiPrefetchCount: 50,
+  aiContextCount: 4,
+  aiRequestBudget: 1000,
+  aiCharacterBudget: 1000000
+};
+
+// 两项额度共用的计量窗口：session 为当前观看页/剧集（刷新同一页面继续累计），hour/day 为本机时间分桶
+const AI_BUDGET_WINDOWS = ["session", "hour", "day"];
+const AI_BUDGET_WINDOW_LABELS = {
+  session: "aiBudgetWindowSession",
+  hour: "aiBudgetWindowHour",
+  day: "aiBudgetWindowDay"
 };
 
 const DEFAULT_PROVIDERS = [
@@ -153,6 +172,9 @@ const aiControls = {
   aiTargetLanguage: document.querySelector("#aiTargetLanguage"),
   aiPrefetchCount: document.querySelector("#aiPrefetchCount"),
   aiContextCount: document.querySelector("#aiContextCount"),
+  aiRequestBudget: document.querySelector("#aiRequestBudget"),
+  aiCharacterBudget: document.querySelector("#aiCharacterBudget"),
+  aiBudgetWindow: document.querySelector("#aiBudgetWindow"),
   aiStyleGuide: document.querySelector("#aiStyleGuide"),
   aiJapaneseRuby: document.querySelector("#aiJapaneseRuby")
 };
@@ -206,6 +228,9 @@ const elements = {
   trackGrid: document.querySelector("#trackGrid"),
   primaryTrackLabel: document.querySelector("#primaryTrackLabel"),
   secondaryTrackLabel: document.querySelector("#secondaryTrackLabel"),
+  aiBudget: document.querySelector("#aiBudget"),
+  aiBudgetUsage: document.querySelector("#aiBudgetUsage"),
+  aiBudgetExhausted: document.querySelector("#aiBudgetExhausted"),
   aiCredential: document.querySelector("#aiCredential"),
   aiCredentialStatus: document.querySelector("#aiCredentialStatus"),
   saveAiCredential: document.querySelector("#saveAiCredential"),
@@ -220,6 +245,14 @@ const elements = {
   nativeMode: document.querySelector("#nativeMode"),
   aiMode: document.querySelector("#aiMode"),
   modeDescription: document.querySelector("#modeDescription"),
+  modeAvailability: document.querySelector("#modeAvailability"),
+  modeAvailabilityLabel: document.querySelector("#modeAvailabilityLabel"),
+  modeAvailabilityHint: document.querySelector("#modeAvailabilityHint"),
+  aiAvailability: document.querySelector("#aiAvailability"),
+  aiAvailabilityLabel: document.querySelector("#aiAvailabilityLabel"),
+  aiAvailabilityHint: document.querySelector("#aiAvailabilityHint"),
+  aiAvailabilityAction: document.querySelector("#aiAvailabilityAction"),
+  aiProviderSelect: document.querySelector("#aiProviderSelect"),
   openAiSettings: document.querySelector("#openAiSettings"),
   openProviderSettings: document.querySelector("#openProviderSettings"),
   swapTracks: document.querySelector("#swapTracks"),
@@ -288,11 +321,13 @@ function showLocalPreview() {
   }
   providerControls.editor.hidden = false;
   providerControls.name.value = DEFAULT_PROVIDERS[0].name;
+  writeProviderSelect();
   setSelectedModel(providerControls.model, DEFAULT_PROVIDERS[0].model);
   setModelOptions(elements.providerModelList, LLM_PRESETS.openai.models);
   bindModelPicker(providerControls.model, elements.providerModelList, document.querySelector("#providerModelMenu"), document.querySelector("#providerModelSearch"), () => {});
   bindModelPicker(newDraftControls.model, newDraftControls.modelList, document.querySelector("#newDraftModelMenu"), document.querySelector("#newDraftModelSearch"), () => {});
   elements.aiCredentialStatus.textContent = i18n.t("popupLocalPreviewCredential");
+  writeBudgetReadout();
   elements.testProvider.addEventListener("click", () => {
     elements.providerTestStatus.textContent = i18n.t("popupLocalPreviewTest");
   });
@@ -322,6 +357,10 @@ function bindNavigation() {
     selectTab("provider");
     document.querySelector("#providerTab").focus();
   });
+  elements.aiAvailabilityAction.addEventListener("click", () => {
+    selectTab("provider");
+    document.querySelector("#providerTab").focus();
+  });
   elements.openOnboarding?.addEventListener("click", () => {
     const url = runtime?.runtime?.getURL("src/onboarding/onboarding.html")
       ?? new URL("../onboarding/onboarding.html", location.href).href;
@@ -337,9 +376,20 @@ function bindNavigation() {
 }
 
 function chooseSubtitleMode(mode) {
+  // 该影片没有字幕轨道时 AI 模式不可选中：不做静默失败，而是切到 AI 页把原因和解释摆到眼前
+  if (mode === "ai" && readSubtitleAvailability(currentPageState) === "none") {
+    revealAiUnavailable();
+    return;
+  }
   if (hasExtensionApi) return selectSubtitleMode(mode);
   currentSettings.aiRole = mode === "ai" ? "secondary" : "off";
   writeModeControls();
+}
+
+function revealAiUnavailable() {
+  writeAvailabilityNotice();
+  selectTab("ai");
+  elements.aiAvailability.focus();
 }
 
 function bindControls() {
@@ -365,6 +415,17 @@ function bindControls() {
 
   providerControls.add.addEventListener("click", () => showNewDraftView());
   providerControls.delete.addEventListener("click", () => void deleteProvider());
+  // AI 页的当前翻译服务选择器：写入与「翻译服务」页签相同的 aiProviderId 键，随后立即重渲染选择器自身、
+  // 页签主列表选中态与 AI 页就绪提示，并经既有状态轮询让 content 侧的就绪/翻译跟上（不新增协议）
+  elements.aiProviderSelect.addEventListener("change", () => {
+    const provider = currentProviders.find((item) => item.id === elements.aiProviderSelect.value);
+    if (!provider || provider.id === currentSettings.aiProviderId) return;
+    currentSettings.aiProviderId = provider.id;
+    void writeSettings({ aiProviderId: provider.id });
+    writeProviderControls();
+    writeAvailabilityNotice();
+    scheduleStatePoll(0);
+  });
   newDraftControls.cancelBtn.addEventListener("click", () => hideNewDraftView());
   newDraftControls.cancelTop.addEventListener("click", () => hideNewDraftView());
   newDraftControls.saveBtn.addEventListener("click", () => void saveNewDraftProvider());
@@ -402,7 +463,7 @@ function bindControls() {
       if (currentSettings.aiRole !== "off") scheduleStatePoll(0);
     });
   }
-  for (const [key, max] of [["aiPrefetchCount", 50], ["aiContextCount", 4]]) {
+  for (const [key, max] of Object.entries(NUMBER_RANGES)) {
     const control = aiControls[key];
     control.addEventListener("change", () => {
       const value = Number(control.value);
@@ -411,8 +472,24 @@ function bindControls() {
       control.value = count;
       currentSettings[key] = count;
       void writeSettings({ [key]: count });
+      // 会话额度改动立即反映到读数，并复用既有状态轮询让 content 重新评估是否已用满
+      if (control === aiControls.aiRequestBudget || control === aiControls.aiCharacterBudget) {
+        writeBudgetReadout();
+        if (currentSettings.aiRole !== "off") scheduleStatePoll(0);
+      }
     });
   }
+
+  aiControls.aiBudgetWindow.addEventListener("change", () => {
+    const value = AI_BUDGET_WINDOWS.includes(aiControls.aiBudgetWindow.value)
+      ? aiControls.aiBudgetWindow.value : DEFAULT_SETTINGS.aiBudgetWindow;
+    aiControls.aiBudgetWindow.value = value;
+    currentSettings.aiBudgetWindow = value;
+    void writeSettings({ aiBudgetWindow: value });
+    // 窗口改动立即改写读数的计量周期前缀，并复用既有状态轮询让 content 按新窗口评估是否已用满
+    writeBudgetReadout();
+    if (currentSettings.aiRole !== "off") scheduleStatePoll(0);
+  });
 
   aiControls.aiJapaneseRuby?.addEventListener("change", () => {
     const value = Boolean(aiControls.aiJapaneseRuby.checked);
@@ -713,8 +790,11 @@ function applyPageState(pageState, forceTrackUpdate = false) {
     currentWatchId = nextWatchId;
     if (pageState?.settings) {
       const providerId = currentSettings.aiProviderId;
+      const budgetWindow = currentSettings.aiBudgetWindow;
       currentSettings = normalizeSettings(pageState.settings);
       currentSettings.aiProviderId = providerId;
+      // content 若尚未回传该键（旧版本页面状态），保留弹窗自己已持久化的窗口，避免读数前缀回退成默认值
+      if (pageState.settings.aiBudgetWindow === undefined) currentSettings.aiBudgetWindow = budgetWindow;
     }
     forceTrackUpdate = true;
   }
@@ -729,6 +809,7 @@ function applyPageState(pageState, forceTrackUpdate = false) {
   }
 
   if (watchChanged) writeControls();
+  writeBudgetReadout();
   writeStatus();
   writeAvailability();
 }
@@ -739,7 +820,7 @@ function populateTrackSelects() {
   const source = findSelectedTrack(currentSettings.aiSourceTrackKey, currentSettings.aiSourceTrackPreference, currentSettings.aiSourceLanguage);
   providerControls.source.replaceChildren(createOption("", i18n.t("trackSelectSourcePlaceholder")), ...currentTracks.map(trackToOption));
   providerControls.source.value = source?.key ?? "";
-  providerControls.source.disabled = currentTracks.length === 0;
+  // disabled 由 writeAvailabilityNotice() 统一裁决（无轨道、或该影片无轨道时一并关闭），避免两处范围漂移
   updateJapaneseRubyVisibility();
 }
 function populateTrackSelect(role) {
@@ -781,6 +862,8 @@ function writeControls() {
   writeLayoutPreset();
   writeAdvancedControls();
   updateJapaneseRubyVisibility();
+  // 模式与轨道选择变化都会改变不可用条件（如切换 AI 模式），提示必须同步重算，不能留下陈旧警告
+  writeAvailabilityNotice();
 }
 function selectedProvider() {
   return currentProviders.find((provider) => provider.id === currentSettings.aiProviderId) ?? null;
@@ -845,6 +928,43 @@ function writeProviderControls() {
     }
     readCredentialStatus();
   }
+
+  writeProviderSelect();
+}
+
+// AI 页「当前翻译服务」选择器：与「翻译服务」页签的主列表同源——同一份 currentProviders 与同一个
+// currentSettings.aiProviderId，因此两处切换双向一致（页签点击经 writeProviderControls() 回流到这里，
+// 删除当前服务由既有的归一化回退到首个服务）。只渲染服务名与其模型，绝不读取或显示凭证。
+// 无已配置服务时禁用并给出解释（title 与 aria-label 同文案），选项留一个占位以免出现空白选择器。
+function writeProviderSelect() {
+  const select = elements.aiProviderSelect;
+  if (!select) return;
+
+  if (currentProviders.length === 0) {
+    const hint = i18n.t("aiProviderEmptyHint");
+    select.replaceChildren(createOption("", i18n.t("aiProviderNone")));
+    select.value = "";
+    select.disabled = true;
+    select.setAttribute("aria-disabled", "true");
+    select.setAttribute("aria-label", hint);
+    select.title = hint;
+    return;
+  }
+
+  const label = i18n.t("aiProviderSelect");
+  select.replaceChildren(...currentProviders.map((provider) => {
+    const option = document.createElement("option");
+    option.value = provider.id;
+    option.textContent = provider.name
+      ? provider.model ? `${provider.name} · ${provider.model}` : provider.name
+      : i18n.t("providerUnnamed");
+    return option;
+  }));
+  select.disabled = false;
+  select.removeAttribute("aria-disabled");
+  select.setAttribute("aria-label", label);
+  select.removeAttribute("title");
+  select.value = currentSettings.aiProviderId;
 }
 
 function showNewDraftView() {
@@ -1181,6 +1301,70 @@ function writePageStatus(message, state) {
   elements.statusDot.dataset.state = state;
 }
 
+// 会话翻译额度读数：用量取自页面状态的 translationBudget，缺失（未连接播放页或旧 content）时
+// 退化为 0 用量 + 存储里的配置上限，因此没有页面也能渲染。上限为 null/0 一律显示为「不限」。
+// 计量窗口优先取页面状态的 window（content 返回的有效窗口），缺失时退回存储设置，两者都非法则用默认值。
+function writeBudgetReadout() {
+  const budget = currentPageState?.translationBudget ?? null;
+  const requestsUsed = nonNegativeNumber(budget?.requestsUsed);
+  const charactersUsed = nonNegativeNumber(budget?.charactersUsed);
+  const requestLimit = budget ? budget.requestLimit : currentSettings.aiRequestBudget;
+  const characterLimit = budget ? budget.characterLimit : currentSettings.aiCharacterBudget;
+  const requestLimitText = formatBudgetLimit(requestLimit);
+  const characterLimitText = formatBudgetLimit(characterLimit);
+
+  setTextIfChanged(elements.aiBudgetUsage, i18n.t("aiBudgetUsage", [
+    i18n.t(budgetWindowLabelKey(budget?.window)),
+    formatBudgetCount(requestsUsed), requestLimitText,
+    formatBudgetCount(charactersUsed), characterLimitText
+  ]));
+
+  const exhausted = budgetExhaustedText(budget);
+  setTextIfChanged(elements.aiBudgetExhausted, exhausted);
+  elements.aiBudgetExhausted.hidden = !exhausted;
+  elements.aiBudget.dataset.state = exhausted ? "exhausted" : "ok";
+}
+
+// 读数前缀的窗口文案：页面状态报告的窗口优先，其次存储设置，非法或缺失一律回落 session
+function budgetWindowLabelKey(windowId) {
+  const candidates = [windowId, currentSettings.aiBudgetWindow];
+  const effective = candidates.find((candidate) => AI_BUDGET_WINDOWS.includes(candidate))
+    ?? DEFAULT_SETTINGS.aiBudgetWindow;
+  return AI_BUDGET_WINDOW_LABELS[effective];
+}
+
+// 触发 budget_exceeded 的语言行文案：页面报告了是哪一项就点名并带上数字，否则退回通用文案
+function budgetExhaustedText(budget = currentPageState?.translationBudget) {
+  if (budget?.exhausted === "requests") {
+    return i18n.t("aiBudgetExhaustedRequests", [
+      formatBudgetCount(nonNegativeNumber(budget.requestsUsed)), formatBudgetLimit(budget.requestLimit)
+    ]);
+  }
+  if (budget?.exhausted === "characters") {
+    return i18n.t("aiBudgetExhaustedCharacters", [
+      formatBudgetCount(nonNegativeNumber(budget.charactersUsed)), formatBudgetLimit(budget.characterLimit)
+    ]);
+  }
+  return "";
+}
+
+function nonNegativeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function formatBudgetCount(value) {
+  return nonNegativeNumber(value).toLocaleString();
+}
+
+function formatBudgetLimit(limit) {
+  return limit == null || Number(limit) <= 0 ? i18n.t("aiBudgetUnlimited") : formatBudgetCount(limit);
+}
+
+function setTextIfChanged(element, text) {
+  if (element.textContent !== text) element.textContent = text;
+}
+
 function writeLoadStatus(role, loadStatus, hasSelection) {
   if (!hasSelection) {
     writeRoleStatus(role, i18n.t("statusNotSelected"), "idle");
@@ -1219,7 +1403,7 @@ function writeTranslationStatus(role, status) {
         permission_denied: i18n.t("statusErrorPermissionDenied"),
         source_unavailable: i18n.t("statusErrorSourceUnavailable"),
         initial_timeout: i18n.t("statusErrorInitialTimeout"),
-        budget_exceeded: i18n.t("statusErrorBudgetExceeded")
+        budget_exceeded: budgetExhaustedText() || i18n.t("statusErrorBudgetExceeded")
       };
       writeRoleStatus(role, i18n.t("statusAiFailed", [errors[status.error] ?? i18n.t("statusAiCheckSettings")]), "error");
       break;
@@ -1250,6 +1434,63 @@ function writeAvailability() {
   elements.reloadTracks.disabled = !onWatchPage;
   elements.reloadTracks.classList.remove("is-busy");
   elements.trackGrid.setAttribute("aria-disabled", String(!tracksReady));
+  writeAvailabilityNotice();
+}
+
+// 页面状态里的字幕可用性：只有明确的 "none" 才表示“Netflix 没有为该影片提供轨道”（硬性不可用），
+// "unread" 表示等待播放上下文后仍读不到播放器的轨道列表（软提示，不得断言无轨道，也不阻止选 AI），
+// "available" 为已就绪；字段缺失或 "unknown"（旧 content、轨道仍在加载）一律按未知处理，不显示任何警告。
+function readSubtitleAvailability(pageState) {
+  const availability = pageState?.subtitleAvailability;
+  return availability === "none" || availability === "unread" || availability === "available"
+    ? availability
+    : "unknown";
+}
+
+// 页面状态里的翻译服务就绪状态：字段缺失（旧 content）返回 null，调用方按“不警告”处理
+function readProviderReadiness(pageState) {
+  const readiness = pageState?.providerReadiness;
+  return readiness && typeof readiness === "object" ? readiness : null;
+}
+
+// AI 不可用/未就绪提示的唯一写出点：成因按优先级互斥，且都只依据页面状态，因此状态一变（既有轮询）提示就随写入消失。
+//   none       —— Netflix 没有给出任何字幕轨道：双原生与 AI 两行都无从显示，换片/换集才是出路（硬提示、按钮隐藏、AI 模式不可选）
+//   未配置服务 —— 已选 AI 模式但 providerReadiness.configured 为 false：文案指向翻译服务页签（硬提示、带配置按钮）
+//   unread     —— 等待后仍读不到播放器的轨道列表：软提示，明说“未能读取”而非“没有字幕”，且不阻止选择 AI
+// 同时把两处不可用的控件收敛到同一处：AI 源轨道选择（没有源可挑）与 AI 模式卡片（标记 aria-disabled 供样式降噪，
+// 但仍可点击——点击由 chooseSubtitleMode 呈现原因，原生 disabled 会吞掉点击）。
+function writeAvailabilityNotice() {
+  const availability = readSubtitleAvailability(currentPageState);
+  const noTracks = availability === "none";
+  const tracksUnread = availability === "unread";
+  const noProvider = !noTracks && currentSettings.aiRole !== "off"
+    && readProviderReadiness(currentPageState)?.configured === false;
+
+  // 优先级：无轨道的硬性不可用 > 未配置服务的可操作提示 > 读不到轨道的软提示
+  const label = noTracks ? i18n.t("aiUnavailableNoTracks")
+    : noProvider ? i18n.t("aiUnavailableNoProvider")
+    : tracksUnread ? i18n.t("aiUnavailableTracksUnread")
+    : "";
+  const hint = noTracks ? i18n.t("aiUnavailableNoTracksHint")
+    : noProvider ? i18n.t("aiUnavailableNoProviderHint")
+    : tracksUnread ? i18n.t("aiUnavailableTracksUnreadHint")
+    : "";
+  const soft = tracksUnread && !noTracks && !noProvider;
+
+  for (const [root, labelElement, hintElement] of [
+    [elements.modeAvailability, elements.modeAvailabilityLabel, elements.modeAvailabilityHint],
+    [elements.aiAvailability, elements.aiAvailabilityLabel, elements.aiAvailabilityHint]
+  ]) {
+    root.hidden = !label;
+    root.classList.toggle("is-soft", soft);
+    setTextIfChanged(labelElement, label);
+    setTextIfChanged(hintElement, hint);
+  }
+  elements.aiAvailabilityAction.hidden = !noProvider;
+
+  providerControls.source.disabled = currentTracks.length === 0 || noTracks;
+  elements.aiMode.setAttribute("aria-disabled", String(noTracks));
+  elements.aiMode.classList.toggle("is-unavailable", noTracks);
 }
 
 function scheduleStatePoll(attempt = 0) {
@@ -1372,12 +1613,10 @@ function normalizeSettings(stored) {
   }
 
   if (!TARGET_LANGUAGES.has(settings.aiTargetLanguage)) settings.aiTargetLanguage = DEFAULT_SETTINGS.aiTargetLanguage;
-  if (!Number.isInteger(settings.aiPrefetchCount) || settings.aiPrefetchCount < 0 || settings.aiPrefetchCount > 50) {
-    settings.aiPrefetchCount = DEFAULT_SETTINGS.aiPrefetchCount;
+  for (const [key, max] of Object.entries(NUMBER_RANGES)) {
+    if (!Number.isInteger(settings[key]) || settings[key] < 0 || settings[key] > max) settings[key] = DEFAULT_SETTINGS[key];
   }
-  if (!Number.isInteger(settings.aiContextCount) || settings.aiContextCount < 0 || settings.aiContextCount > 4) {
-    settings.aiContextCount = DEFAULT_SETTINGS.aiContextCount;
-  }
+  if (!AI_BUDGET_WINDOWS.includes(settings.aiBudgetWindow)) settings.aiBudgetWindow = DEFAULT_SETTINGS.aiBudgetWindow;
   if (settings.aiStyleGuide === LEGACY_TRANSLATION_PROMPT || typeof settings.aiStyleGuide !== "string" || !settings.aiStyleGuide.trim()) {
     settings.aiStyleGuide = DEFAULT_TRANSLATION_PROMPT;
   }

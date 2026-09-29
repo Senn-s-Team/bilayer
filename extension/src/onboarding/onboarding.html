@@ -1,6 +1,6 @@
 <!--
-  [INPUT]: 依赖 browser/chrome storage 与 tabs API，支持向 background 发送连通性测试请求
-  [OUTPUT]: 提供三步新手引导界面，输出用户选择的字幕模式、AI 服务配置与外观初始值并持久化
+  [INPUT]: 依赖 browser/chrome storage 与 tabs API，支持向 background 发送连通性测试与模型列表请求，依赖 i18n.js 挂载 [data-i18n-language]
+  [OUTPUT]: 提供三步新手引导界面（环境检测、模式与 AI 服务/模型发现、全量外观微调）与页内完成态出口，输出用户选择的字幕模式、AI 服务配置与外观初始值并持久化
   [POS]: src/onboarding 的核心页面，衔接首次安装与 popup 设置面板，具备完整实机与离线回落能力
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
@@ -24,20 +24,25 @@
         <span data-i18n="onboardingBrand">Bilayer 设置向导</span>
       </div>
 
-      <nav class="stepper" aria-label="向导步骤" data-i18n-aria-label="onboardingStepperAria">
-        <div class="step-item is-active" id="stepItem1">
-          <span class="step-bar"></span>
-          <span data-i18n="onboardingStepEnv">1. 环境</span>
-        </div>
-        <div class="step-item" id="stepItem2">
-          <span class="step-bar"></span>
-          <span data-i18n="onboardingStepMode">2. 模式</span>
-        </div>
-        <div class="step-item" id="stepItem3">
-          <span class="step-bar"></span>
-          <span data-i18n="onboardingStepVisual">3. 视效</span>
-        </div>
-      </nav>
+      <div class="header-tools">
+        <!-- 界面语言切换：选项与持久化由 i18n.js 挂载 [data-i18n-language] 时注入 -->
+        <select class="language-select" id="selectUiLanguage" data-i18n-language aria-label="Interface language" data-i18n-aria-label="uiLanguageAria"></select>
+
+        <nav class="stepper" aria-label="向导步骤" data-i18n-aria-label="onboardingStepperAria">
+          <div class="step-item is-active" id="stepItem1">
+            <span class="step-bar"></span>
+            <span data-i18n="onboardingStepEnv">1. 环境</span>
+          </div>
+          <div class="step-item" id="stepItem2">
+            <span class="step-bar"></span>
+            <span data-i18n="onboardingStepMode">2. 模式</span>
+          </div>
+          <div class="step-item" id="stepItem3">
+            <span class="step-bar"></span>
+            <span data-i18n="onboardingStepVisual">3. 视效</span>
+          </div>
+        </nav>
+      </div>
     </header>
 
     <div class="step-viewport">
@@ -126,14 +131,22 @@
             </div>
           </div>
 
-          <div class="form-grid" id="configRow">
+          <div class="form-grid config-grid" id="configRow">
             <div class="form-field">
               <label class="form-label" for="inputBaseUrl" data-i18n="onboardingBaseUrl">Base URL 端点</label>
               <input type="url" id="inputBaseUrl" class="text-input" placeholder="留空使用 OpenAI 官方接口" data-i18n-placeholder="providerNewDraftEndpointPlaceholder">
             </div>
             <div class="form-field">
               <label class="form-label" for="inputModel" data-i18n="providerModel">模型 ID</label>
-              <input type="text" id="inputModel" list="onboardingModelList" class="text-input" placeholder="gpt-4o-mini" value="gpt-4o-mini">
+              <div class="model-row">
+                <button type="button" class="model-trigger" id="modelTrigger" aria-expanded="false" aria-controls="modelMenu" data-i18n="providerModelSelect">选择模型</button>
+                <button type="button" class="btn btn-outline" id="btnFetchModels" data-i18n="providerModelFetch">获取模型</button>
+              </div>
+              <div class="model-menu" id="modelMenu" hidden>
+                <input type="search" id="modelSearch" class="text-input" autocomplete="off" spellcheck="false" placeholder="过滤模型 ID" data-i18n-placeholder="providerModelFilter" aria-label="过滤模型" data-i18n-aria-label="providerModelFilterAria">
+                <div class="model-options" id="modelOptions" role="listbox"></div>
+              </div>
+              <input type="text" id="inputModel" list="onboardingModelList" class="text-input" placeholder="gpt-4o-mini" value="gpt-4o-mini" spellcheck="false">
               <datalist id="onboardingModelList">
                 <option value="gpt-4o-mini">
                 <option value="gpt-4o">
@@ -166,7 +179,7 @@
             <span class="stage-badge-dot"></span>
             <span data-i18n="onboardingAiStream">AI 实时翻译流</span>
           </div>
-          <div class="subtitle-line primary" id="previewPrimary">Never tell me the odds.</div>
+          <div class="subtitle-line primary is-editing" id="previewPrimary">Never tell me the odds.</div>
           <div class="subtitle-line secondary" id="previewSecondary" data-i18n="sampleNative">永远别跟我提胜率。</div>
         </div>
 
@@ -204,12 +217,28 @@
 
             <div class="tuning-field">
               <div class="tuning-header">
+                <span data-i18n="styleLineHeight">行高</span>
+                <span id="lineHeightDisplay">1.28</span>
+              </div>
+              <input type="range" id="sliderLineHeight" min="1" max="1.6" step="0.05" value="1.28">
+            </div>
+
+            <div class="tuning-field">
+              <div class="tuning-header">
+                <span data-i18n="styleMaxWidth">最大宽度</span>
+                <span id="maxWidthDisplay">86%</span>
+              </div>
+              <input type="range" id="sliderMaxWidth" min="55" max="96" step="1" value="86">
+            </div>
+
+            <div class="tuning-field">
+              <div class="tuning-header">
                 <span data-i18n="styleTextColor">文字颜色</span>
                 <span id="textColorDisplay">#FFFFFF</span>
               </div>
-              <div class="color-picker-row">
+              <label class="color-picker-row" for="inputTextColor">
                 <input type="color" id="inputTextColor" value="#ffffff" class="color-input">
-              </div>
+              </label>
             </div>
 
             <div class="tuning-field">
@@ -225,9 +254,9 @@
                 <span data-i18n="styleBackgroundColor">背景颜色</span>
                 <span id="bgColorDisplay">#000000</span>
               </div>
-              <div class="color-picker-row">
+              <label class="color-picker-row" for="inputBgColor">
                 <input type="color" id="inputBgColor" value="#000000" class="color-input">
-              </div>
+              </label>
             </div>
 
             <div class="tuning-field">
@@ -243,9 +272,9 @@
                 <span data-i18n="styleStrokeColor">描边颜色</span>
                 <span id="strokeColorDisplay">#000000</span>
               </div>
-              <div class="color-picker-row">
+              <label class="color-picker-row" for="inputStrokeColor">
                 <input type="color" id="inputStrokeColor" value="#000000" class="color-input">
-              </div>
+              </label>
             </div>
 
             <div class="tuning-field">
@@ -285,10 +314,15 @@
     </div>
 
     <footer class="footer">
+      <div class="completion-note" id="completionNote" role="status" hidden>
+        <span class="status-dot" data-state="ready"></span>
+        <span id="completionText" data-i18n="onboardingSaved">保存就绪 ✓</span>
+      </div>
       <button type="button" class="btn btn-quiet" id="btnBack" style="visibility: hidden;" data-i18n="onboardingBack">上一步</button>
       <div style="display: flex; gap: 10px;">
         <button type="button" class="btn btn-quiet" id="btnSkip" data-i18n="onboardingSkip">跳过向导</button>
         <button type="button" class="btn btn-primary" id="btnForward" data-i18n="onboardingNext">下一步</button>
+        <button type="button" class="btn btn-accent" id="btnCompletionNetflix" data-i18n="onboardingOpenNetflix" hidden>打开 Netflix ↗</button>
       </div>
     </footer>
   </main>

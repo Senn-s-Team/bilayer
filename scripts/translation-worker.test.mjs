@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Node.js test/vm 与真实 service_worker.js、translationScheduler.js、overlay.js，模拟多 provider 扩展存储和 Chat Completions 响应
- * [OUTPUT]: 验证 provider 切换、日文原文注音结构化请求经 worker/scheduler/overlay 渲染、混合汉字/假名的空数组约束、兼容服务回包及 ID 校验、权限/错误和原始报文秘密边界
+ * [INPUT]: 依赖 Node.js test/vm 与真实 service_worker.js、translationScheduler.js、overlay.js，模拟多 provider 扩展存储（可注入 get 行为以模拟抛错/挂起读取）和 Chat Completions 响应
+ * [OUTPUT]: 验证 provider 切换、日文原文注音结构化请求经 worker/scheduler/overlay 渲染、混合汉字/假名的空数组约束、兼容服务回包及 ID 校验、权限/错误、原始报文秘密边界、AI 就绪度查询（已配置/无凭证远端/无密钥本地端点/无匹配条目、notice/tracksNotice/unreadNotice 三条文案各自独立解析、键缺失时分别回落 null 与空串、文案跟随 storage.local.uiLanguage 的包内解析与按语言缓存、auto/缺失/非法值一律走 getMessage 且不取包、包拒绝或不存在或非法 JSON 时逐级降级、存储读失败、对非观剧页与异物发送者的授权拒绝），以及采集开关跨 worker 重启的持久化与首请求门控、读取失败时的 fail-closed 与重试、用户切换与并发翻译交错时用户意图优先、清理缓冲绝不写入未知的开关键
  * [POS]: scripts 的后台请求行为检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -13,6 +13,33 @@ const source = readFileSync(new URL("../extension/src/background/service_worker.
 const schedulerSource = readFileSync(new URL("../extension/src/content/translationScheduler.js", import.meta.url), "utf8");
 const overlaySource = readFileSync(new URL("../extension/src/content/overlay.js", import.meta.url), "utf8");
 const sender = { id: "extension-id", tab: { url: "https://www.netflix.com/watch/42" } };
+// 后台本地化桩：真实环境的文案由 _locales/{en,zh_CN}/messages.json 提供（键名由 popup 侧维护），
+// 这里只断言后台取了哪个键、返回值如何回填，不复制真实的提示句子。
+const I18N_MESSAGES = {
+  noticeProviderMissing: "[noticeProviderMissing]",
+  noticeSubtitleTracksMissing: "[noticeSubtitleTracksMissing]",
+  noticeSubtitleTracksUnread: "[noticeSubtitleTracksUnread]"
+};
+// 真实包内文案：具体语言路径按 runtime.getURL 生成的 URL 取回原文件（键名与句子都由 _locales 维护，测试不复制）。
+const LOCALE_BUNDLES = new Map(["en", "zh_CN"].map((locale) => [
+  `extension://_locales/${locale}/messages.json`,
+  JSON.parse(readFileSync(new URL(`../extension/_locales/${locale}/messages.json`, import.meta.url), "utf8"))
+]));
+const noticeText = (locale, key) => LOCALE_BUNDLES.get(`extension://_locales/${locale}/messages.json`)[key].message;
+
+// 包内文案 fetch 桩：记录每次请求的 URL；可按 URL 给出报文（对象＝原样序列化，字符串＝原样返回），
+// texts 里没有的 URL 返回 404，reject 则模拟网络拒绝。
+function localeFetcher({ reject = false, texts = LOCALE_BUNDLES } = {}) {
+  const fetcher = async (url) => {
+    fetcher.calls.push(url);
+    if (reject) throw new Error("bundle fetch rejected");
+    const body = texts.get(url);
+    if (body === undefined) return new Response("", { status: 404 });
+    return new Response(typeof body === "string" ? body : JSON.stringify(body), { status: 200 });
+  };
+  fetcher.calls = [];
+  return fetcher;
+}
 const message = {
   type: "BILAYER_TRANSLATE_BATCH",
   sourceLanguage: "en", targetLanguage: "zh-Hans",
@@ -20,20 +47,32 @@ const message = {
   contextBefore: [], contextAfter: ["How are you?"]
 };
 
-function createWorker(fetcher, stored = {}, permissionGranted = true) {
+function createWorker(fetcher, stored = {}, permissionGranted = true, store = { ...stored }, storageControl = {}) {
   let listener;
+  const localizedKeys = [];
+  const readStorage = (defaults, callback, overrides = {}) => callback({
+    ...defaults, aiRole: "secondary", providers: [{ id: "openai", name: "OpenAI 官方", endpoint: "", model: "gpt-4o-mini", credential: "private-key" }], aiProviderId: "openai", ...store, ...overrides
+  });
   const runtime = {
     storage: { local: {
-      get(defaults, callback) { callback({ ...defaults, aiRole: "secondary", providers: [{ id: "openai", name: "OpenAI 官方", endpoint: "", model: "gpt-4o-mini", credential: "private-key" }], aiProviderId: "openai", ...stored }); },
-      set(_data, callback) { if (typeof callback === "function") callback(); }
+      get(defaults, callback) {
+        const fallback = (overrides) => readStorage(defaults, callback, overrides);
+        if (storageControl.get) return storageControl.get(defaults, callback, store, fallback);
+        fallback();
+      },
+      set(data, callback) { Object.assign(store, data); if (typeof callback === "function") callback(); }
     } },
     permissions: { contains(_query, callback) { callback(permissionGranted); } },
+    i18n: { getMessage(key) { localizedKeys.push(key); return I18N_MESSAGES[key] ?? ""; } },
     runtime: { id: "extension-id", getURL(path) { return `extension://${path}`; }, onInstalled: { addListener() {} }, onMessage: { addListener(callback) { listener = callback; } } }
   };
   runInNewContext(source, {
     browser: runtime, fetch: fetcher, URL, TextEncoder, AbortController, structuredClone, setTimeout, clearTimeout
   }, { filename: "service_worker.js" });
-  return (request = message, from = sender) => new Promise((resolve) => listener(request, from, resolve));
+  const run = (request = message, from = sender) => new Promise((resolve) => listener(request, from, resolve));
+  // 断言“后台是否真的去解析了提示句”：未配置时才取 noticeProviderMissing。
+  run.localizedKeys = localizedKeys;
+  return run;
 }
 
 test("selected subtitle text is sent only to fixed OpenAI host and the key never returns", async () => {
@@ -265,6 +304,241 @@ test("raw diagnostic page sees exact request and malformed response without leak
   assert.equal((await worker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, sender)).ok, false);
   assert.equal((await worker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, page)).ok, true);
   assert.equal((await get()).records.length, 0);
+});
+
+test("raw capture toggle persists across worker restart and gates the first translate request", async () => {
+  const store = {};
+  const okFetcher = async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ items: [{ id: "0", text: "你好" }] })
+  } }] });
+  const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" } };
+
+  // (a) first worker loads with capture enabled, then the user turns it off
+  let worker = createWorker(okFetcher, {}, true, store);
+  assert.equal((await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page)).enabled, true);
+  assert.equal((await worker({ type: "BILAYER_SET_RAW_DIAGNOSTICS", enabled: false }, page)).enabled, false);
+  assert.equal(store.__raw_capture_enabled__, false);
+
+  // (b) restart sharing the same storage: the first translate must not capture
+  worker = createWorker(okFetcher, {}, true, store);
+  const translated = await worker({ ...message, diagnostic: true });
+  assert.equal(translated.ok, true);
+  assert.equal((await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page)).enabled, false);
+  assert.equal((await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page)).records.length, 0);
+
+  // (c) stored false survives a third restart
+  worker = createWorker(okFetcher, {}, true, store);
+  assert.equal((await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page)).enabled, false);
+
+  // (d) unset storage still defaults to enabled and captures
+  const freshWorker = createWorker(okFetcher);
+  assert.equal((await freshWorker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page)).enabled, true);
+  assert.equal((await freshWorker({ ...message, diagnostic: true })).ok, true);
+  assert.equal((await freshWorker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page)).records.length, 1);
+});
+
+test("a failed capture-preference read stays fail-closed and is retried by the next request", async () => {
+  const store = {};
+  const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" } };
+  let failDiagnosticsReads = true;
+  let diagnosticsReads = 0;
+  const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ items: [{ id: "0", text: "你好" }] })
+  } }] }), {}, true, store, {
+    get(defaults, callback, backing, fallback) {
+      if (Array.isArray(defaults)) {
+        diagnosticsReads++;
+        if (failDiagnosticsReads) throw new Error("storage unavailable");
+      }
+      fallback();
+    }
+  });
+
+  // the read throws: the translation still succeeds, but nothing is captured and GET reports off
+  assert.equal((await worker({ ...message, diagnostic: true })).ok, true);
+  const failed = await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page);
+  assert.equal(failed.enabled, false);
+  assert.equal(failed.records.length, 0);
+  assert.equal(diagnosticsReads, 2); // translate + GET each retried; the failure was not latched
+
+  // the read recovers: the next translate retries and resumes capture with the stored value
+  failDiagnosticsReads = false;
+  store.__raw_capture_enabled__ = true;
+  assert.equal((await worker({ ...message, diagnostic: true })).ok, true);
+  const recovered = await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page);
+  assert.equal(recovered.enabled, true);
+  assert.equal(recovered.records.length, 1);
+  assert.equal(diagnosticsReads, 3); // the successful read was cached; GET did not read again
+});
+
+test("a user toggle that lands while the capture read is pending wins over the read's later value", async () => {
+  const store = {};
+  const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" } };
+  const okFetcher = async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ items: [{ id: "0", text: "你好" }] })
+  } }] });
+  let releaseDiagnosticsRead;
+  const worker = createWorker(okFetcher, {}, true, store, {
+    get(defaults, callback, backing, fallback) {
+      if (Array.isArray(defaults) && !releaseDiagnosticsRead) { releaseDiagnosticsRead = fallback; return; }
+      fallback();
+    }
+  });
+
+  const translating = worker({ ...message, diagnostic: true });
+  for (let i = 0; i < 50 && !releaseDiagnosticsRead; i++) await new Promise(setImmediate);
+  assert.equal(typeof releaseDiagnosticsRead, "function"); // the read is in flight, not settled
+
+  const toggled = await worker({ type: "BILAYER_SET_RAW_DIAGNOSTICS", enabled: false }, page);
+  assert.equal(toggled.enabled, false);
+  assert.equal(store.__raw_capture_enabled__, false); // persisted without waiting for the read
+
+  releaseDiagnosticsRead({ __raw_capture_enabled__: true }); // the late read carries the opposite value
+  assert.equal((await translating).ok, true);
+  assert.equal(store.__raw_capture_enabled__, false); // the read must not overwrite the user's choice
+  const after = await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page);
+  assert.equal(after.enabled, false);
+  assert.equal(after.records.length, 0); // and no translate captured against it
+});
+
+test("a translate issued before the toggle does not revert the user's persisted value", async () => {
+  const store = { __raw_capture_enabled__: false };
+  const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" } };
+  const okFetcher = async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ items: [{ id: "0", text: "你好" }] })
+  } }] });
+  let releaseDiagnosticsRead;
+  const worker = createWorker(okFetcher, {}, true, store, {
+    get(defaults, callback, backing, fallback) {
+      if (Array.isArray(defaults) && !releaseDiagnosticsRead) { releaseDiagnosticsRead = fallback; return; }
+      fallback();
+    }
+  });
+
+  const translating = worker({ ...message, diagnostic: true });
+  for (let i = 0; i < 50 && !releaseDiagnosticsRead; i++) await new Promise(setImmediate);
+
+  const toggled = await worker({ type: "BILAYER_SET_RAW_DIAGNOSTICS", enabled: true }, page);
+  assert.equal(toggled.enabled, true);
+  assert.equal(store.__raw_capture_enabled__, true);
+
+  releaseDiagnosticsRead({ __raw_capture_enabled__: false }); // the late read carries the stale off value
+  assert.equal((await translating).ok, true);
+  assert.equal(store.__raw_capture_enabled__, true); // the user's value survives the race
+  const after = await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page);
+  assert.equal(after.enabled, true);
+  assert.equal(after.records.length, 1); // and the user's on value resumes capture
+});
+
+test("a translate that starts before the capture read settles still waits for the stored default", async () => {
+  const store = {};
+  const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" } };
+  const okFetcher = async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ items: [{ id: "0", text: "你好" }] })
+  } }] });
+  let releaseDiagnosticsRead;
+  const worker = createWorker(okFetcher, {}, true, store, {
+    get(defaults, callback, backing, fallback) {
+      if (Array.isArray(defaults) && !releaseDiagnosticsRead) { releaseDiagnosticsRead = fallback; return; }
+      fallback();
+    }
+  });
+
+  const translating = worker({ ...message, diagnostic: true });
+  for (let i = 0; i < 50 && !releaseDiagnosticsRead; i++) await new Promise(setImmediate);
+  releaseDiagnosticsRead(); // successful read with no stored key, so the documented default applies
+
+  assert.equal((await translating).ok, true);
+  const after = await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page);
+  assert.equal(after.enabled, true);
+  assert.equal(after.records.length, 1); // the request waited for the read instead of using the fail-closed default
+});
+
+test("a clear before any capture read never persists the fail-closed placeholder", async () => {
+  const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" } };
+  const okFetcher = async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ items: [{ id: "0", text: "你好" }] })
+  } }] });
+
+  // a stored true must survive a clear that is the very first message of a fresh worker
+  const storedOn = { __raw_capture_enabled__: true };
+  const onWorker = createWorker(okFetcher, {}, true, storedOn);
+  assert.equal((await onWorker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, page)).ok, true);
+  assert.equal(storedOn.__raw_capture_enabled__, true);
+  const onAfter = await onWorker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page);
+  assert.equal(onAfter.enabled, true);
+  assert.equal(onAfter.records.length, 0);
+
+  // an absent key must still default to on after the clear completes its read
+  const absentStore = {};
+  const absentWorker = createWorker(okFetcher, {}, true, absentStore);
+  assert.equal((await absentWorker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, page)).ok, true);
+  assert.notEqual(absentStore.__raw_capture_enabled__, false);
+  assert.equal((await absentWorker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page)).enabled, true);
+});
+
+test("a clear that races an in-flight capture read stores the value that read returns", async () => {
+  const store = {};
+  const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" } };
+  const okFetcher = async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ items: [{ id: "0", text: "你好" }] })
+  } }] });
+  let releaseDiagnosticsRead;
+  const worker = createWorker(okFetcher, {}, true, store, {
+    get(defaults, callback, backing, fallback) {
+      if (Array.isArray(defaults) && !releaseDiagnosticsRead) { releaseDiagnosticsRead = fallback; return; }
+      fallback();
+    }
+  });
+
+  const clearing = worker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, page);
+  for (let i = 0; i < 50 && !releaseDiagnosticsRead; i++) await new Promise(setImmediate);
+  assert.equal(typeof releaseDiagnosticsRead, "function"); // the read is in flight, not settled
+  assert.equal("__raw_capture_enabled__" in store, false); // nothing was written before the read landed
+
+  releaseDiagnosticsRead({ __raw_capture_enabled__: true });
+  assert.equal((await clearing).ok, true);
+  assert.equal(store.__raw_capture_enabled__, true); // equals the value the read returned
+  const after = await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page);
+  assert.equal(after.enabled, true);
+  assert.equal(after.records.length, 0);
+});
+
+test("a clear after a failed capture read writes no capture flag at all", async () => {
+  const store = {};
+  const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" } };
+  let failDiagnosticsReads = true;
+  const okFetcher = async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: JSON.stringify({ items: [{ id: "0", text: "你好" }] })
+  } }] });
+  const worker = createWorker(okFetcher, {}, true, store, {
+    get(defaults, callback, backing, fallback) {
+      if (Array.isArray(defaults) && failDiagnosticsReads) throw new Error("storage unavailable");
+      fallback();
+    }
+  });
+
+  assert.equal((await worker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, page)).ok, true);
+  assert.equal("__raw_capture_enabled__" in store, false); // the unknown value is never persisted
+  assert.deepEqual(Object.keys(store).filter((key) => key.startsWith("__raw_")).sort(),
+    ["__raw_diagnostic_seq__", "__raw_diagnostics__", "__raw_diagnostics_version__"]);
+  assert.equal((await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page)).enabled, false);
+
+  // the clear did not latch the failure: a recovering read still retries and resumes capture
+  failDiagnosticsReads = false;
+  store.__raw_capture_enabled__ = true;
+  assert.equal((await worker({ ...message, diagnostic: true })).ok, true);
+  const recovered = await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page);
+  assert.equal(recovered.enabled, true);
+  assert.equal(recovered.records.length, 1);
 });
 
 test("onboarding page is authorized to run provider connectivity test and rejects unauthorized senders", async () => {
@@ -622,4 +896,250 @@ test("connectivity probe marks jsonMode as none and warns when both json_schema 
   assert.equal(result.warning, "unsupported_json_mode");
   assert.equal(calls.length, 3);
   assert.equal(calls[2], undefined);
+});
+
+// ---------------------------------------------------------------------------
+// AI 就绪度查询（BILAYER_AI_READINESS）：配置判定、本地化文案与授权边界
+// ---------------------------------------------------------------------------
+
+const readinessRequest = { type: "BILAYER_AI_READINESS" };
+const popupSender = { id: "extension-id", url: "extension://src/popup/popup.html" };
+
+test("AI readiness answers provider configuration and localized hints without any network call", async () => {
+  let fetches = 0;
+  const worker = createWorker(async () => { fetches++; throw new Error("must not reach the network"); }, {
+    providers: [{ id: "openai", name: "OpenAI 官方", endpoint: "", model: "gpt-4o-mini", credential: "private-key" }],
+    aiProviderId: "openai"
+  });
+  const result = await worker(readinessRequest, sender);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    ok: true, configured: true, notice: null,
+    tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: "[noticeSubtitleTracksUnread]"
+  });
+  assert.equal(fetches, 0);
+  // 已配置时连“未配置”那句文案都不去解析；两条轨道文案各自独立解析（none 与 unread 的证据不同）
+  assert.deepEqual(worker.localizedKeys, ["noticeSubtitleTracksMissing", "noticeSubtitleTracksUnread"]);
+});
+
+test("a credential-less provider counts as ready only when it is the keyless local endpoint", async () => {
+  const fetcher = async () => { throw new Error("must not reach the network"); };
+  const local = createWorker(fetcher, {
+    providers: [{ id: "ollama", name: "Ollama", endpoint: "http://localhost:11434/v1/chat/completions", model: "qwen2.5:7b", credential: "" }],
+    aiProviderId: "ollama"
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(await local(readinessRequest, sender))), {
+    ok: true, configured: true, notice: null,
+    tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: "[noticeSubtitleTracksUnread]"
+  });
+  assert.deepEqual(local.localizedKeys, ["noticeSubtitleTracksMissing", "noticeSubtitleTracksUnread"]);
+
+  // 远端端点没有凭证（哪怕只是空白）＝不可用，与 popup 的“获取模型/测试连通性”门槛一致
+  const remote = createWorker(fetcher, {
+    providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "m", credential: "   " }],
+    aiProviderId: "custom"
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(await remote(readinessRequest, sender))), {
+    ok: true, configured: false, notice: "[noticeProviderMissing]",
+    tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: "[noticeSubtitleTracksUnread]"
+  });
+  assert.deepEqual(remote.localizedKeys, ["noticeProviderMissing", "noticeSubtitleTracksMissing", "noticeSubtitleTracksUnread"]);
+
+  // 没有与 aiProviderId 匹配的条目：与翻译侧 pickProvider() 的判定一致，按未配置处理
+  const missing = createWorker(fetcher, { providers: [], aiProviderId: "openai" });
+  assert.deepEqual(JSON.parse(JSON.stringify(await missing(readinessRequest, sender))), {
+    ok: true, configured: false, notice: "[noticeProviderMissing]",
+    tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: "[noticeSubtitleTracksUnread]"
+  });
+});
+
+test("a missing localization key yields no hint instead of half a sentence", async () => {
+  const saved = I18N_MESSAGES.noticeProviderMissing;
+  const savedUnread = I18N_MESSAGES.noticeSubtitleTracksUnread;
+  delete I18N_MESSAGES.noticeProviderMissing;
+  delete I18N_MESSAGES.noticeSubtitleTracksUnread;
+  try {
+    const worker = createWorker(async () => { throw new Error("must not reach the network"); }, {
+      providers: [{ id: "custom", name: "Custom", endpoint: "", model: "m", credential: "" }],
+      aiProviderId: "custom"
+    });
+    // notice 键缺失 → null；unreadNotice 键缺失 → 空串（content 侧据此不渲染空提示条）
+    assert.deepEqual(JSON.parse(JSON.stringify(await worker(readinessRequest, sender))), {
+      ok: true, configured: false, notice: null,
+      tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: ""
+    });
+
+    // 只有 unread 键缺失时，两条轨道文案分道扬镳：tracksNotice 仍在，unreadNotice 为空串
+    I18N_MESSAGES.noticeProviderMissing = saved;
+    const unreadless = createWorker(async () => { throw new Error("must not reach the network"); });
+    assert.deepEqual(JSON.parse(JSON.stringify(await unreadless(readinessRequest, sender))), {
+      ok: true, configured: true, notice: null,
+      tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: ""
+    });
+  } finally {
+    I18N_MESSAGES.noticeProviderMissing = saved;
+    if (savedUnread === undefined) delete I18N_MESSAGES.noticeSubtitleTracksUnread;
+    else I18N_MESSAGES.noticeSubtitleTracksUnread = savedUnread;
+  }
+});
+
+test("a storage read failure reports unavailable instead of inventing a ready state", async () => {
+  const worker = createWorker(async () => { throw new Error("must not reach the network"); }, {}, true, {}, {
+    get() { throw new Error("storage unavailable"); }
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(readinessRequest, sender))), { ok: false, errorCode: "unavailable" });
+});
+
+test("AI readiness is limited to watch-page content scripts and extension pages", async () => {
+  const worker = createWorker(async () => { throw new Error("must not reach the network"); });
+
+  const hostile = { id: "extension-id", url: "https://evil.example/watch/42", tab: { url: "https://evil.example/watch/42" } };
+  const denied = await worker(readinessRequest, hostile);
+  assert.deepEqual(JSON.parse(JSON.stringify(denied)), { ok: false, errorCode: "configuration" });
+  assert.equal(JSON.stringify(denied).includes("notice"), false);
+  // Netflix 的非观剧页（浏览页）同样不在授权范围
+  assert.equal((await worker(readinessRequest, { id: "extension-id", tab: { url: "https://www.netflix.com/browse" } })).ok, false);
+  // 其它扩展 id 即使挂在观剧页上也不行
+  assert.equal((await worker(readinessRequest, { id: "other-extension", tab: { url: "https://www.netflix.com/watch/42" } })).ok, false);
+
+  // 观剧页内容脚本与扩展自有页面（popup/onboarding/diagnostics）可以问
+  assert.equal((await worker(readinessRequest, sender)).ok, true);
+  assert.equal((await worker(readinessRequest, popupSender)).ok, true);
+  assert.equal((await worker(readinessRequest, {
+    id: "extension-id", url: "extension://src/onboarding/onboarding.html",
+    tab: { id: 1, url: "extension://src/onboarding/onboarding.html" }
+  })).ok, true);
+  assert.equal((await worker(readinessRequest, {
+    id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" }
+  })).ok, true);
+});
+
+// ---------------------------------------------------------------------------
+// AI 就绪度文案跟随扩展界面语言（storage.local.uiLanguage）：包解析、缓存与降级链
+// ---------------------------------------------------------------------------
+
+const unconfiguredProvider = {
+  providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "m", credential: "" }],
+  aiProviderId: "custom"
+};
+
+test("readiness hints follow the stored uiLanguage bundle and fetch it only once", async () => {
+  const fetcher = localeFetcher();
+  const worker = createWorker(fetcher, { uiLanguage: "zh_CN", ...unconfiguredProvider });
+  const expected = {
+    ok: true, configured: false,
+    notice: noticeText("zh_CN", "noticeProviderMissing"),
+    tracksNotice: noticeText("zh_CN", "noticeSubtitleTracksMissing"),
+    unreadNotice: noticeText("zh_CN", "noticeSubtitleTracksUnread")
+  };
+  assert.notEqual(expected.notice, I18N_MESSAGES.noticeProviderMissing);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(readinessRequest, sender))), expected);
+  // 命中包内文案后不再回落浏览器语言
+  assert.deepEqual(worker.localizedKeys, []);
+
+  // 缓存：重复询问（含解析器状态在两次调用间变化）不再取包
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(readinessRequest, sender))), expected);
+  assert.deepEqual(fetcher.calls, ["extension://_locales/zh_CN/messages.json"]);
+  assert.deepEqual(worker.localizedKeys, []);
+});
+
+test("a concrete uiLanguage resolves its own bundle instead of the browser language", async () => {
+  const fetcher = localeFetcher();
+  const worker = createWorker(fetcher, { uiLanguage: "en", ...unconfiguredProvider });
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(readinessRequest, sender))), {
+    ok: true, configured: false,
+    notice: noticeText("en", "noticeProviderMissing"),
+    tracksNotice: noticeText("en", "noticeSubtitleTracksMissing"),
+    unreadNotice: noticeText("en", "noticeSubtitleTracksUnread")
+  });
+  assert.deepEqual(fetcher.calls, ["extension://_locales/en/messages.json"]);
+  assert.deepEqual(worker.localizedKeys, []);
+});
+
+test("auto, missing and invalid uiLanguage keep the browser-language path and never fetch a bundle", async () => {
+  // 未设置、显式 auto、非包内码（zh-CN/ja）、非字符串都按 auto 处理
+  for (const stored of [{}, { uiLanguage: "auto" }, { uiLanguage: "zh-CN" }, { uiLanguage: "ja" }, { uiLanguage: 7 }]) {
+    const fetcher = localeFetcher({ reject: true });
+    const worker = createWorker(fetcher, stored);
+    assert.deepEqual(JSON.parse(JSON.stringify(await worker(readinessRequest, sender))), {
+      ok: true, configured: true, notice: null,
+      tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: "[noticeSubtitleTracksUnread]"
+    });
+    assert.deepEqual(fetcher.calls, []);
+    assert.deepEqual(worker.localizedKeys, ["noticeSubtitleTracksMissing", "noticeSubtitleTracksUnread"]);
+  }
+
+  // auto 且未配置时同样不取包，只解析浏览器语言
+  const fetcher = localeFetcher({ reject: true });
+  const worker = createWorker(fetcher, { uiLanguage: "auto", providers: [], aiProviderId: "openai" });
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(readinessRequest, sender))), {
+    ok: true, configured: false, notice: "[noticeProviderMissing]",
+    tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: "[noticeSubtitleTracksUnread]"
+  });
+  assert.deepEqual(fetcher.calls, []);
+});
+
+test("an unavailable bundle degrades to the browser language without failing the answer", async () => {
+  const rejected = localeFetcher({ reject: true });
+  const worker = createWorker(rejected, { uiLanguage: "zh_CN", ...unconfiguredProvider });
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(readinessRequest, sender))), {
+    ok: true, configured: false, notice: "[noticeProviderMissing]",
+    tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: "[noticeSubtitleTracksUnread]"
+  });
+  // fetch 拒绝一次即被缓存，重复询问不重试、也绝不变成错误响应
+  assert.deepEqual(rejected.calls, ["extension://_locales/zh_CN/messages.json"]);
+  assert.equal((await worker(readinessRequest, sender)).ok, true);
+  assert.deepEqual(rejected.calls, ["extension://_locales/zh_CN/messages.json"]);
+
+  // 包内缺文件（404）与非法 JSON 同样逐级回落，不报错
+  for (const texts of [new Map(), new Map([["extension://_locales/zh_CN/messages.json", "{ not json"]])]) {
+    const fetcher = localeFetcher({ texts });
+    const worker404 = createWorker(fetcher, { uiLanguage: "zh_CN" });
+    assert.deepEqual(JSON.parse(JSON.stringify(await worker404(readinessRequest, sender))), {
+      ok: true, configured: true, notice: null,
+      tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: "[noticeSubtitleTracksUnread]"
+    });
+  }
+});
+
+test("a key missing from the bundle falls back to the browser message, then to an empty hint", async () => {
+  const url = "extension://_locales/zh_CN/messages.json";
+  const savedUnread = I18N_MESSAGES.noticeSubtitleTracksUnread;
+  const savedProvider = I18N_MESSAGES.noticeProviderMissing;
+  try {
+    // 包内只有两条：unread 缺失 → 回落 getMessage；notice/tracks 走包内
+    const worker = createWorker(localeFetcher({ texts: new Map([[url, {
+      noticeProviderMissing: { message: "ZH-PROVIDER" },
+      noticeSubtitleTracksMissing: { message: "ZH-TRACKS" }
+    }]]) }), { uiLanguage: "zh_CN", ...unconfiguredProvider });
+    assert.deepEqual(JSON.parse(JSON.stringify(await worker(readinessRequest, sender))), {
+      ok: true, configured: false, notice: "ZH-PROVIDER",
+      tracksNotice: "ZH-TRACKS", unreadNotice: "[noticeSubtitleTracksUnread]"
+    });
+    assert.deepEqual(worker.localizedKeys, ["noticeSubtitleTracksUnread"]);
+
+    // getMessage 也缺同一键时才是空串（两条轨道文案恒为字符串）
+    delete I18N_MESSAGES.noticeSubtitleTracksUnread;
+    const empty = await worker(readinessRequest, sender);
+    assert.equal(empty.unreadNotice, "");
+    assert.equal(empty.tracksNotice, "ZH-TRACKS");
+    I18N_MESSAGES.noticeSubtitleTracksUnread = savedUnread;
+
+    // 未配置：包内缺 noticeProviderMissing → getMessage 命中；两边都缺才是 null（不显示半句话）
+    const worker2 = createWorker(localeFetcher({ texts: new Map([[url, {
+      noticeSubtitleTracksMissing: { message: "ZH-TRACKS" }
+    }]]) }), { uiLanguage: "zh_CN", ...unconfiguredProvider });
+    assert.equal((await worker2(readinessRequest, sender)).notice, "[noticeProviderMissing]");
+    delete I18N_MESSAGES.noticeProviderMissing;
+    const missing = await worker2(readinessRequest, sender);
+    assert.equal(missing.notice, null);
+    assert.equal(missing.unreadNotice, "[noticeSubtitleTracksUnread]");
+    assert.equal(typeof missing.tracksNotice, "string");
+  } finally {
+    if (savedProvider === undefined) delete I18N_MESSAGES.noticeProviderMissing;
+    else I18N_MESSAGES.noticeProviderMissing = savedProvider;
+    if (savedUnread === undefined) delete I18N_MESSAGES.noticeSubtitleTracksUnread;
+    else I18N_MESSAGES.noticeSubtitleTracksUnread = savedUnread;
+  }
 });

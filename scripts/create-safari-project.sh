@@ -19,7 +19,7 @@ VERSION="$(/usr/bin/plutil -extract version raw "$EXTENSION_DIR/manifest.json")"
 IFS=. read -r VERSION_MAJOR VERSION_MINOR VERSION_PATCH <<< "$VERSION"
 BUILD_VERSION="$((10#$VERSION_MAJOR * 10000 + 10#$VERSION_MINOR * 100 + 10#$VERSION_PATCH))"
 
-# converter 把构建机的 SDK 版本写进工程级 MACOSX_DEPLOYMENT_TARGET（本机为 26.5），宿主 App 继承后
+# converter 把构建机的 SDK 版本写进工程级 MACOSX_DEPLOYMENT_TARGET（随构建机 SDK 变化），宿主 App 继承后
 # LSMinimumSystemVersion 就等于该 SDK 版本：产物只能在构建机同版本 macOS 上安装，且跨机器不可复现。
 # 这里显式钉住下限。manifest 的最高要求键是 optional_host_permissions（Safari 15.5 起支持），
 # 其余（manifest_version 3 / action / host_permissions / web_accessible_resources）为 Safari 15.4；

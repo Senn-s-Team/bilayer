@@ -1,6 +1,6 @@
 /*
- * [INPUT]: 依赖 popup.html 的状态、三页签、字幕轨道与样式控件结构
- * [OUTPUT]: 提供四页签侧栏、诊断快捷入口、设置工作区和字幕预览
+ * [INPUT]: 依赖 popup.html 的状态、四页签、字幕轨道与样式控件结构
+ * [OUTPUT]: 提供四页签侧栏、侧栏界面语言切换、诊断快捷入口、设置工作区和字幕预览
  * [POS]: popup 基础视觉层，由 popup.html 加载
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -234,6 +234,37 @@ h1, h2, h3, p {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* 侧栏界面语言控件：只声明与全局 select / .field-label 不同的部分 */
+.sidebar-language-label {
+  display: block;
+  margin-inline: -3px;
+  padding: 0 3px 5px;
+  /* 11px/570 的 “Interface language” 宽 102px，窄侧栏内容宽仅 95px：不换行并收紧字距，让标签单行且不越出侧栏 */
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+}
+
+/* 原生 select 为宿主箭头保留的不可用空间远大于 padding-right（实测 ~24px），会把最长选项 “Follow system”（83px）截断；
+   改为自绘箭头，并用负外边距把控件撑到侧栏内缘，文字区才能完整容纳三个选项。
+   收紧自绘箭头的占位（8px 图形右内边距 1px）与左右 padding，并沿用标签的 -0.02em 字距，
+   为 640px 与窄断点各买出 ≥4px 文字区；箭头仍距外框 2px、恰好落在文字区之外不被裁切 */
+.sidebar-language-select {
+  min-height: 32px;
+  margin-bottom: 4px;
+  margin-inline: -6px;
+  width: calc(100% + 12px);
+  padding: 7px 9px 7px 4px;
+  letter-spacing: -0.02em;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--control);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2386868b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1px center;
+  background-size: 8px 5px;
+  font-weight: 570;
 }
 
 .sidebar-action {

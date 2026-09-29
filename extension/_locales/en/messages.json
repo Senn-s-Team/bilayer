@@ -41,6 +41,21 @@
   "popupDiagnosticsAria": {
     "message": "Open the diagnostics payload panel"
   },
+  "uiLanguageLabel": {
+    "message": "Interface language"
+  },
+  "uiLanguageAria": {
+    "message": "Interface language"
+  },
+  "uiLanguageAuto": {
+    "message": "Follow system"
+  },
+  "uiLanguageEn": {
+    "message": "English"
+  },
+  "uiLanguageZhCn": {
+    "message": "简体中文"
+  },
   "popupStatusConnecting": {
     "message": "Connecting to Netflix"
   },
@@ -67,6 +82,21 @@
   },
   "sectionAiPrompt": {
     "message": "Translation prompt"
+  },
+  "aiProviderSection": {
+    "message": "Translation service"
+  },
+  "aiProviderSelect": {
+    "message": "Active translation service"
+  },
+  "aiProviderNone": {
+    "message": "No translation service configured"
+  },
+  "aiProviderEmptyHint": {
+    "message": "Add a service under Translation Services first."
+  },
+  "aiProviderHelp": {
+    "message": "Which configured service translates for the current settings. It stays in sync with the Translation Services tab."
   },
   "settingEnabledTitle": {
     "message": "Enable subtitles"
@@ -244,6 +274,42 @@
   },
   "aiContextCount": {
     "message": "Context subtitles per side"
+  },
+  "aiRequestBudget": {
+    "message": "Request cap"
+  },
+  "aiCharacterBudget": {
+    "message": "Character cap"
+  },
+  "aiBudgetWindow": {
+    "message": "Cap accounting window"
+  },
+  "aiBudgetWindowSession": {
+    "message": "This watch session"
+  },
+  "aiBudgetWindowHour": {
+    "message": "This hour"
+  },
+  "aiBudgetWindowDay": {
+    "message": "Today"
+  },
+  "aiBudgetWindowHelp": {
+    "message": "The window is the accounting period both caps share, and it survives reloads: “This watch session” keeps counting across a refresh of the same episode, while “This hour” and “Today” are local-time buckets. Usage is persisted, so closing the popup does not reset it."
+  },
+  "aiBudgetHelp": {
+    "message": "0 means unlimited for either cap, and the two caps are independent. The count includes the context lines."
+  },
+  "aiBudgetUsage": {
+    "message": "$1: $2 / $3 requests · $4 / $5 characters"
+  },
+  "aiBudgetUnlimited": {
+    "message": "unlimited"
+  },
+  "aiBudgetExhaustedRequests": {
+    "message": "Request cap reached ($1 / $2) — translation paused"
+  },
+  "aiBudgetExhaustedCharacters": {
+    "message": "Character cap reached ($1 / $2) — translation paused"
   },
   "aiScheduleHelp": {
     "message": "Pre-translation covers up to 10 groups within the next 60 seconds; 0 translates only the current line. Context defaults to 2 lines per side, used only for disambiguation."
@@ -1066,5 +1132,32 @@
   },
   "diagCopyTargetLabel": {
     "message": "Translation: $1"
+  },
+  "noticeProviderMissing": {
+    "message": "No translation service is configured yet — open the popup's Translation Services tab to add an endpoint and API key."
+  },
+  "noticeSubtitleTracksMissing": {
+    "message": "This title has no subtitle tracks, so AI translation is unavailable."
+  },
+  "noticeSubtitleTracksUnread": {
+    "message": "Could not read this title's subtitle tracks yet (the player may not be ready). Refresh the page or play another title."
+  },
+  "aiUnavailableNoTracks": {
+    "message": "AI translation unavailable: this title has no subtitle tracks"
+  },
+  "aiUnavailableNoTracksHint": {
+    "message": "Netflix published no subtitle tracks for this title, so neither dual native subtitles nor AI translation can show a line. Play another title or episode that provides subtitles."
+  },
+  "aiUnavailableTracksUnread": {
+    "message": "AI translation: subtitle tracks could not be read (yet)"
+  },
+  "aiUnavailableTracksUnreadHint": {
+    "message": "Bilayer waited but could not read the player's subtitle tracks, so it cannot claim this title has none. Refresh the page, or play another title or episode. AI translation stays selectable."
+  },
+  "aiUnavailableNoProvider": {
+    "message": "AI translation needs a translation service"
+  },
+  "aiUnavailableNoProviderHint": {
+    "message": "Add an endpoint and API key under Translation Services before AI translation can run. The source track you already chose is kept while you configure it."
   }
 }

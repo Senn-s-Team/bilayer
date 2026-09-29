@@ -24,7 +24,7 @@ resolve_developer_dir() {
   fi
 
   # /Applications/Xcode.app 是 converter 与 GitHub runner 的默认软链，优先使用；
-  # 其余两种命名习惯各按版本号从新到旧（本机常用 Xcode-<ver>.app，runner 用 Xcode_<ver>.app）。
+  # 其余两种命名习惯各按版本号从新到旧（部分安装使用 Xcode-<ver>.app，runner 用 Xcode_<ver>.app）。
   # 命名习惯之间不混排：sort -V 逐字符比较，混合前缀会让版本号失去可比性。
   # -z + read -d ''：保留含空格的 App 名，避免按空白切词。
   candidates=(/Applications/Xcode.app)

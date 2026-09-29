@@ -2,11 +2,18 @@
 > L2 | 父级: ../CLAUDE.md
 
 成员清单
-icon.svg: 图标唯一手工维护源，表达双层字幕（原文蓝 #4C8DFF / 译文琥珀 #FFB020）于深色圆角底
-icon-16.png ~ icon-512.png: 由 `npm run icons` 经 sips 从 icon.svg 派生的全套 PNG，供 manifest 各尺寸与 Safari converter 生成 App 图标
+icon-source.png: 图标唯一手工维护源，也是 manifest 图标表里的 1024 条目本身。1024² 方形 RGBA，内容为字形本体——上下两条圆角字幕气泡夹住播放三角形成的 B 形标记，无外层方形底板
+icon-16.png ~ icon-512.png: 由 `npm run icons` 经 sips 从 icon-source.png 派生的全套 PNG，供 manifest 各尺寸与 Safari converter 生成 App 图标
+
+源图制作步骤（维护者提供的 1254² 无底导出 → icon-source.png，换图时按此重复）:
+1. 以 alpha >= 8 做 4-邻接连通域（对角相接视为分离），保留最大连通域，并整块 alpha 归零面积 < 最大连通域 0.5% 的连通域：剔除导出工具残留的分离颗粒，本次剔除 (1046,547)-(1068,560) 的 23x14 悬浮椭圆与 49 个 1x1~1x9 细丝
+2. 用保留内容的包围盒 (212,166)-(1112,1086) 裁出 901x921，盒内 alpha < 8 归零
+3. `sips -Z 900` 等比缩到长边 900（得 880x900，不拉伸、不裁切）
+4. 居中放入 1024² 透明画布：上下留白 62 px、左右留白 72 px——1254² 导出本身是方形，被补透明的短边是第 2 步裁出的 901x921 包围盒（901 < 921）
+5. 对整幅 alpha < 8 归零，并对结果重跑第 1 步的连通域规则（缩放会在边缘重新产生 < 8 的过渡像素）
+6. 结果：最小非零 alpha = 8，alpha 1..7 像素数 = 0，alpha >= 8 连通域恰好 1 个，四角全透明，最深蓝/最浅白都未被改动
 
 设计边界:
-SVG 是唯一手工维护源，PNG 由 `scripts/build-icons.sh` 派生生成，manifest 只引用 PNG。禁止直接编辑 PNG；尺寸清单必须与 manifest.json 的 icons 键保持一致。sips 对 SVG 的栅格化保真度经实测优于 magick（magick 的 SVG delegate 未安装时静默产出空白图）。
+icon-source.png 是唯一手工维护源，派生 PNG 由 `scripts/build-icons.sh` 生成，manifest 只引用派生 PNG（例外是 1024：manifest 直接指向源图本身，见下）。禁止直接编辑派生 PNG；派生尺寸清单必须与 manifest 的 16/32/48/96/128/256/512 键保持一致，SIZES 数组不含 1024——Safari converter 按 manifest 图标表里最接近理想像素尺寸的条目取图，App 图标的 1024 槽位（614 px 图形盒）因此直接来自源图的原生 1024，而不是 icon-512 的 1.199 倍放大。源图必须同时保持方形与 alpha 通道并保留字形四周留白：压平或裁到贴边会让轮廓外出现不透明白角，也无法在小尺寸留出边界，因此 build-icons.sh 会在派生前列为错误拒收。派生尺寸由 sips 重采样，边缘会重新出现 alpha 1..7 的过渡像素（每个尺寸 2~290 个，<= 2.7% 不透明度，属正常抗锯齿，不构成悬浮颗粒）。字形上半部接近白色，浅色底上的可读性依赖其蓝色描边与下方的深蓝气泡。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
-
