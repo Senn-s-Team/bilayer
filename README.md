@@ -58,7 +58,7 @@ If using a Netflix Mac web app, enable the extension separately in **Netflix →
 Pushing a `v*` tag runs the **Release** workflow on `macos-latest`, which validates the version, builds the Safari app and the DMG, then publishes them to GitHub Releases.
 
 1. Bump `version` in `extension/manifest.json`, keep `package.json` in sync, and merge to `main`.
-2. Tag and push: `git tag -a v0.3.5 -m "Bilayer 0.3.5" && git push origin v0.3.5`.
+2. Tag and push: `git tag -a v0.4.0 -m "Bilayer 0.4.0" && git push origin v0.4.0`.
 3. The workflow runs `npm run check`, `npm test`, then `bash scripts/assert-release-version.sh`; the build fails when the tag (minus a leading `v`) does not equal `extension/manifest.json`.
 4. It then runs `npm run safari:project` and `npm run package:dmg`, creates (or updates) the GitHub Release for that tag, and attaches `dist/Bilayer-<version>.dmg`. A manual `workflow_dispatch` run publishes no release and uploads the DMG as a workflow artifact instead.
 5. `build/` and `dist/` are gitignored, so the DMG lives only in the GitHub Release or in a workflow artifact. Two tag builds never run at once (single `concurrency` group).

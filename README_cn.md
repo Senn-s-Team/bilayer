@@ -58,7 +58,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 推送 `v*` tag 会在 `macos-latest` 上触发 **Release** 工作流：校验版本、构建 Safari App 与 DMG，然后发布到 GitHub Releases。
 
 1. 提升 `extension/manifest.json` 的 `version`，同步 `package.json`，合入 `main`。
-2. 打 tag 并推送：`git tag -a v0.3.5 -m "Bilayer 0.3.5" && git push origin v0.3.5`。
+2. 打 tag 并推送：`git tag -a v0.4.0 -m "Bilayer 0.4.0" && git push origin v0.4.0`。
 3. 工作流依次运行 `npm run check`、`npm test`，然后执行 `bash scripts/assert-release-version.sh`；tag 去掉前导 `v` 后与 `extension/manifest.json` 不一致时构建直接失败。
 4. 随后运行 `npm run safari:project` 与 `npm run package:dmg`，为该 tag 创建（或更新）GitHub Release，并附带 `dist/Bilayer-<version>.dmg`。手动触发 `workflow_dispatch` 不发布 Release，只把 DMG 作为 workflow artifact 上传。
 5. `build/` 与 `dist/` 都在 gitignore 中，DMG 只存在于 GitHub Release 或 workflow artifact，不进入版本库。两次 tag 构建不会并行（单一 `concurrency` 组）。

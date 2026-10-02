@@ -7,6 +7,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-02
+
 ### Added
 
 - A shared design layer under `extension/src/styles/`, loaded by every extension page. `tokens.css`
@@ -495,7 +497,8 @@ guidelines 5.2.1 and 2.3.x.
 
 - Initial Safari extension: dual native subtitles on Netflix with per-episode settings.
 
-[Unreleased]: https://github.com/Senn-s-Team/bilayer/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/Senn-s-Team/bilayer/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Senn-s-Team/bilayer/compare/v0.3.5...v0.4.0
 [0.3.5]: https://github.com/Senn-s-Team/bilayer/compare/v0.3.0...v0.3.5
 [0.3.0]: https://github.com/Senn-s-Team/bilayer/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Senn-s-Team/bilayer/compare/v0.2.1...v0.2.2
