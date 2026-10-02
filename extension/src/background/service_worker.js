@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 browser/chrome storage、permissions API 与 host_permissions/optional_host_permissions 的跨域 fetch 能力
- * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译（日文源/目标注音请求使用定长字段的 readings 条目数组，兼容旧字典/字符串回包供 ruby 渲染）、兼容服务对象序列与顶层条目数组规范化（逐条规范化 readings 后仍严格校验数量、字段与 ID）、AI 就绪度查询（BILAYER_AI_READINESS：只读 provider 条目、aiProviderId 与界面语言偏好 uiLanguage（同一次 storage.local.get），不触网不缓存，返回 {configured, notice, tracksNotice, unreadNotice}，提示句跟随 storage.local.uiLanguage：auto 走 runtime.i18n.getMessage、具体语言异步解析包内 _locales/<code>/messages.json 并缓存，缺失逐级回落 getMessage→空串，语义对齐 src/i18n.js）、诊断（失败摘要仅保留错误码、原因及显式提供的 expectedCount/receivedCount，不复制正文或凭证；采集开关未知即关闭：读取成功才采用持久化值、读取失败不缓存并在下次调用重试、用户显式切换立即落盘且优先于尚未落地的读取；开关值未知时缓冲落盘一律省略 `__raw_capture_enabled__`，GET/CLEAR 均先 await 单飞读取，采集判断前同样必须 await）、连通性测试与旧键迁移
+ * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译（日文源/目标注音请求使用定长字段的 readings 条目数组，兼容旧字典/字符串回包供 ruby 渲染）、兼容服务对象序列与顶层条目数组规范化（逐条规范化 readings 后仍严格校验数量、字段与 ID）、AI 就绪度查询（BILAYER_AI_READINESS：只读 provider 条目、aiProviderId 与界面语言偏好 uiLanguage（同一次 storage.local.get），不触网不缓存，返回 {configured, notice, tracksNotice, unreadNotice}，提示句跟随 storage.local.uiLanguage：auto 走 runtime.i18n.getMessage、具体语言异步解析包内 _locales/<code>/messages.json 并缓存，缺失逐级回落 getMessage→空串，语义对齐 src/i18n.js）、诊断（失败摘要仅保留错误码、原因及显式提供的 expectedCount/receivedCount，不复制正文或凭证；采集开关未知即关闭：读取成功才采用持久化值、读取失败不缓存并在下次调用重试、用户显式切换立即落盘且优先于尚未落地的读取；开关值未知时缓冲落盘一律省略 `__raw_capture_enabled__`，GET/CLEAR 均先 await 单飞读取，采集判断前同样必须 await）、连通性测试与旧键迁移，以及设置窗口的唯一打开路径（openSettingsWindow：工具栏 action.onClicked 与 BILAYER_OPEN_SETTINGS 共用，已存在的设置页窗口只聚焦、引擎隐藏扩展页 tab.url 时按记住的开窗 id 复核复用（id 记在 storage.session，不支持时退回 storage.local 并在 onStartup 作废）、都未命中才 windows.create 弹独立窗口、windows.create 缺失或失败时回落 tabs.create；设置页/向导页的授权要求扩展身份与页面 URL 白名单，不以 sender.tab 排除独立窗口）
  * [POS]: background 生命周期入口；凭证仅存于 provider 条目且只在 worker 内读取，兼容服务必须通过端点校验与运行时域名授权
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -8,7 +8,7 @@
 const runtime = globalThis.browser ?? globalThis.chrome;
 const TRANSLATE_MESSAGE = "BILAYER_TRANSLATE_BATCH";
 const OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions";
-// 无需凭证的本地端点（popup/onboarding 的 Ollama 预设）：就绪度判定与 popup 的「获取模型/测试连通性」门槛同一规则。
+// 无需凭证的本地端点（settings/onboarding 的 Ollama 预设）：就绪度判定与 settings 的「获取模型/测试连通性」门槛同一规则。
 const KEYLESS_ENDPOINTS = new Set(["http://localhost:11434/v1/chat/completions"]);
 const DEFAULT_PROVIDER_ID = "openai";
 // 后台 UI 文案的语言来源 = 扩展自身的界面语言偏好 runtime.storage.local.uiLanguage，与 extension/src/i18n.js 同一语义。
@@ -31,6 +31,7 @@ const MODEL_PATTERN = /^[^\s\x00-\x1f]{1,120}$/;
 const PROVIDER_PATTERN = /^[\w-]{1,48}$/;
 const DIAGNOSTICS_PAGE = "src/diagnostics/diagnostics.html";
 const ONBOARDING_PAGE = "src/onboarding/onboarding.html";
+const SETTINGS_PAGE = "src/settings/settings.html";
 const rawDiagnostics = [];
 const MAX_RAW_DIAGNOSTICS = 20;
 let rawDiagnosticsVersion = 0;
@@ -172,6 +173,12 @@ runtime.runtime.onInstalled.addListener((details) => {
     }
   });
 });
+
+// 只有在 manifest 里去掉 action.default_popup，浏览器才会把工具栏点击交给我们：点击即打开/聚焦设置窗口。
+runtime.action?.onClicked?.addListener(() => openSettingsWindow());
+// 浏览器启动：窗口 id 会被新会话复用，上个会话记住的记录必须作废。
+runtime.runtime.onStartup?.addListener(() => forgetSettingsWindow());
+
 runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === TRANSLATE_MESSAGE) {
     void translateBatch(message, sender)
@@ -190,6 +197,15 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
     void listProviderModels(message, sender)
       .then(sendResponse)
       .catch(() => sendResponse({ ok: false, errorCode: "unavailable" }));
+    return true;
+  }
+
+  if (message?.type === "BILAYER_OPEN_SETTINGS") {
+    if (!isAllowedTestSender(sender)) {
+      sendResponse({ ok: false, errorCode: "configuration" });
+      return true;
+    }
+    void openSettingsWindow().then(sendResponse);
     return true;
   }
 
@@ -779,7 +795,7 @@ function bundleMessage(bundle, key) {
 }
 
 // 单飞加载包内报文：成功缓存解析结果，不可用（缺文件、非 2xx、非法 JSON、抛错）也缓存 null，
-// 避免 popup 的轮询把不可用变成反复失败的网络请求；worker 回收重启后缓存清空，自然重试。
+// 避免 settings 的轮询把不可用变成反复失败的网络请求；worker 回收重启后缓存清空，自然重试。
 // 绝不让失败变成异常：调用方拿到的永远是 bundle 或 null。
 function loadLocaleBundle(locale) {
   if (localeBundles.has(locale)) return localeBundles.get(locale);
@@ -814,7 +830,7 @@ async function localizedMessage(key, uiLanguage) {
   }
 }
 
-// provider 是否“真的能用”：有凭证，或落在无需凭证的本地端点上（与 popup 的选取门槛同一规则，不另立判据）。
+// provider 是否“真的能用”：有凭证，或落在无需凭证的本地端点上（与 settings 的选取门槛同一规则，不另立判据）。
 function providerIsConfigured(provider) {
   if (!provider || typeof provider !== "object") return false;
   if (typeof provider.credential === "string" && provider.credential.trim()) return true;
@@ -847,17 +863,104 @@ async function aiReadinessSnapshot() {
   };
 }
 
-// 就绪度查询的授权边界：观剧页内容脚本（isAllowedSender）与扩展自有页面（popup/onboarding/diagnostics）。
+// 设置窗口的唯一实现：同一设置页已开着就只聚焦（重复点击不叠窗），否则开一个独立窗口。
+// 引擎可能不把扩展页 url 交给扩展：Chrome 未授予 tabs 权限时窗口里每个 tab.url 都是 null（本机 Chrome for
+// Testing 实测，连扩展自己的页面也一样），此时 url 匹配必然落空，故再用上次记录的开窗 id 兜底，避免每次
+// 点击都叠出一个新窗口；id 校验用 windows.get，窗口已被关掉就照常新建。
+// windows.create 在 iOS Safari 等引擎上可能不存在或拒绝，回落 tabs.create 这条跨引擎可用路径；
+// 两者都不可用时才如实报告失败，不静默吞掉点击。
+const SETTINGS_WINDOW_KEY = "__settings_window_id__";
+
+// 记录位置优先 session 存储（会话结束即清空，窗口 id 不会被下一次会话复用）；不支持时退回 local，
+// 并在浏览器启动（onStartup）时清掉旧记录，避免拿上一次会话的窗口 id 去聚焦无关窗口。
+function settingsWindowArea() {
+  return runtime.storage?.session ?? runtime.storage?.local ?? null;
+}
+
+function rememberSettingsWindow(windowId) {
+  if (typeof windowId !== "number") return;
+  try {
+    settingsWindowArea()?.set({ [SETTINGS_WINDOW_KEY]: windowId });
+  } catch {}
+}
+
+function forgetSettingsWindow() {
+  try {
+    settingsWindowArea()?.set({ [SETTINGS_WINDOW_KEY]: null });
+  } catch {}
+}
+
+function storedSettingsWindowId() {
+  const area = settingsWindowArea();
+  if (typeof area?.get !== "function") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      area.get([SETTINGS_WINDOW_KEY], (stored) => {
+        if (runtime.runtime.lastError) { resolve(null); return; }
+        const id = stored?.[SETTINGS_WINDOW_KEY];
+        resolve(typeof id === "number" ? id : null);
+      });
+    } catch { resolve(null); }
+  });
+}
+
+async function openSettingsWindow() {
+  const url = runtime.runtime.getURL(SETTINGS_PAGE);
+  const windows = runtime.windows;
+  const focus = async (windowId) => {
+    if (typeof windows?.update !== "function") return false;
+    try {
+      await windows.update(windowId, { focused: true });
+      rememberSettingsWindow(windowId);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (typeof windows?.getAll === "function") {
+    try {
+      const open = await windows.getAll({ populate: true });
+      const existing = (Array.isArray(open) ? open : [])
+        .find((win) => Array.isArray(win?.tabs) && win.tabs.some((tab) => tab?.url === url));
+      if (existing && await focus(existing.id)) return { ok: true, reused: true };
+    } catch {}
+  }
+  const remembered = await storedSettingsWindowId();
+  if (remembered !== null && typeof windows?.get === "function") {
+    try {
+      await windows.get(remembered);
+      if (await focus(remembered)) return { ok: true, reused: true };
+    } catch {}
+  }
+  if (typeof windows?.create === "function") {
+    try {
+      // 940 是窗口外高口径（含标题栏/窗口框），实测内高约 852。窗口同时加宽到 1240：侧栏改用 clamp(180px, 17.5%, 224px)
+      // 后 1240 宽下侧栏占约 217px（比原 168px 宽约 49px），若窗口仍留在 1180，内容列会从约 1004px 掉到约 952px，
+      // 逼近最高 AI 页（约 731）在 780 可用高下的滚动阈值；把窗口一起放宽，内容列宽度基本不变，四个页签仍不出现面板内滚动。
+      const created = await windows.create({ type: "popup", width: 1240, height: 940, url });
+      rememberSettingsWindow(created?.id);
+      return { ok: true, reused: false };
+    } catch {}
+  }
+  try {
+    await runtime.tabs.create({ url });
+    return { ok: true, reused: false };
+  } catch {
+    return { ok: false, errorCode: "unavailable" };
+  }
+}
+
+// 就绪度查询的授权边界：观剧页内容脚本（isAllowedSender）与扩展自有页面（settings/onboarding/diagnostics）。
 function isReadinessSender(sender) {
   return isAllowedSender(sender) || isAllowedTestSender(sender) || isDiagnosticsSender(sender);
 }
+// 设置页搬进独立窗口后，其文档与标签页文档一样带 sender.tab，故授权只按 URL 判定，
+// 但身份仍是必过项：只放行扩展自己的设置页与向导页，绝不放宽到任意扩展页面或网页。
 function isAllowedTestSender(sender) {
   if (sender?.id !== runtime.runtime.id) return false;
-  const popupUrl = runtime.runtime.getURL("src/popup/popup.html");
+  const settingsUrl = runtime.runtime.getURL(SETTINGS_PAGE);
   const onboardingUrl = runtime.runtime.getURL(ONBOARDING_PAGE);
-  if (sender.url === popupUrl && !sender.tab) return true;
-  if (sender.url === onboardingUrl) return true;
-  return false;
+  return sender.url === settingsUrl || sender.url === onboardingUrl;
 }
 
 function isDiagnosticsSender(sender) {

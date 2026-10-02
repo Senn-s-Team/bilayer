@@ -11,10 +11,10 @@
   "commonCancel": {
     "message": "Cancel"
   },
-  "popupBrand": {
+  "settingsBrand": {
     "message": "Dual subtitles"
   },
-  "popupNavAria": {
+  "settingsNavAria": {
     "message": "Settings categories"
   },
   "tabSubtitles": {
@@ -29,16 +29,16 @@
   "tabStyles": {
     "message": "Appearance"
   },
-  "popupOnboardingLabel": {
+  "settingsOnboardingLabel": {
     "message": "Guide"
   },
-  "popupOnboardingAria": {
+  "settingsOnboardingAria": {
     "message": "Open the setup guide"
   },
-  "popupDiagnosticsLabel": {
+  "settingsDiagnosticsLabel": {
     "message": "Diagnostics"
   },
-  "popupDiagnosticsAria": {
+  "settingsDiagnosticsAria": {
     "message": "Open the diagnostics payload panel"
   },
   "uiLanguageLabel": {
@@ -56,16 +56,16 @@
   "uiLanguageZhCn": {
     "message": "简体中文"
   },
-  "popupStatusConnecting": {
+  "settingsStatusConnecting": {
     "message": "Connecting to Netflix"
   },
-  "popupLocalPreviewStatus": {
+  "settingsLocalPreviewStatus": {
     "message": "UI preview · configure settings inside the Safari extension"
   },
-  "popupLocalPreviewCredential": {
+  "settingsLocalPreviewCredential": {
     "message": "Configure the key inside the Safari extension"
   },
-  "popupLocalPreviewTest": {
+  "settingsLocalPreviewTest": {
     "message": "Test the connection inside the Safari extension"
   },
   "sectionSources": {
@@ -201,7 +201,7 @@
     "message": "Not connected to a Netflix page"
   },
   "statusNotConnectedHint": {
-    "message": "Not connected to a Netflix page; open the popup from the video window"
+    "message": "Not connected to a Netflix page; click the extension icon on the tab playing the video to open settings"
   },
   "statusOpenMovie": {
     "message": "Open a video to choose subtitles"
@@ -294,7 +294,7 @@
     "message": "Today"
   },
   "aiBudgetWindowHelp": {
-    "message": "The window is the accounting period both caps share, and it survives reloads: “This watch session” keeps counting across a refresh of the same episode, while “This hour” and “Today” are local-time buckets. Usage is persisted, so closing the popup does not reset it."
+    "message": "The window is the accounting period both caps share, and it survives reloads: “This watch session” keeps counting across a refresh of the same episode, while “This hour” and “Today” are local-time buckets. Usage is persisted, so closing the settings window does not reset it."
   },
   "aiBudgetHelp": {
     "message": "0 means unlimited for either cap, and the two caps are independent. The count includes the context lines."
@@ -1137,7 +1137,7 @@
     "message": "Translation: $1"
   },
   "noticeProviderMissing": {
-    "message": "No translation service is configured yet — open the popup's Translation Services tab to add an endpoint and API key."
+    "message": "No translation service is configured yet — open the Translation Services tab in the settings window to add an endpoint and API key."
   },
   "noticeSubtitleTracksMissing": {
     "message": "This title has no subtitle tracks, so AI translation is unavailable."

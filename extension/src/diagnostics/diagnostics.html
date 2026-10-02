@@ -1,7 +1,7 @@
 <!--
-  [INPUT]: 依赖 diagnostics.css 的诊断页样式与 diagnostics.js 的后台原始报文查询
-  [OUTPUT]: 提供紧凑请求检查器、可搜索 JSON 树、连接信息抽屉和逐字原文阅读区
-  [POS]: diagnostics 模块的页面壳，由 popup 的“原始报文面板”入口打开
+  [INPUT]: 依赖 styles/tokens.css 与 styles/controls.css（本页样式表之前加载）、diagnostics.css 的外壳与请求检查器样式、diagnostics-payload.css 的报文区样式与 diagnostics.js 的后台原始报文查询
+  [OUTPUT]: 提供紧凑请求检查器、可搜索 JSON 树、连接信息抽屉、逐字原文阅读区和导出结果的就地状态行（#exportStatus，默认 display:none，导出失败/无记录时就地显示而非弹窗）
+  [POS]: diagnostics 模块的页面壳，由设置窗口（settings.html）的“原始报文面板”入口打开
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
 <!doctype html>
@@ -10,7 +10,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title data-i18n="diagTitle">原始翻译报文 · Bilayer</title>
+    <link rel="stylesheet" href="../styles/tokens.css">
+    <link rel="stylesheet" href="../styles/controls.css">
     <link rel="stylesheet" href="./diagnostics.css">
+    <link rel="stylesheet" href="./diagnostics-payload.css">
   </head>
   <body>
     <main class="diagnostics-shell">
@@ -25,6 +28,7 @@
           <button id="refreshRecords" type="button" data-i18n="diagRefresh">刷新</button>
           <button id="exportCases" type="button" title="导出当前捕获的全部报文到本地磁盘作为案例" data-i18n-title="diagExportTitle" data-i18n="diagExport">导出案例到硬盘 ↓</button>
           <button id="clearRecords" class="quiet-button" type="button" data-i18n="diagClear">清空记录</button>
+          <p id="exportStatus" class="live-status" role="status" aria-live="polite"></p>
         </div>
       </header>
 

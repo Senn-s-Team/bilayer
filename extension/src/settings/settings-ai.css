@@ -1,0 +1,499 @@
+/*
+ * [INPUT]: 依赖 tokens.css 的语义令牌（扁平契约的 --radius-tag/-control/-surface、--groove、--border、--shadow-popover）与 controls.css 的控件基线，以及 settings.css 的面板布局与 settings.html 的字幕模式和 AI 设置结构
+ * [OUTPUT]: 提供翻译设置分组（卡片表面由 settings.css 统一声明，本层只落内容栅格与 11px 大写字距的卡片标题）、AI 不可用提示（.availability 告警槽 + 左侧 3px 微条、软提示 .availability.is-soft、褪色的 .select-card.is-unavailable）、服务预设按钮容器、翻译服务页的一体化分栏（.provider-split-view 单层表面 + 1px 发丝边 + 6px 圆角，且**按内容收口**：面板 height: auto、两栏 align-items: start、两侧窗格 overflow: visible——内层滚动一律交还 .tab-panel，全页只有一根滚动条）、模型下拉（浮层：--surface + 1px 发丝边 + 唯一的 --shadow-popover），AI 页额度读数之后的连续 .ai-consent 用相邻兄弟选择器收成一簇内凹细注（首/末块各补圆角、段间 1px 发丝分隔、负外边距吃掉 .ai-section 的行距），以及宽视口下分栏加宽（--split-master）与详情表单两列、窄视口下单列退化，外加成段说明的行长上限（.ai-consent/.availability-hint 收在 65ch）
+ * [POS]: settings 的 AI 与字幕模式视觉层，在 tokens.css/controls.css/settings.css 之后加载；组件级响应式覆盖写在本层以保证层叠顺序。全层无磨砂/无模糊、无光泽、无胶囊圆角，表面一律「不透明底 + 1px 发丝边」，只有下拉浮层投单层收敛阴影
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
+/* ===== 模式说明 ===== */
+.mode-help {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--bl-space-5);
+}
+
+.mode-help .ai-consent {
+  flex: 1;
+}
+
+/* ===== AI 不可用提示 ===== */
+/* 字幕页模式卡片下与 AI 页顶部共用同一个块：文案由 settings.js 依页面状态写入，条件不成立时置 hidden。
+   形态＝扁平告警块 + 左侧 3px 微条（颜色之外的第二重信号），不再画内凹槽 */
+.availability {
+  display: grid;
+  gap: var(--bl-space-2);
+  border: 1px solid var(--warning-line);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-4) var(--bl-space-6);
+  background-color: var(--warning-soft);
+}
+
+.availability:focus { outline: none; box-shadow: var(--focus-ring); }
+
+.availability-label {
+  color: var(--warning);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-bold);
+  line-height: var(--bl-leading-normal);
+}
+
+.availability-hint {
+  max-width: 65ch;
+  color: var(--fg-muted);
+  font-size: var(--bl-font-xs);
+  line-height: var(--bl-leading-relaxed);
+}
+
+.availability .inline-link { justify-self: start; }
+
+/* 读不到轨道时的软提示：中性信息色而非 warning 琥珀，既与硬性不可用区分，也比“无警告”可辨 */
+.availability.is-soft { border-color: var(--accent-line); border-left-color: var(--accent); background-color: var(--accent-faint); }
+
+.availability.is-soft .availability-label { color: var(--accent-deep); }
+
+/* 该影片没有字幕轨道时的 AI 模式卡片：仍可点击（点击即呈现原因），故用 aria-disabled 与褪色而非原生 disabled */
+.select-card.is-unavailable { opacity: .6; }
+
+.select-card.is-unavailable:hover { border-color: var(--border); background: var(--card-bg); transform: none; }
+
+/* ===== 常用服务快速填充 ===== */
+.preset-pill-group { display: flex; flex-wrap: wrap; gap: var(--bl-space-3); }
+
+/* ===== 二级分栏 (macOS 系统设置风格) ===== */
+/* 分栏整体是一块扁平面板（不透明表面 + 1px 发丝边 + 6px 圆角），且**按内容收口**：
+   面板不撑满可用高度（height: auto），两栏 align-items: start，主列表短就短、编辑区短就短；
+   内层滚动一并交给 .tab-panel（唯一滚动源），因此这里不再出现第二根滚动条 */
+.tab-panel.provider-split-panel:not([hidden]) {
+  display: block;
+  height: auto;
+  padding: var(--bl-space-9) var(--bl-space-9) var(--bl-space-10);
+  /* overflow 沿用 .tab-panel 的 overflow-x: hidden / overflow-y: auto */
+}
+
+.provider-split-view {
+  --split-master: 160px;
+  display: grid;
+  grid-template-columns: var(--split-master) minmax(0, 1fr);
+  align-items: start;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-surface);
+  overflow: hidden;
+  background-color: var(--surface);
+}
+
+/* 主列表列整体拉满行高（行高由编辑区的内容决定）：轨道底色与分隔线才连续、底部 +/- 工具条才落在栏底；
+   栏内列表本身仍是内容高度（短列表就是短的）。外框由父级 overflow:hidden 裁切，自身不再画圆角 */
+.provider-master {
+  display: flex;
+  height: auto;
+  align-self: stretch;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background-color: var(--groove);
+}
+
+.provider-master-header {
+  padding: var(--bl-space-6) var(--bl-space-5) var(--bl-space-3);
+  color: var(--fg-muted);
+  font-size: var(--bl-font-2xs);
+  font-weight: var(--bl-weight-bold);
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.provider-master-list {
+  display: flex;
+  flex: none;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--bl-space-1);
+  padding: var(--bl-space-2) var(--bl-space-3);
+}
+
+.provider-master-item {
+  appearance: none;
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-4) var(--bl-space-5);
+  color: var(--fg);
+  background: transparent;
+  font-size: var(--bl-font-sm);
+  font-weight: var(--bl-weight-medium);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--bl-duration-base) var(--bl-ease-standard), color var(--bl-duration-base) var(--bl-ease-standard),
+    box-shadow var(--bl-duration-base) var(--bl-ease-standard), transform var(--bl-duration-base) var(--bl-ease-spring);
+}
+
+.provider-master-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.provider-master-item:hover:not(.is-selected) { background: var(--control); transform: translateX(1px); }
+
+/* 选中项走扁平强调色填充 + 左侧 2px 强调色条，不发光、不投阴影 */
+.provider-master-item.is-selected {
+  background-color: var(--accent-soft);
+  color: var(--fg-emphasis);
+  font-weight: var(--bl-weight-semibold);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.provider-master-item:focus-visible { box-shadow: var(--focus-ring); }
+
+.provider-master-item.is-selected:focus-visible {
+  box-shadow: var(--focus-ring), inset 2px 0 0 var(--accent);
+}
+
+.provider-master-toolbar {
+  display: flex;
+  height: var(--bl-space-12);
+  margin-top: auto;
+  align-items: center;
+  gap: var(--bl-space-1);
+  border-top: 1px solid var(--border);
+  padding: 0 var(--bl-space-2);
+  background: transparent;
+}
+
+.provider-detail {
+  min-height: 0;
+  padding: var(--bl-space-8) var(--bl-space-9) var(--bl-space-10);
+}
+
+.provider-detail-content { display: grid; gap: var(--bl-space-6); }
+
+.new-draft-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--bl-space-4);
+}
+
+.new-draft-title { color: var(--fg); font-size: var(--bl-font-md); font-weight: var(--bl-weight-bold); letter-spacing: -.015em; }
+
+.new-draft-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--bl-space-4);
+  border-top: 1px solid var(--border);
+  padding-top: var(--bl-space-4);
+}
+
+.section-link { width: fit-content; margin-top: var(--bl-space-1); }
+
+/* ===== 翻译设置 ===== */
+.ai-panel { gap: var(--bl-space-8); }
+
+/* 卡片表面在 settings.css 统一声明；此处只保留内容栅格（1px 发丝边框可忽略，padding 回到壳宽时代之前的值） */
+.ai-section {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: var(--bl-space-7);
+  padding: var(--bl-space-8) var(--bl-space-7);
+}
+
+/* 排版阶梯第 3 级：卡片标题＝小号大写字距标签（CJK 下 uppercase 为 no-op），颜色退到 --fg-muted */
+.ai-section h2 {
+  color: var(--fg-muted);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-bold);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.advanced-translation {
+  border-top: 1px solid var(--border);
+  padding-top: var(--bl-space-5);
+}
+
+.advanced-translation summary {
+  display: flex;
+  align-items: center;
+  gap: var(--bl-space-4);
+  border-radius: var(--radius-control);
+  color: var(--accent-deep);
+  cursor: pointer;
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-semibold);
+  list-style: none;
+}
+
+.advanced-translation summary::-webkit-details-marker { display: none; }
+
+.advanced-translation summary span { margin-left: auto; color: var(--fg-muted); font-weight: var(--bl-weight-regular); }
+
+.advanced-translation summary::after {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform var(--bl-duration-base) var(--bl-ease-springy);
+}
+
+.advanced-translation[open] summary::after { transform: rotate(225deg) translateY(-2px); }
+
+.advanced-translation-content { display: grid; gap: var(--bl-space-6); padding-top: var(--bl-space-6); }
+
+.advanced-translation:not([open]) .advanced-translation-content { display: none; }
+
+.ai-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bl-space-7) var(--bl-space-6);
+}
+
+.prefetch-field input {
+  width: 100%;
+}
+
+/* 额度统计窗口独占一行：它同时约束上方两项上限，跨列显示以表明从属关系 */
+.budget-window-field {
+  grid-column: 1 / -1;
+}
+
+/* ===== 会话翻译额度读数 ===== */
+.ai-budget {
+  display: grid;
+  gap: var(--bl-space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-5) var(--bl-space-6);
+  background-color: var(--groove);
+  transition: border-color var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+.ai-budget-usage {
+  color: var(--fg);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-medium);
+  line-height: var(--bl-leading-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-budget[data-state="exhausted"] { border-color: var(--danger); }
+
+.ai-budget-exhausted {
+  color: var(--danger);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-semibold);
+  line-height: var(--bl-leading-normal);
+}
+
+.ai-budget-exhausted[hidden] { display: none; }
+
+/* 细注簇：紧跟在额度读数槽之后的连续 .ai-consent 段落用一个极淡的凹槽底收成一块「从属说明」——
+   纯 CSS（相邻兄弟选择器 + 首/末块各自补圆角），不引入任何包装元素；段间用 1px 发丝线分隔而不留大空档 */
+.ai-budget + .ai-consent,
+.ai-consent + .ai-consent {
+  padding: var(--bl-space-3) var(--bl-space-5);
+  background-color: var(--groove);
+}
+
+/* .ai-section 的行距是 --bl-space-7(14px)，这里用负外边距把后续段落与上一段贴合 */
+.ai-budget + .ai-consent {
+  margin-top: calc(var(--bl-space-5) - var(--bl-space-7));
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
+}
+
+.ai-consent + .ai-consent {
+  margin-top: calc(var(--bl-space-7) * -1);
+  border-radius: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* 卡片里最后一段细注收底：圆角只补在下缘，簇因此读成一个整体 */
+.ai-section > p.ai-consent:last-child {
+  border-radius: 0 0 var(--radius-control) var(--radius-control);
+}
+
+/* 提示词输入框要读成一个控件：固定可用高度 + 内部滚动，聚焦时让位给 --focus-ring */
+.ai-section textarea {
+  height: 104px;
+  min-height: 0;
+  max-height: 300px;
+  border-color: var(--border-strong);
+  line-height: var(--bl-leading-normal);
+  overflow-y: auto;
+  resize: vertical;
+}
+
+/* 成段说明设定行长上限（65ch）；宽栏里原本单行可到 100+ 字符，收口后每行回到可读长度 */
+.ai-consent {
+  max-width: 65ch;
+  color: var(--fg-muted);
+  font-size: var(--bl-font-xs);
+  line-height: var(--bl-leading-relaxed);
+}
+
+/* 凭证块也是刻进卡片的凹槽（settings.css 统一声明），这里只保留纵向节奏 */
+.ai-credential {
+  display: grid;
+  gap: var(--bl-space-4);
+  padding: var(--bl-space-6) var(--bl-space-6) var(--bl-space-6);
+}
+
+.ai-credential-actions, .provider-test-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--bl-space-4);
+}
+
+/* 状态行：颜色之外再加形状信号（未定态＝空心环，其余三态＝实心标记，error 另换成短横） */
+.ai-credential-status {
+  min-width: 0;
+  margin-right: auto;
+  color: var(--fg-muted);
+  font-size: var(--bl-font-xs);
+  line-height: var(--bl-leading-snug);
+  overflow-wrap: anywhere;
+}
+
+.ai-credential-status::before {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: var(--bl-space-3);
+  border-radius: var(--bl-radius-2xs);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+  content: "";
+  vertical-align: 1px;
+}
+
+.ai-credential-status[data-state]::before { background: currentColor; box-shadow: none; }
+
+.ai-credential-status[data-state="error"]::before {
+  width: 8px;
+  height: 3px;
+  border-radius: var(--bl-radius-2xs);
+}
+
+/* ===== 模型选择与下拉 ===== */
+/* 只读触发按钮是 select 的等价物：同高同圆角同 12px 字号，只是内容左对齐并带省略号 */
+.provider-model-row {
+  display: flex;
+  align-items: center;
+  gap: var(--bl-space-3);
+}
+
+.provider-model-row .model-trigger {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  min-height: var(--bl-control-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-3) var(--bl-space-6);
+  color: var(--fg);
+  background-color: var(--groove);
+  font-size: var(--bl-font-sm);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--bl-duration-base) var(--bl-ease-standard), background-color var(--bl-duration-base) var(--bl-ease-standard),
+    box-shadow var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+.provider-model-row .model-trigger:hover {
+  border-color: var(--border-strong);
+  background-color: var(--control-bg);
+}
+
+.provider-model-row .model-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+/* 下拉是真正浮起的元素：不透明表面 + 1px 发丝边 + 唯一允许的单层收敛阴影，展开时自锚点轻微上浮 */
+.model-menu:not([hidden]) {
+  display: grid;
+  gap: var(--bl-space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-surface);
+  padding: var(--bl-space-3);
+  background-color: var(--surface);
+  box-shadow: var(--shadow-popover);
+  animation: bl-rise var(--bl-duration-slower) var(--bl-ease-spring) backwards;
+}
+
+.model-menu input { width: 100%; box-sizing: border-box; }
+
+.model-options { max-height: 190px; overflow-y: auto; }
+
+.model-option {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-4) var(--bl-space-5);
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--bl-duration-fast) var(--bl-ease-standard), color var(--bl-duration-fast) var(--bl-ease-standard),
+    transform var(--bl-duration-fast) var(--bl-ease-spring);
+}
+
+.model-option:hover, .model-option:focus-visible {
+  background: var(--control);
+  transform: translateX(1px);
+}
+
+/* 服务表单块：凹槽（settings.css 声明外观），这里只落内部栅格与内边距 */
+.provider-editor:not([hidden]) {
+  display: grid;
+  gap: var(--bl-space-6);
+  padding: var(--bl-space-6);
+}
+
+.provider-test-row .ai-credential-status { margin-right: 0; }
+
+.provider-test-row {
+  border-top: 1px solid var(--border);
+  padding-top: var(--bl-space-6);
+}
+
+.ai-credential-status[data-state="warning"] { color: var(--warning); font-weight: var(--bl-weight-medium); }
+.ai-credential-status[data-state="success"] { color: var(--success); font-weight: var(--bl-weight-medium); }
+.ai-credential-status[data-state="error"] { color: var(--danger); font-weight: var(--bl-weight-medium); }
+
+.ai-toggle-list {
+  margin-top: var(--bl-space-5);
+  padding: var(--bl-space-2) 0;
+}
+
+.ai-toggle-list .setting-row { border-bottom: 0; }
+
+/* ===== 响应式：同一套 DOM，组件级覆盖写在本表末端以保证层叠顺序 ===== */
+/* 宽视口：保留主/详分栏并利用宽度——加宽服务列表列、详情表单两列 */
+@media (min-width: 1024px) {
+  .provider-split-view {
+    --split-master: 240px;
+  }
+
+  .provider-editor:not([hidden]) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 窄视口：卡片内的字段退回单列 */
+@media (max-width: 470px) {
+  .ai-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

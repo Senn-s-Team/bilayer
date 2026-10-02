@@ -8,7 +8,8 @@ xcode-env.sh: Xcode 定位公共层，被 source 后提供 resolve_developer_dir
 sign-app.sh: 签名与注册公共层，注入 entitlements、深层签名 .app 与嵌套 .appex、清除隔离属性并刷新 pluginkit；证书按 CERT_NAME > 本机 Apple Development > ad-hoc 顺序解析
 i18n.test.mjs: 驱动真实扩展页 i18n 模块与真实 _locales 报文，验证 uiLanguage 偏好解析、包内文案同步解析与降级、浏览器语言归一、$1 替换及 [data-i18n-language] 切换器的填充/选中/持久化
 onboarding.test.mjs: 解析真实 onboarding.html 构造迷你 DOM，验证向导完成态在标签页 API 失效时仍写入配置并进入可交互完成态、外观控件与位置预设语义、预览渲染数学、模型发现 BILAYER_LIST_MODELS 协议与原生/AI 模式 1→2→3 全路径无异常
-diagnostics.test.mjs: 驱动真实诊断页初始化与点击路径，验证双语列表/详情按已知计数区分条数不符与其它校验失败、未知计数不推测为零，以及顶层数组字幕的 UI 复制
+settings.test.mjs: 解析真实 settings.html 构造迷你 DOM，验证设置页 provider 写入不丢数据（providers 整数组写入的读-改-写合并：改字段/新增/删除都不丢其它表面在此期间新增的服务）与常驻窗口可见性门控（隐藏时不读取标签页、重新可见立即补一轮且链不停摆），以及新增服务草案的端点校验/模型目录拉取失败就地写进 #newDraftStatus 状态行且不再调用 window.alert
+diagnostics.test.mjs: 驱动真实 diagnostics.html 与脚本的初始化/点击路径，验证双语列表/详情按已知计数区分条数不符与其它校验失败、未知计数不推测为零、顶层数组字幕的 UI 复制；导出结果就地写进 #exportStatus（无记录/下载失败/框架未就绪/框架就绪四态都不弹窗），以及带 ruby 且无 readings 的响应逐字渲染注音与重复渲染一致性
 content.test.mjs: 驱动真实内容脚本，验证独立源、日文源字幕 ruby 注音回填、provider 切换、预取热更新、上下文重译与凭证隔离
 overlay.test.mjs: 运行真实字幕层并模拟 Shadow DOM，验证相同字幕节点复用（含 ruby 注音）、ruby/rt 元素生成及单行更新、消失状态
 subtitle-store.test.mjs: 驱动真实字幕存储，验证同轨并发请求合并、切集后缓存失效以及 subtitleParser 多行字幕单行化折叠

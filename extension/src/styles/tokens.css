@@ -1,0 +1,300 @@
+/*
+ * [INPUT]: 无外部依赖（无 @import、无 url()、无外置字体）；由扩展页面在组件样式表之前以 <link> 加载
+ * [OUTPUT]: 两层设计令牌——primitives（中性灰阶、品牌蓝阶、语义色阶、字体族（系统栈，无 Helvetica）、间距、扁平圆角阶梯（--bl-radius-2xs 2px / -xs 3px / -sm 4px / -md 6px / -lg 8px / -xl 10px，无胶囊档）与三枚「角色 → 档位」别名（--radius-tag=2xs=2px 徽标/标签/进度条/字幕行、--radius-control=sm=4px 按钮/输入/分段/列表行、--radius-surface=md=6px 面板/卡片/浮层；窗口级外壳取 --bl-radius-xl=10px）、字号/行高/字重、控件高度与图标尺寸、时长与缓动（--bl-ease-standard/spring/out-expo/inout-quint/springy））与 semantic（--bg/--fg、--surface/--surface-fg、--border、--accent/--accent-fg、--success/--warning/--danger、--focus-ring、--shadow-popover（唯一浮层阴影）、内凹槽 --groove、预览画板的 --stage-bg/--stage-fg）
+ * [POS]: 扩展页共享的令牌层，只声明自定义属性、不产生任何选择器副作用；明暗只有一处事实来源：:root 是浅色分支，@media (prefers-color-scheme: dark) 用同一组变量名覆盖，color-scheme 因此只声明一次。扁平契约：一层不透明表面 + 1px 发丝外框，无磨砂/无模糊、无光泽（无 sheen/tray/inset 高光）、无胶囊圆角；仅真正浮起的元素（弹层/下拉）使用单层收敛阴影 --shadow-popover。历史玻璃令牌（双层壳 Doppelrand/磨砂/光泽/漫射多层阴影/胶囊圆角）已全部删除，仅保留扁平契约所需的令牌
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
+/* ===== primitives ===== */
+:root {
+  /* 明暗两态都由 prefers-color-scheme 决定，原生控件/滚动条跟随同一分支 */
+  color-scheme: light dark;
+
+  /* --- 中性灰阶（浅色分支用） --- */
+  --bl-gray-0: #ffffff;
+  --bl-gray-50: #f8f9fb;
+  --bl-gray-100: #f1f2f5;
+  --bl-gray-150: #e9eaee;
+  --bl-gray-200: #dfe1e6;
+  --bl-gray-300: #cbced4;
+  --bl-gray-400: #b2b6bd;
+  --bl-gray-500: #7b7f87;
+  --bl-gray-600: #62666d;
+  --bl-gray-700: #4c5057;
+  --bl-gray-800: #33363b;
+  --bl-gray-900: #1f2124;
+  --bl-gray-1000: #101114;
+
+  /* --- 深色中性阶（深色分支用，沿用既有 macOS 深灰取值） --- */
+  --bl-ink-050: #f4f5f7;
+  --bl-ink-200: #bec2ca;
+  --bl-ink-300: #969ba5;
+  --bl-ink-400: #737781;
+  --bl-ink-450: #696d75;
+  --bl-ink-500: #555963;
+  --bl-ink-560: #42454d;
+  --bl-ink-600: #383b42;
+  --bl-ink-700: #303238;
+  --bl-ink-800: #2b2d32;
+  --bl-ink-1000: #0b0b0e;
+  --bl-ink-hover: #34465d;
+  --bl-ink-hover-line: #557ca7;
+
+  /* --- 品牌蓝阶（主色 #4c8dff，深色分支沿用 #409cff/#70b4ff） --- */
+  --bl-blue-100: #dbe8ff;
+  --bl-blue-200: #b8d3ff;
+  --bl-blue-300: #93bcff;
+  --bl-blue-350: #62adff;
+  --bl-blue-400: #70b4ff;
+  --bl-blue-500: #4c8dff;
+  --bl-blue-550: #409cff;
+  --bl-blue-600: #2b66da;
+  --bl-blue-700: #2563d6;
+  --bl-blue-800: #1c4ca8;
+
+  /* --- 琥珀阶（第二字幕层与 warning 家族） --- */
+  --bl-amber-100: #ffeecd;
+  --bl-amber-300: #f0c27a;
+  --bl-amber-400: #ffb020;
+  --bl-amber-500: #ff9f0a;
+  --bl-amber-600: #e3b566;
+  --bl-amber-800: #8a5300;
+
+  /* --- 绿阶 --- */
+  --bl-green-100: #dff5e8;
+  --bl-green-400: #69ce95;
+  --bl-green-500: #34c759;
+  --bl-green-700: #0f7a38;
+
+  /* --- 红阶 --- */
+  --bl-red-100: #fbe4e3;
+  --bl-red-400: #fa8b94;
+  --bl-red-500: #ff453a;
+  --bl-red-700: #c8342e;
+
+  /* --- 紫阶（仅作第二字幕的角色标记，固定色不随明暗切换） --- */
+  --bl-violet-200: #bb9bf2;
+  --bl-violet-400: #8b65cb;
+
+  /* --- 间距阶梯（2px 步进；--bl-space-N 的 N 即像素值） --- */
+  --bl-space-1: 2px;
+  --bl-space-2: 4px;
+  --bl-space-3: 6px;
+  --bl-space-4: 8px;
+  --bl-space-5: 10px;
+  --bl-space-6: 12px;
+  --bl-space-7: 14px;
+  --bl-space-8: 16px;
+  --bl-space-9: 20px;
+  --bl-space-10: 24px;
+  --bl-space-11: 28px;
+  --bl-space-12: 32px;
+  --bl-space-14: 40px;
+
+  /* --- 圆角阶梯（扁平化：方正硬边，档位收在 2–10px，无胶囊档） ---
+     档位含义：2xs 徽标/标签与小点、xs 色块/自绘小件、sm 按钮与输入、md 面板与卡片、
+     lg 次级容器、xl 窗口级外壳。长条状元素一律不得使用 50%/胶囊圆角 */
+  --bl-radius-2xs: 2px;
+  --bl-radius-xs: 3px;
+  --bl-radius-sm: 4px;
+  --bl-radius-md: 6px;
+  --bl-radius-lg: 8px;
+  --bl-radius-xl: 10px;
+
+  /* 扁平圆角角色别名：页面按用途取值，档位仍由上面的 --bl-radius-* 阶梯决定 */
+  --radius-tag: var(--bl-radius-2xs);        /* 徽标、标签、进度条、字幕行 —— 2px */
+  --radius-control: var(--bl-radius-sm);     /* 按钮、输入、分段、列表行 —— 4px */
+  --radius-surface: var(--bl-radius-md);     /* 面板、卡片、浮层 —— 6px */
+
+  /* --- 字体族（各平台 UI 系统栈与等宽栈；页面只引用不复述） --- */
+  --bl-font-sans: -apple-system, BlinkMacSystemFont, system-ui, "SF Pro Text", "SF Pro Display", sans-serif;
+  --bl-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* --- 字号/行高/字重阶梯 --- */
+  --bl-font-2xs: 10px;
+  --bl-font-xs: 11px;
+  --bl-font-sm: 12px;
+  --bl-font-md: 13px;
+  --bl-font-lg: 14px;
+  --bl-font-xl: 17px;
+  --bl-font-2xl: 22px;
+  --bl-font-3xl: 26px;
+  --bl-leading-tight: 1.25;
+  --bl-leading-snug: 1.35;
+  --bl-leading-normal: 1.45;
+  --bl-leading-relaxed: 1.55;
+  --bl-weight-regular: 450;
+  --bl-weight-medium: 560;
+  --bl-weight-semibold: 600;
+  --bl-weight-bold: 650;
+
+  /* --- 控件尺度（高度与图标；图标按钮与图标字形共用同一尺寸） --- */
+  --bl-control-sm: 24px;
+  --bl-control-md: 30px;
+  --bl-control-lg: 34px;
+  --bl-control-xl: 36px;
+  --bl-icon-size: 17px;
+  --bl-icon-size-sm: 13px;
+  --bl-switch-width: 39px;
+  --bl-switch-height: 23px;
+  --bl-switch-thumb-size: 19px;
+
+  /* --- 时长/缓动阶梯 --- */
+  --bl-duration-fast: 120ms;
+  --bl-duration-base: 180ms;
+  --bl-duration-slow: 320ms;
+  --bl-duration-slower: 480ms;
+  --bl-duration-panel: 780ms;
+  --bl-ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
+  --bl-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --bl-ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --bl-ease-inout-quint: cubic-bezier(0.86, 0, 0.07, 1);
+  --bl-ease-springy: cubic-bezier(0.34, 1.32, 0.44, 1);
+}
+
+/* ===== semantic：浅色分支（默认，也是唯一的浅色声明处） ===== */
+:root {
+  --bg: var(--bl-gray-100);
+  --app-backdrop: radial-gradient(circle at 50% 15%, #fbfcfe 0%, var(--bg) 75%);
+  --fg: var(--bl-gray-900);
+  --fg-muted: var(--bl-gray-600);
+  --fg-faint: var(--bl-gray-500);
+  --fg-emphasis: var(--bl-gray-1000);
+
+  --surface: var(--bl-gray-0);
+  --surface-fg: var(--fg);
+  --surface-soft: var(--bl-gray-50);
+  /* 窗口级 chrome（侧栏/头部）是不透明表面 + 1px 发丝边，不再磨砂 */
+  --sidebar-bg: var(--bl-gray-50);
+  --header-bg: var(--bl-gray-0);
+
+  --border: rgba(16, 17, 20, .12);
+  --border-strong: rgba(16, 17, 20, .18);
+  --border-hover: rgba(16, 17, 20, .3);
+
+  --control: rgba(16, 17, 20, .055);
+  --control-bg: var(--bl-gray-0);
+  --button-bg: var(--bl-gray-0);
+  --button-bg-hover: rgba(16, 17, 20, .06);
+  --card-bg: var(--bl-gray-0);
+  --card-bg-hover: var(--bl-gray-50);
+  --badge-bg: rgba(16, 17, 20, .06);
+  --badge-fg: var(--fg-muted);
+  --scrollbar-thumb: rgba(16, 17, 20, .22);
+
+  --accent: var(--bl-blue-500);
+  --accent-fg: #ffffff;
+  --accent-deep: var(--bl-blue-700);
+  --accent-solid: var(--bl-blue-700);
+  --accent-solid-hover: var(--bl-blue-800);
+  --accent-soft: rgba(76, 141, 255, .14);
+  --accent-line: rgba(76, 141, 255, .4);
+  --accent-faint: rgba(76, 141, 255, .07);
+  --accent-badge: rgba(76, 141, 255, .22);
+
+  /* 语法着色里的“数值”一档：取 accent 家族中浅色下仍达正文可读对比的深蓝（见 diagnostics 报文区），
+     其余语法档位不改动，仍借用 accent-deep/warning/success/fg-muted */
+  --syntax-number: var(--accent-deep);
+
+  --success: var(--bl-green-700);
+  --success-fg: #ffffff;
+  --warning: var(--bl-amber-800);
+  --warning-fg: #ffffff;
+  --warning-line: var(--bl-amber-300);
+  --warning-soft: rgba(255, 159, 10, .1);
+  --danger: var(--bl-red-700);
+  --danger-fg: #ffffff;
+
+  --switch-track: var(--bl-gray-300);
+  --switch-thumb: var(--bl-gray-0);
+  --slider-thumb-bg: var(--bl-gray-0);
+  --slider-thumb-border: var(--bl-gray-300);
+  --color-swatch-border: rgba(0, 0, 0, .14);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236f737b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  /* 扁平契约：面板/卡片一律 flat，只有真正浮起的元素（弹层、下拉菜单）投一层收敛阴影 */
+  --shadow-popover: 0 6px 16px rgba(16, 17, 20, .12);
+
+  /* 焦点环：挖空式双层环——内 2px 用表面色断开元素自身，外 2px 用实心强调色，
+     保证环色对相邻底色 ≥3:1（WCAG 1.4.11 非文字对比），无布局位移（box-shadow 不进盒模型） */
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent-solid);
+
+  /* --- 内凹槽（输入框、分段控件底槽、次级分组）：只保留「刻进表面」的底色，去光泽 --- */
+  --groove: rgba(16, 17, 20, .042);
+
+  /* 预览画板是“屏幕”语义，明暗两态都刻意保持深色：平面深色 + 1px 发丝外框，不再反光 */
+  --stage-bg: #0e0e12;
+  --stage-fg: #ffffff;
+  --stage-label-fg: #b7c0cd;
+  --stage-line-bg: rgba(0, 0, 0, .64);
+  --stage-line-shadow: 0 1px 2px rgba(0, 0, 0, .85);
+
+  --role-primary: var(--accent);
+  --role-primary-ring: var(--bl-blue-350);
+  --role-secondary: var(--bl-violet-400);
+  --role-secondary-ring: var(--bl-violet-200);
+}
+
+/* ===== semantic：深色分支（同一组变量名覆盖，color-scheme 不再重复声明） ===== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: var(--bl-ink-1000);
+    --app-backdrop: radial-gradient(circle at 50% 15%, #1a1a24 0%, var(--bg) 75%);
+    --fg: var(--bl-ink-050);
+    --fg-muted: var(--bl-ink-200);
+    --fg-faint: var(--bl-ink-300);
+    --fg-emphasis: #ffffff;
+
+    --surface: var(--bl-ink-800);
+    --surface-soft: var(--bl-ink-700);
+    /* 窗口级 chrome 同浅色分支：不透明表面 + 1px 发丝边，不再磨砂 */
+    --sidebar-bg: var(--surface-soft);
+    --header-bg: var(--surface);
+
+    --border: var(--bl-ink-560);
+    --border-strong: var(--bl-ink-500);
+    --border-hover: var(--bl-ink-hover-line);
+
+    --control: var(--bl-ink-600);
+    --control-bg: rgba(255, 255, 255, .05);
+    --button-bg: rgba(255, 255, 255, .08);
+    --button-bg-hover: var(--bl-ink-hover);
+    --card-bg: rgba(255, 255, 255, .04);
+    --card-bg-hover: rgba(255, 255, 255, .07);
+    --badge-bg: rgba(255, 255, 255, .08);
+    --scrollbar-thumb: rgba(255, 255, 255, .18);
+
+    --accent: var(--bl-blue-550);
+    --accent-deep: var(--bl-blue-400);
+    --accent-solid: var(--bl-blue-600);
+    --accent-solid-hover: var(--bl-blue-700);
+    --accent-soft: rgba(64, 156, 255, .18);
+    --accent-line: rgba(64, 156, 255, .4);
+    --accent-faint: rgba(76, 141, 255, .12);
+    --accent-badge: rgba(64, 156, 255, .28);
+
+    /* 深色分支的 accent 本身即高对比正文色，故语法数值直接取 accent（浅色分支取 accent-deep） */
+    --syntax-number: var(--accent);
+
+    --success: var(--bl-green-400);
+    --warning: var(--bl-amber-600);
+    --warning-line: var(--bl-amber-600);
+    --warning-soft: rgba(227, 181, 102, .14);
+    --danger: var(--bl-red-400);
+
+    --switch-track: var(--bl-ink-450);
+    --slider-thumb-bg: var(--surface);
+    --slider-thumb-border: var(--bl-ink-400);
+    --color-swatch-border: rgba(255, 255, 255, .22);
+    --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23bec2ca' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+    /* 扁平契约：仅真正浮起的元素投一层收敛阴影，深色分支取更深的投影 */
+    --shadow-popover: 0 6px 16px rgba(0, 0, 0, .45);
+
+    /* 焦点环：深色下间隙取页面底色（--surface 与实心强调色按钮对比不足 3:1），外环取更亮的 --accent */
+    --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+    /* 内凹槽（输入框、分段控件底槽、次级分组）：只保留「刻进表面」的底色，去光泽（槽底取更深的黑） */
+    --groove: rgba(0, 0, 0, .24);
+  }
+}

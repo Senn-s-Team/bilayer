@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 Node.js test/vm、真实 diagnostics 页面/脚本与 en/zh_CN 文案，注入迷你 DOM、后台记录与剪贴板边界
- * [OUTPUT]: 验证请求列表和详情区分条数不符与通用校验失败，以及 UI 页签复制顶层数组字幕
- * [POS]: scripts 的诊断页行为回归检查，通过页面初始化与用户操作观察结果，不访问私有函数
+ * [INPUT]: 依赖 Node.js test/vm、真实 diagnostics 页面/完整脚本与 en/zh_CN 文案，注入迷你 DOM、后台记录、剪贴板、可失败的 downloads 与同源导出框架边界
+ * [OUTPUT]: 验证双语条数状态与精确字幕复制、导出失败就地可见及成功收起、完整报文下载与 ruby 注音重复渲染
+ * [POS]: scripts 的诊断页行为回归检查，共用真实 markup 的动态 DOM，通过页面初始化、点击、剪贴板和下载观察结果，不访问私有函数
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { readFileSync } from "node:fs";
@@ -22,6 +22,17 @@ function decodeEntities(text) {
   return text.replace(/&(amp|lt|gt|quot|#39);/g, (_, name) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" })[name]);
 }
 
+function escapeMarkup(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function serializeNode(node) {
+  if (!node.localName) return escapeMarkup(node.textContent);
+  const attributes = [...node.attributes].map(([name, value]) => ` ${name}="${escapeMarkup(value)}"`).join("");
+  const opening = `<${node.localName}${attributes}>`;
+  return VOID_TAGS.has(node.localName) ? opening : `${opening}${node.innerHTML}</${node.localName}>`;
+}
+
 class FakeElement {
   constructor(tagName, attributes = {}) {
     this.localName = tagName.toLowerCase();
@@ -33,6 +44,8 @@ class FakeElement {
     this.hidden = Object.hasOwn(attributes, "hidden");
     this.value = attributes.value ?? "";
     this.scrollTop = 0;
+    this.contentWindow = undefined;
+    this.style = {};
     this.classes = new Set((attributes.class ?? "").split(/\s+/).filter(Boolean));
     this.classList = {
       contains: (name) => this.classes.has(name),
@@ -44,6 +57,10 @@ class FakeElement {
     };
     for (const [name, value] of Object.entries(attributes)) {
       if (name.startsWith("data-")) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = value;
+      if (name === "style") for (const declaration of value.split(";")) {
+        const colon = declaration.indexOf(":");
+        if (colon >= 0) this.style[declaration.slice(0, colon).trim()] = declaration.slice(colon + 1).trim();
+      }
     }
   }
 
@@ -51,6 +68,7 @@ class FakeElement {
   set className(value) { this.classes = new Set(value.split(/\s+/).filter(Boolean)); }
   get textContent() { return this.children.map((child) => child.textContent).join(""); }
   set textContent(value) { this.replaceChildren({ textContent: String(value) }); }
+  get innerHTML() { return this.children.map(serializeNode).join(""); }
   set innerHTML(value) { this.replaceChildren(...parseMarkup(value).children); }
 
   append(...nodes) {
@@ -142,45 +160,69 @@ function parseMarkup(source) {
   return root;
 }
 
-/* ===== 页面边界：完整初始化、真实文案与可控后台记录 ===== */
+/* ===== 页面边界：完整初始化、真实文案与可控后台/下载 ===== */
 
 function substitute(message, args = []) {
   return message.replace(/\$(\d)/g, (match, index) => args[Number(index) - 1] === undefined ? match : String(args[Number(index) - 1]));
 }
 
-async function createDiagnostics(language, records) {
+async function createDiagnostics(language, records, { withDownloads = true, frameReady = false } = {}) {
   const document = parseMarkup(markup);
   document.body = document.querySelector("body");
   document.createElement = (name) => new FakeElement(name);
   document.createTextNode = (text) => ({ textContent: String(text) });
   const clipboard = [];
+  const alerts = [];
+  const downloads = [];
+  const frameCalls = [];
+  const failDownloads = { value: false };
   const timers = [];
   const bundle = locales[language];
   const t = (key, args) => {
     assert.ok(bundle[key]?.message, `${language} 文案缺少 ${key}`);
     return substitute(bundle[key].message, args);
   };
-  runInNewContext(scriptSource, {
-    document,
-    browser: {
-      runtime: {
-        sendMessage(message, callback) {
-          if (message.type === "BILAYER_SET_RAW_DIAGNOSTICS") callback({ ok: true });
-          else if (message.type === "BILAYER_GET_RAW_DIAGNOSTICS") callback({ ok: true, enabled: true, version: 1, records: structuredClone(records) });
-          else assert.fail(`未支持的诊断消息 ${message.type}`);
+  const runtime = {
+    runtime: {
+      getURL: (path) => `safari-web-extension://bilayer-app/${path}`,
+      sendMessage(message, callback) {
+        if (message.type === "BILAYER_SET_RAW_DIAGNOSTICS") callback({ ok: true });
+        else if (message.type === "BILAYER_GET_RAW_DIAGNOSTICS") callback({ ok: true, enabled: true, version: 1, records: structuredClone(records) });
+        else assert.fail(`未支持的诊断消息 ${message.type}`);
+      },
+      lastError: undefined
+    },
+    downloads: withDownloads ? {
+      download(options, callback) {
+        downloads.push(structuredClone(options));
+        if (failDownloads.value) runtime.runtime.lastError = { message: "download interrupted" };
+        try {
+          callback?.();
+        } finally {
+          runtime.runtime.lastError = undefined;
         }
       }
-    },
+    } : undefined
+  };
+  const alert = (message) => alerts.push(String(message));
+  runInNewContext(scriptSource, {
+    document,
+    browser: runtime,
     i18n: { t },
     navigator: { clipboard: { async writeText(text) { clipboard.push(text); } } },
     TextEncoder,
-    window: { setInterval(callback, delay) { timers.push({ callback, delay }); return timers.length; } },
+    URL,
+    alert,
+    window: { alert, setInterval(callback, delay) { timers.push({ callback, delay }); return timers.length; } },
     setTimeout(callback, delay) { timers.push({ callback, delay }); return timers.length; }
   }, { filename: "diagnostics.js" });
+  const exportFrame = document.body.querySelector("iframe");
+  assert.ok(exportFrame, "完整脚本必须创建导出框架");
+  if (frameReady) exportFrame.contentWindow = { downloadCases: (filename, text) => frameCalls.push({ filename, text }) };
   // init() 的消息回调与 await 全部通过事件循环落地，不调用脚本内部函数。
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(document.querySelector("#liveStatus").textContent, t("diagLiveCapturing"));
-  return { document, clipboard, t };
+  assert.equal(document.querySelector("#recordCount").textContent, String(records.length));
+  return { document, clipboard, alerts, downloads, frameCalls, failDownloads, exportFrame, t };
 }
 
 function recordFor(items, failure) {
@@ -257,3 +299,117 @@ for (const language of ["en", "zh_CN"]) {
     assert.equal(page.document.querySelector("#copyPayload").textContent, page.t("diagCopied"));
   });
 }
+
+/* ===== 导出结果：失败就地可见，成功清空并收起，不弹阻塞式窗口 ===== */
+
+function expectExportStatus(page, key) {
+  const status = page.document.querySelector("#exportStatus");
+  assert.equal(status.textContent, key ? page.t(key) : "");
+  assert.equal(status.dataset.state ?? "", key ? "error" : "");
+  assert.equal(status.hidden, false);
+  if (key) assert.notEqual(status.style.display, "none", "失败说明必须可见");
+  else assert.equal(status.style.display, "none", "成功后状态行必须收起");
+  assert.deepEqual(page.alerts, [], "导出不得触发阻塞式弹窗");
+}
+
+const EXPORT_RECORD = recordFor([{ id: "cue-41", text: "合成台灯是蓝色的。" }]);
+
+test("没有报文记录时导出：状态行就地说明原因，不弹窗", async () => {
+  const page = await createDiagnostics("en", []);
+  await page.document.querySelector("#exportCases").click();
+  expectExportStatus(page, "diagExportEmpty");
+  assert.deepEqual(page.downloads, [], "无记录时不得触发下载");
+  assert.deepEqual(page.frameCalls, [], "无记录时不得交给框架下载");
+});
+
+test("下载失败：状态行就地报错，重试成功后收起，不弹窗", async () => {
+  const page = await createDiagnostics("en", [EXPORT_RECORD]);
+  page.failDownloads.value = true;
+  await page.document.querySelector("#exportCases").click();
+  expectExportStatus(page, "diagExportFailed");
+  assert.equal(page.downloads.length, 1, "失败仍须保留发出的下载请求");
+  assert.equal(page.downloads[0].saveAs, true);
+  assert.match(page.downloads[0].filename, /^netflix-subtitles-cases-.*\.json$/);
+  const prefix = "data:application/json;charset=utf-8,";
+  assert.ok(page.downloads[0].url.startsWith(prefix));
+  assert.deepEqual(JSON.parse(decodeURIComponent(page.downloads[0].url.slice(prefix.length))), [EXPORT_RECORD], "下载应包含完整记录");
+
+  page.failDownloads.value = false;
+  await page.document.querySelector("#exportCases").click();
+  assert.equal(page.downloads.length, 2, "重试必须再次发出下载请求");
+  expectExportStatus(page);
+});
+
+test("下载 API 缺失且导出框架未就绪：状态行就地报错，不弹窗", async () => {
+  const page = await createDiagnostics("en", [EXPORT_RECORD], { withDownloads: false });
+  await page.document.querySelector("#exportCases").click();
+  expectExportStatus(page, "diagExportNotReady");
+  assert.deepEqual(page.frameCalls, [], "框架未就绪时不得调用 downloadCases");
+  assert.deepEqual(page.downloads, []);
+});
+
+test("框架就绪时导出交给框架且清除失败提示，不弹窗", async () => {
+  const page = await createDiagnostics("en", [EXPORT_RECORD], { withDownloads: false, frameReady: true });
+  const readyWindow = page.exportFrame.contentWindow;
+  page.exportFrame.contentWindow = undefined;
+  await page.document.querySelector("#exportCases").click();
+  expectExportStatus(page, "diagExportNotReady");
+
+  page.exportFrame.contentWindow = readyWindow;
+  await page.document.querySelector("#exportCases").click();
+  assert.equal(page.frameCalls.length, 1, "框架就绪时应由同源框架触发下载");
+  assert.match(page.frameCalls[0].filename, /^netflix-subtitles-cases-.*\.json$/);
+  assert.deepEqual(JSON.parse(page.frameCalls[0].text), [EXPORT_RECORD], "框架应收到完整记录");
+  assert.deepEqual(page.downloads, []);
+  expectExportStatus(page);
+});
+
+/* ===== ruby：兼容无 readings 的响应，切换页签后仍逐字一致 ===== */
+
+const RUBY_RECORD = {
+  id: 9,
+  at: Date.parse("2026-09-29T00:05:00Z"),
+  completedAt: Date.parse("2026-09-29T00:05:00Z") + 640,
+  validated: true,
+  request: {
+    url: "https://example.invalid/v1/chat/completions",
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "synthetic-model",
+      messages: [{
+        role: "user",
+        content: JSON.stringify({
+          sourceLanguage: "ja", targetLanguage: "zh-Hans",
+          items: [{ id: "42", text: "そろそろ行こう。" }]
+        })
+      }]
+    })
+  },
+  response: {
+    status: 200, statusText: "OK", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ choices: [{ message: {
+      role: "assistant",
+      content: JSON.stringify({ items: [{ id: "42", text: "该走了。", ruby: "{そろそろ|そろそろ}{行こう|いこう}" }] })
+    } }] })
+  }
+};
+
+test("响应 items 带 ruby 且无 readings 时，UI 注音与译文重复渲染逐字一致", async () => {
+  const page = await createDiagnostics("en", [RUBY_RECORD]);
+  const uiTab = page.document.querySelector('[data-payload="ui"]');
+  const responseTab = page.document.querySelector('[data-payload="response"]');
+  await uiTab.click();
+  const view = page.document.querySelector("#payloadView");
+  assert.equal(view.querySelectorAll("ruby").length, 2);
+  assert.deepEqual(view.querySelectorAll("rt").map((rt) => rt.textContent), ["そろそろ", "いこう"]);
+  assert.equal(view.querySelector(".ui-ruby-row").textContent, "そろそろそろそろ行こういこう");
+  assert.equal(view.querySelector(".ui-trans-row").textContent, "该走了。");
+  const first = view.textContent;
+
+  await responseTab.click();
+  await uiTab.click();
+  assert.equal(view.textContent, first, "切换回 UI 后必须逐字一致");
+  assert.equal(view.querySelectorAll("ruby").length, 2);
+  assert.deepEqual(view.querySelectorAll("rt").map((rt) => rt.textContent), ["そろそろ", "いこう"]);
+});

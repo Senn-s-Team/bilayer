@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API 及 popup.html 的导航、翻译、会话额度字段（含额度统计窗口选择器）、AI 页当前翻译服务选择器（#aiProviderSelect）和模型下拉控件；保存服务的模型目录由 background 读取密钥并发现，BILAYER_GET_STATE 的 translationBudget 提供当前窗口用量与有效窗口，subtitleAvailability（unknown/unread/none/available）/providerReadiness 提供字幕轨道可用性与翻译服务就绪状态
- * [OUTPUT]: 提供四页签导航、只读模型选择、按服务缓存的模型目录及菜单内过滤、AI 页当前翻译服务选择（写 aiProviderId，与翻译服务页签的主列表双向同步）、会话额度设置（上限与计量窗口）与实时用量读数、AI 不可用提示（无字幕轨道/读不到轨道/未配置服务）与扩展内的字幕/provider 操作
- * [POS]: popup 交互层；字幕模式由 aiRole 单一状态表示，翻译设置、输入额度与统计窗口全局共享，密钥和端点只属于所选 provider；额度读数与不可用提示只读页面状态，不自行计数也不自行探测
+ * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API、document 的 hidden/visibilitychange 及 settings.html 的导航、翻译、会话额度字段（含额度统计窗口选择器）、AI 页当前翻译服务选择器（#aiProviderSelect）和模型下拉控件；保存服务的模型目录由 background 读取密钥并发现，providers 的写入基线由 storage.local 读回，BILAYER_GET_STATE 的 translationBudget 提供当前窗口用量与有效窗口，subtitleAvailability（unknown/unread/none/available）/providerReadiness 提供字幕轨道可用性与翻译服务就绪状态
+ * [OUTPUT]: 提供四页签导航、只读模型选择、按服务缓存的模型目录及菜单内过滤、AI 页当前翻译服务选择（写 aiProviderId，与翻译服务页签的主列表双向同步）、会话额度设置（上限与计量窗口）与实时用量读数、AI 不可用提示（无字幕轨道/读不到轨道/未配置服务）与扩展内的字幕/provider 操作，以及常驻窗口的可见性门控轮询（隐藏时不读取标签页、重新可见立即补一轮）和 providers 的读-改-写合并（改字段/新增/删除均以存储最新列表为基线）；新增服务草案的端点校验与模型目录拉取失败就地写进 #newDraftStatus 状态行（data-state=error），不再用阻塞式 alert
+ * [POS]: settings 交互层；由 background.openSettingsWindow() 以独立窗口加载，windows API 不可用时回落标签页，字幕模式由 aiRole 单一状态表示，翻译设置、输入额度与统计窗口全局共享，密钥和端点只属于所选 provider；额度读数与不可用提示只读页面状态，不自行计数也不自行探测
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -201,6 +201,7 @@ const newDraftControls = {
   cancelBtn: document.querySelector("#cancelNewDraftBtn"),
   cancelTop: document.querySelector("#cancelNewDraftTop"),
   fetchBtn: document.querySelector("#fetchNewDraftModels"),
+  status: document.querySelector("#newDraftStatus"),
   pills: document.querySelectorAll("[data-draft-preset]")
 };
 
@@ -302,12 +303,16 @@ async function init() {
   applyPageState(pageState, true);
   writeControls();
   bindControls();
+  // 常驻窗口的可见性自愈：隐藏期间到期的轮询轮次被跳过，重新可见时用既有入口立刻补一轮，链不会因此永久停摆
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) scheduleStatePoll(0);
+  });
   readCredentialStatus();
   scheduleStatePoll();
 }
 
 function showLocalPreview() {
-  elements.pageStatus.textContent = i18n.t("popupLocalPreviewStatus");
+  elements.pageStatus.textContent = i18n.t("settingsLocalPreviewStatus");
   elements.statusDot.dataset.state = "idle";
   controls.primaryTrackKey.add(new Option(i18n.t("trackSelectRuntime"), ""));
   controls.secondaryTrackKey.add(new Option(i18n.t("trackSelectRuntime"), ""));
@@ -326,10 +331,10 @@ function showLocalPreview() {
   setModelOptions(elements.providerModelList, LLM_PRESETS.openai.models);
   bindModelPicker(providerControls.model, elements.providerModelList, document.querySelector("#providerModelMenu"), document.querySelector("#providerModelSearch"), () => {});
   bindModelPicker(newDraftControls.model, newDraftControls.modelList, document.querySelector("#newDraftModelMenu"), document.querySelector("#newDraftModelSearch"), () => {});
-  elements.aiCredentialStatus.textContent = i18n.t("popupLocalPreviewCredential");
+  elements.aiCredentialStatus.textContent = i18n.t("settingsLocalPreviewCredential");
   writeBudgetReadout();
   elements.testProvider.addEventListener("click", () => {
-    elements.providerTestStatus.textContent = i18n.t("popupLocalPreviewTest");
+    elements.providerTestStatus.textContent = i18n.t("settingsLocalPreviewTest");
   });
 }
 
@@ -793,7 +798,7 @@ function applyPageState(pageState, forceTrackUpdate = false) {
       const budgetWindow = currentSettings.aiBudgetWindow;
       currentSettings = normalizeSettings(pageState.settings);
       currentSettings.aiProviderId = providerId;
-      // content 若尚未回传该键（旧版本页面状态），保留弹窗自己已持久化的窗口，避免读数前缀回退成默认值
+      // content 若尚未回传该键（旧版本页面状态），保留设置窗口自己已持久化的窗口，避免读数前缀回退成默认值
       if (pageState.settings.aiBudgetWindow === undefined) currentSettings.aiBudgetWindow = budgetWindow;
     }
     forceTrackUpdate = true;
@@ -977,6 +982,7 @@ function showNewDraftView() {
   }
   selectDraftPreset("openai");
   newDraftControls.key.value = "";
+  writeDraftStatus("");
   newDraftControls.name.focus();
 }
 
@@ -984,6 +990,16 @@ function hideNewDraftView() {
   providerControls.draftView.hidden = true;
   providerControls.detailView.hidden = false;
   writeProviderControls();
+}
+
+// 草案服务的校验/拉取失败一律就地写在卡片里的状态行（原来用阻塞式 alert，会打断上下文且不可测试）
+function writeDraftStatus(message) {
+  const status = newDraftControls.status;
+  if (!status) return;
+  const text = message ?? "";
+  status.textContent = text;
+  status.dataset.state = text ? "error" : "";
+  status.hidden = !text;
 }
 
 function selectDraftPreset(presetKey) {
@@ -1016,7 +1032,7 @@ async function saveNewDraftProvider() {
     try {
       endpoint = normalizeProviderEndpoint(rawEndpoint);
     } catch {
-      alert(i18n.t("providerValidEndpoint"));
+      writeDraftStatus(i18n.t("providerValidEndpoint"));
       return;
     }
   }
@@ -1042,8 +1058,8 @@ async function saveNewDraftProvider() {
     credential
   };
 
-  // 只有在点击“保存密钥并添加”时，才将新服务写入已保存列表
-  currentProviders = [...currentProviders, newProvider];
+  // 只有在点击“保存密钥并添加”时，才将新服务写入已保存列表；基线取存储里的最新列表，避免抹掉其它表面新增的服务
+  currentProviders = [...(await readLatestProviders()), newProvider];
   currentSettings.aiProviderId = id;
   await writeSettings({ providers: currentProviders, aiProviderId: id });
   hideNewDraftView();
@@ -1058,13 +1074,13 @@ async function fetchNewDraftModels() {
     try {
       endpoint = normalizeProviderEndpoint(rawEndpoint);
     } catch {
-      alert(i18n.t("providerValidEndpoint"));
+      writeDraftStatus(i18n.t("providerValidEndpoint"));
       return;
     }
   }
 
   if (!credential && endpoint !== "http://localhost:11434/v1/chat/completions") {
-    alert(i18n.t("providerNeedKeyToList"));
+    writeDraftStatus(i18n.t("providerNeedKeyToList"));
     newDraftControls.key.focus();
     return;
   }
@@ -1075,12 +1091,14 @@ async function fetchNewDraftModels() {
       const origin = `${url.protocol}//${url.hostname}/*`;
       const granted = await new Promise((res) => runtime.permissions.request({ origins: [origin] }, res));
       if (!granted) {
-        alert(i18n.t("providerEndpointDeniedModels"));
+        writeDraftStatus(i18n.t("providerEndpointDeniedModels"));
         return;
       }
     } catch { /* no-op */ }
   }
 
+  // 通过校验，清掉上一次尝试留下的失败说明，再进入拉取态
+  writeDraftStatus("");
   newDraftControls.fetchBtn.disabled = true;
   newDraftControls.fetchBtn.textContent = i18n.t("providerFetchingShort");
 
@@ -1094,16 +1112,20 @@ async function fetchNewDraftModels() {
     newDraftControls.fetchBtn.disabled = false;
     newDraftControls.fetchBtn.textContent = i18n.t("providerModelFetch");
     if (runtime.runtime.lastError || !result?.ok) {
-      alert(result?.errorCode === "auth" ? i18n.t("providerKeyInvalidModels") : i18n.t("providerModelsListFailed"));
+      writeDraftStatus(result?.errorCode === "auth" ? i18n.t("providerKeyInvalidModels") : i18n.t("providerModelsListFailed"));
       return;
     }
+    writeDraftStatus("");
     setModelOptions(newDraftControls.modelList, result.models);
   });
 }
 
 async function deleteProvider() {
   if (currentProviders.length <= 1) return;
-  currentProviders = currentProviders.filter((p) => p.id !== currentSettings.aiProviderId);
+  const removedId = currentSettings.aiProviderId;
+  // 同样以存储最新列表为基线：只剔除被删除的服务，其它表面新增的服务保留；剔除后为空则回落默认服务
+  const remaining = (await readLatestProviders()).filter((provider) => provider.id !== removedId);
+  currentProviders = remaining.length ? remaining : DEFAULT_PROVIDERS.map((provider) => ({ ...provider }));
   currentSettings.aiProviderId = currentProviders[0].id;
   await writeSettings({ providers: currentProviders, aiProviderId: currentSettings.aiProviderId });
   hideNewDraftView();
@@ -1157,7 +1179,8 @@ async function updateProviderField(field, value, refresh = true) {
   if (!provider) return;
   if (field === "name" && !value) value = provider.name;
   if (field === "model" && /[\s\x00-\x1f]/.test(value)) value = provider.model;
-  currentProviders = currentProviders.map((item) => item.id === provider.id ? { ...item, [field]: value } : item);
+  // 以存储里的最新列表为基线，只替换目标服务的该字段，其余服务（含其它表面刚新增的）原样保留
+  currentProviders = (await readLatestProviders()).map((item) => item.id === provider.id ? { ...item, [field]: value } : item);
   await writeSettings({ providers: currentProviders });
   if (refresh) writeProviderControls();
 }
@@ -1498,6 +1521,9 @@ function scheduleStatePoll(attempt = 0) {
   if (attempt >= 10 && (!isWatchPage(currentPageState) || currentSettings.aiRole === "off")) return;
 
   pollTimer = setTimeout(async () => {
+    // 常驻窗口可能在后台停留很久：隐藏期间不得发起任何标签页读取（readPageState/tabs.query/sendMessage），
+    // 本轮直接作废，链本身由下方 visibilitychange → scheduleStatePoll(0) 在重新可见时立刻接上
+    if (document.hidden) return;
     const pageState = await readPageState();
     applyPageState(pageState);
     if (!isWatchPage(pageState)) {
@@ -1599,6 +1625,20 @@ function readWatchId(pageState) {
 function readStoredSettings() {
   return new Promise((resolve) => {
     runtime.storage.local.get({ ...DEFAULT_SETTINGS, providers: DEFAULT_PROVIDERS }, resolve);
+  });
+}
+
+// providers 是整数组存储键：任何单点修改（改字段、新增、删除）都必须先读回存储里的最新列表再按 id 合并，
+// 否则另一个表面（新手向导同样写整个数组）在设置页打开期间新增的服务会被这份陈旧快照整体抹掉。
+// 空列表与初始化一致回落 DEFAULT_PROVIDERS，并克隆一份以免写回时改到常量本身。
+function readLatestProviders() {
+  return new Promise((resolve) => {
+    runtime.storage.local.get({ providers: DEFAULT_PROVIDERS }, (stored) => {
+      const providers = stored?.providers;
+      resolve(Array.isArray(providers) && providers.length
+        ? providers
+        : DEFAULT_PROVIDERS.map((provider) => ({ ...provider })));
+    });
   });
 }
 
