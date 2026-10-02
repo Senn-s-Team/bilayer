@@ -181,6 +181,54 @@ test("a compatible provider's comma-separated JSON objects translate the complet
   assert.deepEqual(JSON.parse(JSON.stringify(await worker(wrongId))), { ok: false, errorCode: "invalid_response" });
 });
 
+test("a compatible provider's fenced top-level array preserves normalized readings for every subtitle", async () => {
+  const content = "```json\n" + JSON.stringify([
+    { id: "0", text: "青い箱", readings: [{ surface: "青", reading: "あお" }, { surface: "箱", reading: "はこ" }] },
+    { id: "1", text: "ありがとう", readings: [] }
+  ]) + "\n```";
+  const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: { content } }] }), {
+    providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "m", credential: "private-key" }],
+    aiProviderId: "custom"
+  });
+  const batch = { ...message, targetLanguage: "ja", items: [{ id: "0", text: "A blue box" }, { id: "1", text: "Thank you" }] };
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker(batch))), {
+    ok: true, items: [
+      { id: "0", text: "青い箱", readings: { "青": "あお", "箱": "はこ" } },
+      { id: "1", text: "ありがとう", readings: {} }
+    ]
+  });
+});
+
+test("a compatible provider's plain one-item top-level array translates a subtitle", async () => {
+  const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+    content: '[{"id":"0","text":"蓝色的盒子"}]'
+  } }] }), {
+    providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "m", credential: "private-key" }],
+    aiProviderId: "custom"
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(await worker())), { ok: true, items: [{ id: "0", text: "蓝色的盒子" }] });
+});
+
+for (const [name, items] of [
+  ["missing item", [{ id: "0", text: "蓝色的盒子" }]],
+  ["duplicate ID", [{ id: "0", text: "蓝色的盒子" }, { id: "0", text: "谢谢" }]],
+  ["wrong ID", [{ id: "0", text: "蓝色的盒子" }, { id: "other", text: "谢谢" }]],
+  ["empty text", [{ id: "0", text: "" }, { id: "1", text: "谢谢" }]],
+  ["extra field", [{ id: "0", text: "蓝色的盒子", extra: true }, { id: "1", text: "谢谢" }]],
+  ["malformed readings", [{ id: "0", text: "青い箱", readings: [{ surface: "箱", reading: 42 }] }, { id: "1", text: "ありがとう", readings: [] }]]
+]) {
+  test(`a compatible provider's top-level array rejects ${name}`, async () => {
+    const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+      content: JSON.stringify(items)
+    } }] }), {
+      providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "m", credential: "private-key" }],
+      aiProviderId: "custom"
+    });
+    const batch = { ...message, items: [{ id: "0", text: "A blue box" }, { id: "1", text: "Thank you" }] };
+    assert.deepEqual(JSON.parse(JSON.stringify(await worker(batch))), { ok: false, errorCode: "invalid_response" });
+  });
+}
+
 test("compatible providers may return fenced JSON or text content parts", async () => {
   const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: {
     content: [{ type: "text", text: "```json\n{\"items\":[{\"id\":\"0\",\"text\":\"你好\"}]}\n```" }]
@@ -304,6 +352,40 @@ test("raw diagnostic page sees exact request and malformed response without leak
   assert.equal((await worker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, sender)).ok, false);
   assert.equal((await worker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, page)).ok, true);
   assert.equal((await get()).records.length, 0);
+});
+
+test("raw diagnostic failures preserve actual item counts without credentials or provider body", async () => {
+  const page = { id: "extension-id", url: "extension://src/diagnostics/diagnostics.html",
+    tab: { url: "extension://src/diagnostics/diagnostics.html" } };
+  const batch = { ...message, diagnostic: true, items: [{ id: "0", text: "A blue box" }, { id: "1", text: "Thank you" }] };
+  for (const [content, failure] of [
+    ['[{"id":"0","text":"synthetic-provider-output"}]',
+      { errorCode: "invalid_response", reason: "items_mismatch", expectedCount: 2, receivedCount: 1 }],
+    ['[{"id":"0","text":"synthetic-provider-output"},{"id":"other","text":"synthetic-provider-output"}]',
+      { errorCode: "invalid_response", reason: "items_mismatch", expectedCount: 2, receivedCount: 2 }],
+    ['{"wrong":"synthetic-provider-output"}',
+      { errorCode: "invalid_response", reason: "items_mismatch", expectedCount: 2, receivedCount: null }],
+    ["synthetic-provider-output",
+      { errorCode: "invalid_response", reason: "translation_not_json" }]
+  ]) {
+    const worker = createWorker(async () => Response.json({ choices: [{ finish_reason: "stop", message: { content } }] }), {
+      providers: [{ id: "custom", name: "Custom", endpoint: "https://provider.example/v1/chat/completions", model: "m", credential: "private-key" }],
+      aiProviderId: "custom"
+    });
+    const result = await worker(batch);
+    assert.equal(result.ok, false);
+    assert.equal(result.errorCode, "invalid_response");
+    const diagnostics = await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, page);
+    assert.equal(diagnostics.ok, true);
+    assert.equal(diagnostics.records.length, 1);
+    assert.deepEqual(structuredClone(diagnostics.records[0].failure), failure);
+    for (const value of [result, diagnostics.records[0].failure]) {
+      const serialized = JSON.stringify(value);
+      assert.equal(serialized.includes("private-key"), false);
+      assert.equal(serialized.includes("synthetic-provider-output"), false);
+      assert.equal(serialized.includes(content), false);
+    }
+  }
 });
 
 test("raw capture toggle persists across worker restart and gates the first translate request", async () => {

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 browser/chrome storage、permissions API 与 host_permissions/optional_host_permissions 的跨域 fetch 能力
- * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译（日文源/目标注音请求使用定长字段的 readings 条目数组，兼容旧字典/字符串回包供 ruby 渲染）、兼容服务对象序列规范化、AI 就绪度查询（BILAYER_AI_READINESS：只读 provider 条目、aiProviderId 与界面语言偏好 uiLanguage（同一次 storage.local.get），不触网不缓存，返回 {configured, notice, tracksNotice, unreadNotice}，提示句跟随 storage.local.uiLanguage：auto 走 runtime.i18n.getMessage、具体语言异步解析包内 _locales/<code>/messages.json 并缓存，缺失逐级回落 getMessage→空串，语义对齐 src/i18n.js）、诊断（采集开关未知即关闭：读取成功才采用持久化值、读取失败不缓存并在下次调用重试、用户显式切换立即落盘且优先于尚未落地的读取；开关值未知时缓冲落盘一律省略 `__raw_capture_enabled__`，GET/CLEAR 均先 await 单飞读取，采集判断前同样必须 await）、连通性测试与旧键迁移
+ * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译（日文源/目标注音请求使用定长字段的 readings 条目数组，兼容旧字典/字符串回包供 ruby 渲染）、兼容服务对象序列与顶层条目数组规范化（逐条规范化 readings 后仍严格校验数量、字段与 ID）、AI 就绪度查询（BILAYER_AI_READINESS：只读 provider 条目、aiProviderId 与界面语言偏好 uiLanguage（同一次 storage.local.get），不触网不缓存，返回 {configured, notice, tracksNotice, unreadNotice}，提示句跟随 storage.local.uiLanguage：auto 走 runtime.i18n.getMessage、具体语言异步解析包内 _locales/<code>/messages.json 并缓存，缺失逐级回落 getMessage→空串，语义对齐 src/i18n.js）、诊断（失败摘要仅保留错误码、原因及显式提供的 expectedCount/receivedCount，不复制正文或凭证；采集开关未知即关闭：读取成功才采用持久化值、读取失败不缓存并在下次调用重试、用户显式切换立即落盘且优先于尚未落地的读取；开关值未知时缓冲落盘一律省略 `__raw_capture_enabled__`，GET/CLEAR 均先 await 单飞读取，采集判断前同样必须 await）、连通性测试与旧键迁移
  * [POS]: background 生命周期入口；凭证仅存于 provider 条目且只在 worker 内读取，兼容服务必须通过端点校验与运行时域名授权
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -270,7 +270,11 @@ async function translateBatch(message, sender, testProviderId = "") {
   const result = (value) => trace ? { ...value, trace } : value;
   let rawRecord;
   const reject = (errorCode, stage, details) => {
-    if (rawRecord) rawRecord.failure = { errorCode, reason: details?.reason ?? stage };
+    if (rawRecord) {
+      rawRecord.failure = { errorCode, reason: details?.reason ?? stage };
+      if (details?.expectedCount !== undefined) rawRecord.failure.expectedCount = details.expectedCount;
+      if (details?.receivedCount !== undefined) rawRecord.failure.receivedCount = details.receivedCount;
+    }
     record(stage, { errorCode, ...details });
     return result({ ok: false, errorCode });
   };
@@ -555,6 +559,7 @@ function parseTranslationJson(content, compatible) {
 
 function normalizeTranslationPayload(data) {
   if (!data || typeof data !== "object") return data;
+  if (Array.isArray(data)) return { items: data.map(normalizeTranslationItem) };
   if (Array.isArray(data.items)) {
     data.items = data.items.map(normalizeTranslationItem);
   } else if (data.id !== undefined || data["id/"] !== undefined) {

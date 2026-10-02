@@ -2,10 +2,10 @@
 > L2 | 父级: ../CLAUDE.md
 
 成员清单
-service_worker.js: 初始化全局翻译默认值并迁移旧键，在首次安装时唤起 onboarding 引导页；字幕下载、多 provider 翻译（日文原文/译文注音使用固定字段的 readings 数组契约，避免动态键字典诱导空对象；请求侧明确注音来源，响应侧兼容旧 readings 字典及 furigana 字符串，集成外来语本地化准则）、popup 与 onboarding 连通性测试、AI 就绪度查询（`BILAYER_AI_READINESS`：只读 provider 条目、`aiProviderId` 与 `uiLanguage` 偏好（同一次 `storage.local.get`），不请求上游不缓存，返回 `{configured, notice, tracksNotice, unreadNotice}`，提示句跟随 `storage.local.uiLanguage`（auto 走 `runtime.i18n.getMessage`，具体语言异步解析包内 `_locales/<code>/messages.json` 并按语言缓存）；`tracksNotice` 对应「本片无轨道」、`unreadNotice` 对应「读不到轨道清单」）、兼容服务解析单字幕对象及逗号分隔对象序列，再严格校验数量、字段与 ID；默认常态保留最近 20 次原始诊断
+service_worker.js: 初始化全局翻译默认值并迁移旧键，在首次安装时唤起 onboarding 引导页；字幕下载、多 provider 翻译（日文原文/译文注音使用固定字段的 readings 数组契约，避免动态键字典诱导空对象；请求侧明确注音来源，响应侧兼容旧 readings 字典及 furigana 字符串，集成外来语本地化准则）、popup 与 onboarding 连通性测试、AI 就绪度查询（`BILAYER_AI_READINESS`：只读 provider 条目、`aiProviderId` 与 `uiLanguage` 偏好（同一次 `storage.local.get`），不请求上游不缓存，返回 `{configured, notice, tracksNotice, unreadNotice}`，提示句跟随 `storage.local.uiLanguage`（auto 走 `runtime.i18n.getMessage`，具体语言异步解析包内 `_locales/<code>/messages.json` 并按语言缓存）；`tracksNotice` 对应「本片无轨道」、`unreadNotice` 对应「读不到轨道清单」）、兼容服务解析单字幕对象、逗号分隔对象序列及顶层条目数组，逐条规范化 readings 后再严格校验数量、字段与 ID；默认常态保留最近 20 次原始诊断，失败摘要仅按白名单保留错误码、原因与显式提供的数量
 
 设计边界:
-后台不保存页面级字幕状态；翻译时才读取所选 provider 的本地凭证。官方 OpenAI 使用固定 host 与严格 JSON Schema；兼容端点必须是 HTTPS `/chat/completions`（localhost/127.0.0.1 可用 HTTP），且必须拥有运行时授权。兼容服务可规范化单个 `{id,text}` 或多个逗号分隔对象，结果必须与请求字幕的数量及 ID 完全匹配。原始报文仅由独立 diagnostics 页显式开启和读取；Authorization 只留在 background。
+后台不保存页面级字幕状态；翻译时才读取所选 provider 的本地凭证。官方 OpenAI 使用固定 host 与严格 JSON Schema；兼容端点必须是 HTTPS `/chat/completions`（localhost/127.0.0.1 可用 HTTP），且必须拥有运行时授权。兼容服务可规范化单个 `{id,text}`、多个逗号分隔对象或顶层条目数组（含 Markdown 围栏）；数组逐条沿用 readings 规范化，结果必须与请求字幕的数量及 ID 完全匹配，空文本、额外字段与畸形 readings 仍由原有校验拒绝。原始报文仅由独立 diagnostics 页显式开启和读取；Authorization 只留在 background。诊断 `failure` 不复制回包正文或凭证，仅保留 `errorCode`、`reason` 与显式提供且非 undefined 的 `expectedCount`/`receivedCount`；数量或 ID 不匹配时保留真实数量，无 items 数组时 `receivedCount` 为 null，未提供数量的失败省略这两个键。
 
 采集开关状态机（`loadRawDiagnosticsIfNeeded()` 单飞读取 + `BILAYER_SET_RAW_DIAGNOSTICS`）:
 - 未知：worker 生命周期初值 `rawCaptureEnabled = false`——“未知”一律 fail-closed，模块初值绝不表示开启。

@@ -1100,6 +1100,9 @@
   "diagStatusCountMismatch": {
     "message": "$1 (条数不符: 期望$2条/实收$3条)"
   },
+  "diagStatusValidationFailed": {
+    "message": "$1（翻译结果校验失败）"
+  },
   "diagStatusReason": {
     "message": "$1 ($2)"
   },

@@ -7,6 +7,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Accept complete top-level JSON arrays from translation providers, including Japanese
+  readings, while retaining strict subtitle count, ID, and field validation.
+- Preserve actual expected/received counts in diagnostic records and distinguish count
+  mismatches from other validation failures without treating unknown counts as zero.
+- Copy subtitles from array responses in the diagnostics page's UI preview.
+
 ## [0.3.5] - 2026-09-29
 
 ### Added

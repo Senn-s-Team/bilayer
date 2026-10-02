@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 browser/chrome runtime 消息及同源 export.html 下载框架
- * [OUTPUT]: 轮询原始报文，提供 JSON 检查器及不导航主页面的导出入口
+ * [OUTPUT]: 轮询原始报文，区分已知条数不符与通用翻译校验失败，提供 JSON 检查器、归一化字幕复制及不导航主页面的导出入口
  * [POS]: diagnostics 模块的交互层，只允许扩展诊断页读取 background 内存记录
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -309,7 +309,7 @@ function getActivePayloadText() {
   if (payloadKind === "ui") {
     const resParsed = tryParseJson(record.response?.body);
     const choice = resParsed?.choices?.[0];
-    const resData = tryParseJson(choice?.message?.content);
+    const resData = normalizeTranslationPayload(tryParseJson(choice?.message?.content));
     const items = Array.isArray(resData?.items) ? resData.items : [];
     return items.map((item) => `[#${item.id}]\n${i18n.t("diagCopySourceLabel", [item.ruby || item.text])}\n${i18n.t("diagCopyTargetLabel", [item.text])}`).join("\n\n");
   }
@@ -782,7 +782,12 @@ function formatFailureStatus(record) {
     const code = record.failure.errorCode || i18n.t("diagStatusFailed");
     const reason = record.failure.reason;
     if (reason === "items_mismatch") {
-      return i18n.t("diagStatusCountMismatch", [code, record.failure.expectedCount || "?", record.failure.receivedCount ?? 0]);
+      const { expectedCount, receivedCount } = record.failure;
+      if (Number.isInteger(expectedCount) && expectedCount >= 0 &&
+          Number.isInteger(receivedCount) && receivedCount >= 0 && expectedCount !== receivedCount) {
+        return i18n.t("diagStatusCountMismatch", [code, expectedCount, receivedCount]);
+      }
+      return i18n.t("diagStatusValidationFailed", [code]);
     }
     if (reason) return i18n.t("diagStatusReason", [code, reason]);
     return code;

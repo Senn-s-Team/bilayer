@@ -1100,6 +1100,9 @@
   "diagStatusCountMismatch": {
     "message": "$1 (count mismatch: expected $2, received $3)"
   },
+  "diagStatusValidationFailed": {
+    "message": "$1 (translation validation failed)"
+  },
   "diagStatusReason": {
     "message": "$1 ($2)"
   },
