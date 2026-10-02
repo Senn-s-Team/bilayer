@@ -18,8 +18,7 @@
   "host_permissions": ["https://netflix.com/*", "https://www.netflix.com/*", "https://*.nflxvideo.net/*", "https://api.openai.com/*"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
   "action": {
-    "default_title": "__MSG_extActionTitle__",
-    "default_popup": "src/popup/popup.html"
+    "default_title": "__MSG_extActionTitle__"
   },
   "background": {
     "service_worker": "src/background/service_worker.js"

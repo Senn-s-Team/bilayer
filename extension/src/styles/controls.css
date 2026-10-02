@@ -1,0 +1,510 @@
+/*
+ * [INPUT]: 依赖 tokens.css 的语义令牌（扁平契约的 --radius-tag/-control/-surface、--groove、--border、--shadow-popover）与 --bl-* 尺度令牌；由各扩展页在 tokens.css 之后、组件样式表之前加载
+ * [OUTPUT]: 提供扩展页控件的唯一基线——开关（.toggle/.toggle-track）、range（::-webkit-slider-* 与 ::-moz-range-* 成对书写）、color（.color-control/.color-picker-row）、select（自绘箭头，取 --select-arrow）、text/number/url/password/search/textarea，以及按钮三档（实心 .ai-button-primary／描边 .ai-button、.icon-button、.preset-pill、.master-tool-btn／无边框 .ai-button-quiet、.inline-link），每档都含 hover/active/focus-visible/disabled 四态与同一枚 focus ring；各页冻结的等价类名（.btn / .btn-outline / .btn-quiet / .btn-primary / .btn-accent / .preset-chip / .icon-btn / .quiet-button / .payload-format）列为同一档的成员，因此同一档按钮在整个产品里只有这一条基线
+ * [POS]: 共享控件层，组件样式表只保留布局与变体覆盖；同名控件的基线不得再在 settings.css / settings-ai.css / onboarding.css / diagnostics.css 出现第二次。扁平化质感统一走同一套语言：文本类控件与复合控件用 --groove 底面 + 1px --border 发丝边 + --radius-control(4px)，开关/滑杆/按钮是无光泽的实心填充——不用磨砂/模糊、不用内阴影与顶部高光、不用胶囊圆角（长条元素一律走小档位直角）；hover 只提一档描边或底色、active 缩到 .98，全部取 --bl-ease-* 缓动；文件末尾的 reduced-motion 兜底块让三页的过渡与动画在系统降级时都不播放
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
+/* ===== 控件全局行为 ===== */
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+select,
+input[type="checkbox"],
+input[type="color"],
+input[type="range"] {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled,
+input:disabled,
+textarea:disabled {
+  cursor: default;
+  opacity: .5;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ===== 文本类控件（select / 输入框 / 文本域） ===== */
+select,
+input[type="number"],
+input[type="text"],
+input[type="url"],
+input[type="password"],
+input[type="search"],
+textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--bl-control-lg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-3) var(--bl-space-5);
+  color: var(--fg);
+  background-color: var(--groove);
+  font-size: var(--bl-font-sm);
+  line-height: var(--bl-leading-snug);
+  outline: none;
+  transition: border-color var(--bl-duration-base) var(--bl-ease-standard), background-color var(--bl-duration-base) var(--bl-ease-standard), box-shadow var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+select:hover:not(:disabled),
+input[type="number"]:hover:not(:disabled),
+input[type="text"]:hover:not(:disabled),
+input[type="url"]:hover:not(:disabled),
+input[type="password"]:hover:not(:disabled),
+input[type="search"]:hover:not(:disabled),
+textarea:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+select:focus,
+input[type="number"]:focus,
+input[type="text"]:focus,
+input[type="url"]:focus,
+input[type="password"]:focus,
+input[type="search"]:focus,
+textarea:focus {
+  border-color: var(--accent);
+  background-color: var(--control-bg);
+  box-shadow: var(--focus-ring);
+}
+
+/* 自绘箭头：原生箭头在 Safari 里预留的不可用空间远大于 padding-right，且明暗两态取值不同 */
+select {
+  padding-right: var(--bl-space-8);
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right var(--bl-space-2) center;
+  background-size: 10px 6px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--fg-faint);
+}
+
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
+
+/* ===== 滑块：webkit 与 moz 成对书写，明暗差异全部来自令牌 ===== */
+input[type="range"] {
+  width: 100%;
+  height: var(--bl-space-10);
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: var(--bl-radius-2xs);
+  background: linear-gradient(to right, var(--accent) 0 var(--range-progress, 40%), var(--border-strong) var(--range-progress, 40%) 100%);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  margin-top: -5px;
+  appearance: none;
+  border: 1px solid var(--slider-thumb-border);
+  border-radius: var(--bl-radius-2xs);
+  background: var(--slider-thumb-bg);
+  transition: transform var(--bl-duration-base) var(--bl-ease-spring), box-shadow var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+input[type="range"]:hover::-webkit-slider-thumb {
+  transform: scale(1.14);
+}
+
+input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.04);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 5px;
+  border-radius: var(--bl-radius-2xs);
+  background: var(--border-strong);
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 5px;
+  border-radius: var(--bl-radius-2xs);
+  background: var(--accent);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--slider-thumb-border);
+  border-radius: var(--bl-radius-2xs);
+  background: var(--slider-thumb-bg);
+  transition: transform var(--bl-duration-base) var(--bl-ease-spring), box-shadow var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+input[type="range"]:hover::-moz-range-thumb {
+  transform: scale(1.14);
+}
+
+input[type="range"]:focus-visible {
+  box-shadow: none;
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb,
+input[type="range"]:focus-visible::-moz-range-thumb {
+  box-shadow: var(--focus-ring);
+}
+
+/* ===== 取色复合控件（色块 + 十六进制读数） ===== */
+/* .color-picker-row 是同一控件在 onboarding 的既有类名（色块读数写在该行标题里，故容器内没有 output） */
+:is(.color-control, .color-picker-row) {
+  display: flex;
+  height: var(--bl-control-lg);
+  align-items: center;
+  gap: var(--bl-space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-2) var(--bl-space-3);
+  background: var(--groove);
+  transition: border-color var(--bl-duration-base) var(--bl-ease-standard), box-shadow var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+:is(.color-control, .color-picker-row):focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+:is(.color-control, .color-picker-row) input[type="color"] {
+  width: 26px;
+  height: 24px;
+  flex: none;
+  border: 0;
+  border-radius: var(--bl-radius-2xs);
+  padding: 0;
+  background: transparent;
+}
+
+:is(.color-control, .color-picker-row) input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+:is(.color-control, .color-picker-row) input[type="color"]::-webkit-color-swatch {
+  border: 1px solid var(--color-swatch-border);
+  border-radius: var(--bl-radius-2xs);
+}
+
+:is(.color-control, .color-picker-row) input[type="color"]::-moz-color-swatch {
+  border: 1px solid var(--color-swatch-border);
+  border-radius: var(--bl-radius-2xs);
+}
+
+.color-control output {
+  overflow: hidden;
+  color: var(--fg);
+  font-size: var(--bl-font-2xs);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== 数字复合控件（输入框 + 单位） ===== */
+/* 外框与全局输入框同高同圆角，内部输入不再重复画边框，由外层统一持有焦点环 */
+.number-control {
+  display: flex;
+  width: 100px;
+  height: var(--bl-control-lg);
+  flex: none;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--groove);
+  transition: border-color var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+.number-control:hover {
+  border-color: var(--border-strong);
+}
+
+.number-control input {
+  width: 67px;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  padding: var(--bl-space-2) var(--bl-space-1) var(--bl-space-2) var(--bl-space-4);
+  background: transparent;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.number-control input:hover {
+  border-color: transparent;
+}
+
+.number-control input:focus-visible {
+  box-shadow: none;
+}
+
+.number-control:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.number-control > span {
+  width: 29px;
+  color: var(--fg-muted);
+  font-size: var(--bl-font-2xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+  text-align: center;
+}
+
+/* ===== 开关（checkbox 自绘） ===== */
+.toggle {
+  position: relative;
+  display: inline-flex;
+  width: var(--bl-switch-width);
+  height: var(--bl-switch-height);
+  flex: none;
+}
+
+.toggle input {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--bl-radius-2xs);
+  background: var(--switch-track);
+  transition: background-color var(--bl-duration-base) var(--bl-ease-standard), box-shadow var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+.toggle-track::after {
+  position: absolute;
+  top: var(--bl-space-1);
+  left: var(--bl-space-1);
+  width: var(--bl-switch-thumb-size);
+  height: var(--bl-switch-thumb-size);
+  border-radius: var(--bl-radius-2xs);
+  background: var(--switch-thumb);
+  content: "";
+  transition: transform var(--bl-duration-base) var(--bl-ease-springy);
+}
+
+.toggle input:checked + .toggle-track {
+  background: var(--accent);
+}
+
+.toggle input:checked + .toggle-track::after {
+  transform: translateX(calc(var(--bl-switch-width) - var(--bl-switch-thumb-size) - var(--bl-space-1) * 2));
+}
+
+.toggle:hover .toggle-track::after {
+  transform: scale(1.04);
+}
+
+.toggle:hover input:checked + .toggle-track::after {
+  transform: translateX(calc(var(--bl-switch-width) - var(--bl-switch-thumb-size) - var(--bl-space-1) * 2)) scale(1.04);
+}
+
+.toggle input:focus-visible + .toggle-track {
+  box-shadow: var(--focus-ring);
+}
+
+/* ===== 按钮三档 ===== */
+/* 第二档：描边次按钮。.btn / .btn-outline / .btn-quiet 是 onboarding 冻结的类名，
+   与 .ai-button 同列于此（而不是在页面 CSS 重写几何），保证同一档按钮只有一条基线 */
+:is(.ai-button, .icon-button, .btn, .btn-outline, .btn-quiet) {
+  display: inline-flex;
+  min-height: var(--bl-control-md);
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  gap: var(--bl-space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  padding: 0 var(--bl-space-5);
+  color: var(--fg);
+  background: var(--button-bg);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-semibold);
+  white-space: nowrap;
+  transition: background-color var(--bl-duration-base) var(--bl-ease-standard), border-color var(--bl-duration-base) var(--bl-ease-standard), color var(--bl-duration-base) var(--bl-ease-standard), box-shadow var(--bl-duration-base) var(--bl-ease-standard), transform var(--bl-duration-base) var(--bl-ease-spring);
+}
+
+:is(.ai-button, .icon-button, .btn, .btn-outline, .btn-quiet):hover:not(:disabled) {
+  border-color: var(--border-hover);
+  background: var(--button-bg-hover);
+  color: var(--fg-emphasis);
+  transform: translateY(-.5px);
+}
+
+:is(.ai-button, .icon-button, .btn, .btn-outline, .btn-quiet):active:not(:disabled) {
+  transform: scale(.98);
+}
+
+/* 方形图标按钮：与 .ai-button 同高同圆角，只用图标字形/SVG 填满方框 */
+.icon-button {
+  display: grid;
+  width: var(--bl-control-md);
+  padding: 0;
+  place-items: center;
+  font-size: var(--bl-icon-size);
+  line-height: 1;
+}
+
+.icon-button svg {
+  width: var(--bl-icon-size);
+  height: var(--bl-icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-button.is-busy {
+  opacity: .5;
+}
+
+/* 第一档：实心主按钮（.btn-primary / .btn-accent 是 onboarding 冻结的同类名：下一步与完成态同为实心档） */
+:is(.ai-button-primary, .btn-primary, .btn-accent) {
+  border-color: var(--accent-solid);
+  background: var(--accent-solid);
+  color: var(--accent-fg);
+}
+
+:is(.ai-button-primary, .btn-primary, .btn-accent):hover:not(:disabled) {
+  border-color: var(--accent-solid-hover);
+  background-color: var(--accent-solid-hover);
+  color: var(--accent-fg);
+}
+
+/* 第三档：无边框静谧按钮（文字与图标两种形态；.quiet-button 为 diagnostics 冻结的同类名） */
+:is(.ai-button-quiet, .btn-quiet, .quiet-button) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--fg-muted);
+}
+
+:is(.ai-button-quiet, .btn-quiet, .quiet-button):hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--control);
+  color: var(--fg);
+}
+
+/* .icon-btn（onboarding 的 API 密钥可见性开关）与 .master-tool-btn 同档 */
+:is(.master-tool-btn, .icon-btn) {
+  appearance: none;
+  display: inline-flex;
+  width: var(--bl-control-sm);
+  height: var(--bl-control-sm);
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: 0;
+  color: var(--fg-muted);
+  background: transparent;
+  transition: background-color var(--bl-duration-fast) var(--bl-ease-standard), color var(--bl-duration-fast) var(--bl-ease-standard);
+}
+
+:is(.master-tool-btn, .icon-btn) svg {
+  width: var(--bl-icon-size-sm);
+  height: var(--bl-icon-size-sm);
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+:is(.master-tool-btn, .icon-btn):hover:not(:disabled) {
+  background: var(--control);
+  color: var(--fg);
+}
+
+/* .payload-format（diagnostics 的复制/折叠动作）与 .inline-link 同档 */
+:is(.inline-link, .payload-format) {
+  flex: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-1) 0;
+  color: var(--accent-deep);
+  background: transparent;
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-bold);
+}
+
+:is(.inline-link, .payload-format):hover {
+  text-decoration: underline;
+}
+
+.inline-link[hidden] {
+  display: none;
+}
+
+/* 服务预设按钮：类名沿用冻结的 .preset-pill/.preset-chip，但扁平化后不再是胶囊——
+   与其余按钮同高同 token，圆角收在 --radius-control(4px) */
+:is(.preset-pill, .preset-chip) {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-1) var(--bl-space-5);
+  color: var(--fg-muted);
+  background: var(--control);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-medium);
+  transition: background-color var(--bl-duration-base) var(--bl-ease-standard), border-color var(--bl-duration-base) var(--bl-ease-standard), color var(--bl-duration-base) var(--bl-ease-standard), box-shadow var(--bl-duration-base) var(--bl-ease-standard), transform var(--bl-duration-base) var(--bl-ease-spring);
+}
+
+:is(.preset-pill, .preset-chip):hover {
+  border-color: var(--accent-line);
+  color: var(--fg);
+  background: var(--surface);
+  transform: translateY(-.5px);
+}
+
+:is(.preset-pill, .preset-chip):active {
+  transform: scale(.98);
+}
+
+:is(.preset-pill, .preset-chip).is-active {
+  border-color: var(--accent-line);
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+  font-weight: var(--bl-weight-bold);
+}
+
+/* 共享层的动效降级兜底：任何页面的过渡/动画在系统「减少动态效果」下都不再播放 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

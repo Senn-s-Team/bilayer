@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖 Node.js test/vm 与 extension/src/i18n.js 源码及真实 _locales/{en,zh_CN}/messages.json
- * [OUTPUT]: 验证 uiLanguage 偏好解析（auto 走 runtime.i18n.getMessage、具体语言同步解析包内文案）、同步 XHR 被拒时的异步补取与一次性重载闸门、浏览器语言归一与 BCP-47 lang 标签、$1 替换、未知键回落、语言切换器的填充/选中/持久化
+ * [OUTPUT]: 验证 uiLanguage 偏好解析（auto 走 runtime.i18n.getMessage 且 substitutions 一并下传、具体语言同步解析包内文案并本地替换）、同步 XHR 被拒时的异步补取与一次性重载闸门、浏览器语言归一与 BCP-47 lang 标签、$1 替换两态一致（未提供的参数保留占位符）、未知键回落、getMessage 抛错/缺失时的降级链、语言切换器的填充/选中/持久化；getMessage 桩按浏览器语义把未传参数的 $n 抹成空串
  * [POS]: scripts 的扩展页国际化行为回归检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -14,6 +14,17 @@ const enSource = readFileSync(new URL("../extension/_locales/en/messages.json", 
 const zhSource = readFileSync(new URL("../extension/_locales/zh_CN/messages.json", import.meta.url), "utf8");
 const enMessages = JSON.parse(enSource);
 const zhMessages = JSON.parse(zhSource);
+
+// 忠实复刻浏览器的 runtime.i18n.getMessage(key, substitutions)：传了 substitutions 就按 $n 替换，
+// 没传（或该位没有对应参数）就把 $n 抹成空串——这正是 auto 路径原先丢掉占位符的成因，
+// 桩必须照抄它，否则回归用例永远绿。
+function chromeGetMessage(message, substitutions) {
+  const args = substitutions == null ? [] : Array.isArray(substitutions) ? substitutions : [substitutions];
+  return message.replace(/\$(\d)/g, (match, index) => {
+    const value = args[Number(index) - 1];
+    return value === undefined ? "" : String(value);
+  });
+}
 
 // i18n.js 的同步偏好缓存键（storage.local 是权威事实，这份镜像只服务解析期的同步读取）
 const CACHE_KEY = "bilayer.uiLanguage";
@@ -57,7 +68,9 @@ function createPage({
   fetchFiles = null,
   fetchFails = false,
   noSessionStorage = false,
-  sessionWritesDropped = false
+  sessionWritesDropped = false,
+  getMessageThrows = false,
+  noGetMessage = false
 } = {}) {
   const writes = [];
   const reloads = [];
@@ -92,10 +105,11 @@ function createPage({
   const runtime = {
     i18n: {
       getUILanguage: () => browserLanguage,
-      getMessage(key) {
+      getMessage: noGetMessage ? undefined : (key, substitutions) => {
         getMessageCalls.push(key);
+        if (getMessageThrows) throw new Error("i18n unavailable");
         const message = enMessages[key]?.message;
-        return message ? browserMessagePrefix + message : "";
+        return message ? browserMessagePrefix + chromeGetMessage(message, substitutions) : "";
       }
     },
     runtime: { getURL: (path) => `extension://bilayer/${path}` },
@@ -212,6 +226,8 @@ test("unknown keys return the key itself on both paths", () => {
 
   assert.equal(auto.i18n.t("noSuchKey"), "noSuchKey");
   assert.equal(chinese.i18n.t("noSuchKey"), "noSuchKey");
+  assert.equal(auto.i18n.t("noSuchKey", ["a", "b"]), "noSuchKey");
+  assert.equal(chinese.i18n.t("noSuchKey", ["a", "b"]), "noSuchKey");
 });
 
 test("$1 substitutions keep working on both paths", () => {
@@ -221,6 +237,74 @@ test("$1 substitutions keep working on both paths", () => {
   assert.equal(auto.i18n.t("statusLoadedCount", 5), "Loaded 5");
   assert.equal(chinese.i18n.t("statusLoadedCount", 5), "已加载 5 条");
   assert.equal(chinese.i18n.t("providerEndpointGranted", ["a.example", "/v1"]), "已授权 a.example；已使用 /v1");
+});
+
+test("auto hands substitutions to getMessage so real keys keep every placeholder value", () => {
+  const auto = createPage({ stored: { uiLanguage: "auto" }, browserLanguage: "en-US" });
+  const args = ["This watch session", "0", "80", "0", "40000"];
+
+  const usage = auto.i18n.t("aiBudgetUsage", args);
+  assert.equal(usage, "This watch session: 0 / 80 requests · 0 / 40000 characters");
+  assert.equal(/\$\d/.test(usage), false, "no placeholder survives on the auto path");
+
+  assert.equal(auto.i18n.t("diagTreeItems", [7]), "7 items");
+  assert.equal(auto.i18n.t("providerEndpointGranted", ["a.example", "/v1"]), "Authorized a.example; using /v1");
+  // auto 的语义不变：带 substitutions 也绝不因此去加载包内文件
+  assert.deepEqual(auto.xhrUrls, []);
+  assert.deepEqual(auto.fetchUrls, []);
+});
+
+test("auto keeps the placeholders whose argument was not supplied, exactly like the bundled path", () => {
+  const auto = createPage({ stored: { uiLanguage: "auto" }, browserLanguage: "en-US" });
+  const chinese = createPage({ stored: { uiLanguage: "zh_CN" } });
+
+  // 只给 $1：$2…$5 必须原样保留，不能被静默抹掉；两条路径的替换语义必须逐字一致
+  assert.equal(
+    auto.i18n.t("aiBudgetUsage", ["This watch session"]),
+    "This watch session: $2 / $3 requests · $4 / $5 characters"
+  );
+  assert.equal(
+    chinese.i18n.t("aiBudgetUsage", ["本次观看"]),
+    "本次观看：请求 $2 / $3 · 字符 $4 / $5"
+  );
+
+  const sparse = createPage({ stored: { uiLanguage: "auto" }, browserLanguage: "en-US" });
+  assert.equal(
+    sparse.i18n.t("providerEndpointGranted", [undefined, "/v1"]),
+    "Authorized $1; using /v1",
+    "undefined holes stay literal on both paths"
+  );
+});
+
+test("explicit locales still resolve from the bundle and substitute locally", () => {
+  const args = ["This watch session", "0", "80", "0", "40000"];
+  const zhArgs = ["本次观看", "0", "80", "0", "40000"];
+  const english = createPage({ stored: { uiLanguage: "en" }, browserMessagePrefix: "BROWSER:" });
+  const chinese = createPage({ stored: { uiLanguage: "zh_CN" }, browserMessagePrefix: "BROWSER:" });
+
+  assert.equal(english.i18n.t("aiBudgetUsage", args), "This watch session: 0 / 80 requests · 0 / 40000 characters");
+  assert.equal(chinese.i18n.t("aiBudgetUsage", zhArgs), "本次观看：请求 0 / 80 · 字符 0 / 40000");
+  assert.deepEqual(english.getMessageCalls, [], "the bundle path never consults the browser");
+  assert.deepEqual(chinese.getMessageCalls, []);
+  assert.deepEqual(english.xhrUrls, ["extension://bilayer/_locales/en/messages.json"]);
+});
+
+test("a throwing or absent getMessage keeps the documented degradation chain", () => {
+  const throwing = createPage({ stored: { uiLanguage: "auto" }, getMessageThrows: true });
+  assert.equal(throwing.i18n.t("tabStyles"), "tabStyles");
+  assert.equal(throwing.i18n.t("aiBudgetUsage", ["a", "b", "c", "d", "e"]), "aiBudgetUsage");
+
+  const absent = createPage({ stored: { uiLanguage: "auto" }, noGetMessage: true });
+  assert.equal(absent.i18n.t("tabStyles"), "tabStyles");
+  assert.equal(absent.i18n.t("noSuchKey", ["x"]), "noSuchKey");
+
+  // 包内报文损坏 → getMessage 也不可用 → 回落 key，任一环节都不抛错、不返回半句话
+  const brokenBundle = createPage({
+    stored: { uiLanguage: "en" },
+    files: { "_locales/en/messages.json": "{ not json" },
+    getMessageThrows: true
+  });
+  assert.equal(brokenBundle.i18n.t("statusLoadedCount", 5), "statusLoadedCount");
 });
 
 test("a missing or unparsable bundle degrades to getMessage and then to the key", () => {

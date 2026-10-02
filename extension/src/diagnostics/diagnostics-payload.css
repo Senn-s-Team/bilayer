@@ -1,0 +1,531 @@
+/*
+ * [INPUT]: 依赖 tokens.css 的语义令牌（含 --syntax-number 数值着色）与 --bl-* 尺度令牌（扁平圆角别名 --radius-tag/-control/-surface）、controls.css 的控件基线（搜索框/文本控件/动作按钮），以及 diagnostics.html 的报文工具条、路径栏、报文阅读区与 diagnostics.js 生成的 JSON 折叠树、字幕视效预览节点
+ * [OUTPUT]: 只提供诊断页报文区的布局与形态——扁平工具条与页签、JSON 搜索与路径栏、贴面表面色差的报文阅读区、等宽字符的 JSON 折叠树（语法着色借用语义令牌：键=accent-deep、字符串=warning、数值=syntax-number、布尔=success、参考线=border-strong）与字幕视效 UI 卡片；颜色、明暗与控件外观一律取自共享层，本表不声明调色板，仅有一处暗色分支：命中行改用更深的实心琥珀命中底以保住 4.5:1 正文对比（见 §JSON 折叠树），此外不使用任何光泽层、渐变高光、模糊或阴影
+ * [POS]: diagnostics 独立页面的第二份视觉层，由 diagnostics.html 在 tokens.css、controls.css、diagnostics.css 之后加载；只覆盖 #payloadView 及其工具条内的节点
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
+/* ===== 报文工具条与页签 ===== */
+.payload-toolbar {
+  display: flex;
+  min-height: 42px;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bl-space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+  padding: 0 var(--bl-space-8) 0 var(--bl-space-3);
+}
+
+.payload-view-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--bl-space-6);
+}
+
+.payload-shape {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tag);
+  padding: var(--bl-space-1) var(--bl-space-3);
+  color: var(--fg-muted);
+  background: var(--surface);
+  font: var(--bl-font-2xs)/var(--bl-leading-snug) var(--bl-font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.payload-tabs {
+  display: flex;
+  align-self: stretch;
+  gap: var(--bl-space-2);
+}
+
+.payload-tab {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0 var(--bl-space-6);
+  color: var(--fg-muted);
+  background: transparent;
+  font-size: var(--bl-font-sm);
+  transition: color var(--bl-duration-fast) var(--bl-ease-standard), border-color var(--bl-duration-fast) var(--bl-ease-standard), background-color var(--bl-duration-fast) var(--bl-ease-standard);
+}
+
+.payload-tab:hover {
+  color: var(--fg);
+  background: var(--card-bg-hover);
+}
+
+.payload-tab:active {
+  background: var(--accent-faint);
+}
+
+.payload-tab.is-active {
+  border-bottom-color: var(--accent);
+  color: var(--fg);
+  font-weight: var(--bl-weight-semibold);
+}
+
+/* #copyPayload / #toggleRaw 的 .payload-format 与 .inline-link 同档，基线在 controls.css */
+
+/* ===== JSON 搜索与路径栏 ===== */
+.json-tools {
+  display: flex;
+  min-height: 43px;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bl-space-7);
+  border-bottom: 1px solid var(--border);
+  padding: var(--bl-space-2) var(--bl-space-9);
+  background: var(--surface-soft);
+}
+
+.json-search {
+  display: flex;
+  min-width: 0;
+  width: min(480px, 62%);
+  align-items: center;
+  gap: var(--bl-space-3);
+}
+
+/* 搜索框吃共享层的 input[type=search] 基线（同高同圆角同 focus ring），只换成等宽字面 */
+.json-search input {
+  min-width: 80px;
+  font-family: var(--bl-font-mono);
+}
+
+.json-search > span {
+  min-width: 66px;
+  color: var(--fg-muted);
+  font: var(--bl-font-2xs) var(--bl-font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.json-tools button {
+  min-height: var(--bl-control-md);
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 0 var(--bl-space-5);
+  color: var(--fg-muted);
+  background: var(--surface);
+  font-size: var(--bl-font-xs);
+  transition: color var(--bl-duration-fast) var(--bl-ease-standard), background-color var(--bl-duration-fast) var(--bl-ease-standard), border-color var(--bl-duration-fast) var(--bl-ease-standard);
+}
+
+.json-tools button:hover:not(:disabled) {
+  color: var(--accent-deep);
+  background: var(--card-bg-hover);
+}
+
+.json-tools button:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+.json-search button {
+  width: var(--bl-control-md);
+  padding: 0;
+}
+
+.tree-actions {
+  display: flex;
+  gap: var(--bl-space-3);
+}
+
+.json-path {
+  display: flex;
+  min-height: 29px;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bl-space-8);
+  border-bottom: 1px solid var(--border);
+  padding: var(--bl-space-2) var(--bl-space-9);
+  color: var(--accent-deep);
+  background: var(--surface-soft);
+  font: var(--bl-font-xs)/var(--bl-leading-normal) var(--bl-font-mono);
+}
+
+.json-path > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.json-shortcuts {
+  flex: none;
+  color: var(--fg-muted);
+}
+
+/* ===== 报文阅读区：贴面表面色差 + 上缘发丝线（不用内阴影、不用模糊） ===== */
+.payload-view {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  padding: var(--bl-space-7) var(--bl-space-9) var(--bl-space-12);
+  color: var(--fg);
+  background: var(--surface-soft);
+  font: var(--bl-font-sm)/var(--bl-leading-relaxed) var(--bl-font-mono);
+  tab-size: 2;
+}
+
+.payload-view:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.payload-raw {
+  margin: 0;
+  white-space: pre;
+}
+
+/* ===== JSON 折叠树 ===== */
+.json-node {
+  margin: 0;
+}
+
+.json-row {
+  display: flex;
+  min-height: 27px;
+  align-items: flex-start;
+  gap: var(--bl-space-3);
+  border-radius: var(--radius-tag);
+  padding: var(--bl-space-1) var(--bl-space-3);
+  line-height: var(--bl-leading-relaxed);
+}
+
+.json-node > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.json-node > summary::-webkit-details-marker {
+  display: none;
+}
+
+.json-node > summary::before {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  align-self: flex-start;
+  margin: 6px var(--bl-space-2) 0 1px;
+  border-right: 1.5px solid var(--fg-muted);
+  border-bottom: 1.5px solid var(--fg-muted);
+  transform: rotate(45deg);
+  transition: transform var(--bl-duration-fast) var(--bl-ease-standard);
+  content: "";
+}
+
+.json-node:not([open]) > summary::before {
+  transform: rotate(-45deg);
+}
+
+.json-node > summary:hover, .json-leaf:hover {
+  background: var(--card-bg-hover);
+}
+
+/* 报文阅读区与 JSON 行是 div[tabindex]，共享层只覆盖 button/input/select/textarea/summary */
+.json-row:focus-visible {
+  outline: none;
+  background: var(--accent-soft);
+  box-shadow: var(--focus-ring);
+}
+
+/* 搜索命中用 warning 家族底；当前命中另加左侧色条（形状），不靠底色深浅区分 */
+.json-row.is-match {
+  background: var(--warning-soft);
+}
+
+.json-row.is-current-match {
+  outline: 1px solid var(--warning);
+  outline-offset: -1px;
+  background: var(--warning-soft);
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+/* 暗色下 --warning-soft 是「提亮」半透明琥珀，叠在 --surface-soft 上把键名(--accent-deep #70b4ff)压到 4.43:1、
+   数值(--syntax-number #409cff)压到 3.40:1，双双跌破 4.5:1；此处只在暗色分支改用同色相、更低明度的实心琥珀命中底，
+   让整行各语法档位回到正文可读对比（最低 4.98:1）。两档命中态仍靠 outline + 左侧色条的形状区分，不依赖底色深浅 */
+@media (prefers-color-scheme: dark) {
+  .json-row.is-match,
+  .json-row.is-current-match {
+    background: #332a1c;
+  }
+}
+
+.json-children {
+  margin-left: var(--bl-space-6);
+  border-left: 1px solid var(--border-strong);
+  padding-left: var(--bl-space-7);
+}
+
+.json-key {
+  flex: none;
+  color: var(--accent-deep);
+  font-weight: var(--bl-weight-semibold);
+}
+
+.json-node:not([open]) > .json-children {
+  display: none;
+}
+
+.json-bracket, .json-close {
+  color: var(--fg-muted);
+  font-weight: var(--bl-weight-semibold);
+}
+
+.json-type {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tag);
+  padding: 1px var(--bl-space-3);
+  color: var(--accent-deep);
+  background: var(--surface);
+  font: var(--bl-font-2xs)/var(--bl-leading-normal) var(--bl-font-sans);
+}
+
+.json-count {
+  color: var(--fg-muted);
+  font-size: var(--bl-font-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.json-close {
+  margin-left: var(--bl-space-11);
+  padding: var(--bl-space-1) var(--bl-space-4);
+}
+
+.json-node:not([open]) > .json-close {
+  display: none;
+}
+
+.json-string, .json-string-button {
+  color: var(--warning);
+}
+
+.json-number {
+  color: var(--syntax-number);
+  font-variant-numeric: tabular-nums;
+}
+
+.json-boolean {
+  color: var(--success);
+}
+
+.json-null {
+  color: var(--fg-muted);
+}
+
+.json-leaf > span:last-child {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.json-string-button {
+  overflow: hidden;
+  max-width: min(70ch, 70vw);
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.json-string-button[aria-expanded="true"] {
+  max-width: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ===== 字幕视效 UI 渲染（payloadKind === "ui" 的第三种报文视图） ===== */
+.ui-preview-container {
+  display: flex;
+  max-width: 900px;
+  flex-direction: column;
+  gap: var(--bl-space-6);
+  font-family: var(--bl-font-sans);
+}
+
+.ui-preview-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bl-space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-6) var(--bl-space-8);
+  background: var(--surface);
+}
+
+.ui-banner-title {
+  display: flex;
+  align-items: center;
+  gap: var(--bl-space-5);
+  font-size: var(--bl-font-lg);
+}
+
+.ui-banner-tag {
+  border-radius: var(--radius-tag);
+  padding: var(--bl-space-1) var(--bl-space-3);
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+  font: var(--bl-font-xs)/var(--bl-leading-snug) var(--bl-font-mono);
+}
+
+.ui-banner-badge {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tag);
+  padding: var(--bl-space-1) var(--bl-space-4);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-semibold);
+}
+
+.ui-banner-badge.is-valid {
+  color: var(--success);
+  background: var(--surface-soft);
+}
+
+.ui-banner-badge.is-error {
+  color: var(--danger);
+  background: var(--surface-soft);
+}
+
+.ui-banner-meta {
+  color: var(--fg-muted);
+  font-size: var(--bl-font-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bl-space-5);
+}
+
+.ui-sub-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bl-space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-7) var(--bl-space-8);
+  background: var(--surface);
+}
+
+.ui-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ui-card-id {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tag);
+  padding: var(--bl-space-1) var(--bl-space-3);
+  color: var(--fg-muted);
+  background: var(--surface-soft);
+  font: var(--bl-font-xs)/var(--bl-leading-tight) var(--bl-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--bl-weight-semibold);
+}
+
+.ui-card-missing {
+  color: var(--danger);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-semibold);
+}
+
+.ui-ruby-row {
+  color: var(--fg);
+  font-size: var(--bl-font-xl);
+  font-weight: var(--bl-weight-bold);
+  line-height: var(--bl-leading-relaxed);
+}
+
+.ui-ruby-row ruby {
+  ruby-align: center;
+  ruby-position: over;
+}
+
+.ui-ruby-row rt {
+  color: var(--accent-deep);
+  font-size: .52em;
+  font-weight: var(--bl-weight-semibold);
+  line-height: 1;
+}
+
+.ui-trans-row {
+  color: var(--fg);
+  font-size: var(--bl-font-lg);
+  font-weight: var(--bl-weight-medium);
+  line-height: var(--bl-leading-normal);
+}
+
+.ui-source-hint {
+  border-top: 1px dashed var(--border);
+  padding-top: var(--bl-space-2);
+  color: var(--fg-muted);
+  font: var(--bl-font-xs)/var(--bl-leading-normal) var(--bl-font-mono);
+}
+
+/* 预览无条目时同样是有构图的空态，与列表/详情空态同一套象形语言 */
+.ui-empty-msg {
+  display: grid;
+  justify-items: center;
+  gap: var(--bl-space-5);
+  padding: var(--bl-space-12) var(--bl-space-10);
+  color: var(--fg-muted);
+  text-align: center;
+  font-size: var(--bl-font-md);
+}
+
+.ui-empty-msg::before {
+  width: 30px;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-tag);
+  background-image: linear-gradient(var(--border-strong), var(--border-strong)), linear-gradient(var(--border-strong), var(--border-strong));
+  background-position: 5px 6px, 5px 13px;
+  background-size: 18px 1px, 12px 1px;
+  background-repeat: no-repeat;
+  opacity: .7;
+  content: "";
+}
+
+/* ===== 窄视口：报文区单栏退化 ===== */
+@media (max-width: 760px) {
+  .payload-view {
+    min-height: 360px;
+    max-height: 65dvh;
+  }
+}
+
+@media (max-width: 480px) {
+  .json-tools {
+    flex-wrap: wrap;
+    gap: var(--bl-space-3);
+    padding-inline: var(--bl-space-5);
+  }
+  .json-search {
+    width: 100%;
+  }
+  .tree-actions {
+    margin-left: auto;
+  }
+  .json-shortcuts {
+    display: none;
+  }
+  .payload-view {
+    padding-inline: var(--bl-space-6);
+  }
+  .payload-shape {
+    display: none;
+  }
+}

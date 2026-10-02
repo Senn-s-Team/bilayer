@@ -11,10 +11,10 @@
   "commonCancel": {
     "message": "取消"
   },
-  "popupBrand": {
+  "settingsBrand": {
     "message": "双字幕"
   },
-  "popupNavAria": {
+  "settingsNavAria": {
     "message": "设置分类"
   },
   "tabSubtitles": {
@@ -29,16 +29,16 @@
   "tabStyles": {
     "message": "外观"
   },
-  "popupOnboardingLabel": {
+  "settingsOnboardingLabel": {
     "message": "向导"
   },
-  "popupOnboardingAria": {
+  "settingsOnboardingAria": {
     "message": "打开新手向导"
   },
-  "popupDiagnosticsLabel": {
+  "settingsDiagnosticsLabel": {
     "message": "诊断"
   },
-  "popupDiagnosticsAria": {
+  "settingsDiagnosticsAria": {
     "message": "打开诊断报文面板"
   },
   "uiLanguageLabel": {
@@ -56,16 +56,16 @@
   "uiLanguageZhCn": {
     "message": "简体中文"
   },
-  "popupStatusConnecting": {
+  "settingsStatusConnecting": {
     "message": "正在连接 Netflix"
   },
-  "popupLocalPreviewStatus": {
+  "settingsLocalPreviewStatus": {
     "message": "界面预览 · 设置请在 Safari 扩展中使用"
   },
-  "popupLocalPreviewCredential": {
+  "settingsLocalPreviewCredential": {
     "message": "在 Safari 扩展中配置密钥"
   },
-  "popupLocalPreviewTest": {
+  "settingsLocalPreviewTest": {
     "message": "请在 Safari 扩展中测试连通性"
   },
   "sectionSources": {
@@ -201,7 +201,7 @@
     "message": "未连接 Netflix 页面"
   },
   "statusNotConnectedHint": {
-    "message": "未连接 Netflix 页面；请在影片窗口打开弹窗"
+    "message": "未连接 Netflix 页面；请在播放视频的标签页点击扩展图标打开设置"
   },
   "statusOpenMovie": {
     "message": "打开影片后可选择字幕"
@@ -294,7 +294,7 @@
     "message": "本日"
   },
   "aiBudgetWindowHelp": {
-    "message": "统计窗口是两项上限共用的计量周期，且跨重新加载保留：本次观看在刷新同一剧集页面后继续累计，本小时与本日按本机时间分桶。用量会持久化保存，关闭弹窗不会重置。"
+    "message": "统计窗口是两项上限共用的计量周期，且跨重新加载保留：本次观看在刷新同一剧集页面后继续累计，本小时与本日按本机时间分桶。用量会持久化保存，关闭设置窗口不会重置。"
   },
   "aiBudgetHelp": {
     "message": "两项上限互不影响，任一项设为 0 即表示该项不限。计数包含前后文。"
@@ -1134,7 +1134,7 @@
     "message": "译文: $1"
   },
   "noticeProviderMissing": {
-    "message": "尚未配置翻译服务：请在扩展弹窗的「翻译服务」中填写端点与密钥。"
+    "message": "尚未配置翻译服务：请在设置窗口的「翻译服务」中填写端点与密钥。"
   },
   "noticeSubtitleTracksMissing": {
     "message": "该影片没有字幕轨道，AI 翻译不可用。"

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 依赖轨道归一化、subtitleStore 与 translationScheduler（含 ruby 标注与等待占位角色查询）、overlay、fullscreenMount 及 page bridge 播放器查询，额度用量读写 runtime.storage.local
- * [OUTPUT]: 提供互斥双原生/AI 翻译、独立 AI 源轨道（支持日文源字幕 ruby 振假名回填展示）、默认 10 组预取和可调上下文、首句等待、切集隔离及脱敏页面状态；设置 aiRequestBudget/aiCharacterBudget（0 为不限，缺省/非法回落 80/40000）经 setBudget 注入调度器，aiBudgetWindow（session|hour|day，缺省/非法回落 session）决定计量窗口键，用量按 __ai_budget_usage__ 的多窗口台账持久化（每个窗口一项、上限 4 项，旧单记录形状读到时迁移）并在派发前与其它标签页对齐；BILAYER_GET_STATE 附带含 window/windowKey/resetAt 的实时 translationBudget、subtitleAvailability（unknown|unread|none|available，见文件内「字幕可用性与 AI 就绪度」状态机与 bridge 证据；unread 由 TRACK_REPORT_TIMEOUT_MS=20000 的兜底计时器在 watch 页且 video 已就绪时推进）以及 providerReadiness（{configured, notice}，来自 background 的 BILAYER_AI_READINESS，本页加载/AI provider 设置变更/popup 轮询时重取）；AI 字幕行等待译文时把 pending 角色交给 overlay，AI 模式下同时按与 popup 同序的「轨道无可用 → provider 未配置 → 轨道读取超时 → 无提示」优先级把 notice 交给 overlay.render()，三条提示文案均由 background 本地化，content 不自带 UI 字符串
+ * [OUTPUT]: 提供互斥双原生/AI 翻译、独立 AI 源轨道（支持日文源字幕 ruby 振假名回填展示）、默认 10 组预取和可调上下文、首句等待、切集隔离及脱敏页面状态；设置 aiRequestBudget/aiCharacterBudget（0 为不限，缺省/非法回落 80/40000）经 setBudget 注入调度器，aiBudgetWindow（session|hour|day，缺省/非法回落 session）决定计量窗口键，用量按 __ai_budget_usage__ 的多窗口台账持久化（每个窗口一项、上限 4 项，旧单记录形状读到时迁移）并在派发前与其它标签页对齐；BILAYER_GET_STATE 附带含 window/windowKey/resetAt 的实时 translationBudget、subtitleAvailability（unknown|unread|none|available，见文件内「字幕可用性与 AI 就绪度」状态机与 bridge 证据；unread 由 TRACK_REPORT_TIMEOUT_MS=20000 的兜底计时器在 watch 页且 video 已就绪时推进）以及 providerReadiness（{configured, notice}，来自 background 的 BILAYER_AI_READINESS，本页加载/AI provider 设置变更/settings 轮询时重取）；AI 字幕行等待译文时把 pending 角色交给 overlay，AI 模式下同时按与设置窗口同序的「轨道无可用 → provider 未配置 → 轨道读取超时 → 无提示」优先级把 notice 交给 overlay.render()，三条提示文案均由 background 本地化，content 不自带 UI 字符串
  * [POS]: content 入口；只协调播放与视图，AI provider 配置和密钥由 background 从扩展存储读取，就绪度判定与 UI 文案都留在 background，计量的持久化边界在本文件
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -142,7 +142,7 @@ async function boot() {
   updateNativeSubtitleVisibility();
   await injectPageBridge();
   bindRuntimeMessages();
-  bindPopupMessages();
+  bindSettingsMessages();
   bindBridgeMessages();
   watchLocation();
   watchVideoElement();
@@ -224,7 +224,7 @@ function bindRuntimeMessages() {
   });
 }
 
-function bindPopupMessages() {
+function bindSettingsMessages() {
   runtime.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "BILAYER_RELOAD") {
       if (!isWatchPage()) {
@@ -360,7 +360,7 @@ function armTrackReportTimer() {
 let readinessRequest = 0;
 
 // 就绪度与三条提示文案的唯一真相在 background：content 只转述，从不自己携带 UI 字符串。
-// 每次调用都重新问（不缓存，popup 轮询会反复问）；失败保留上一次已知值，绝不凭空造出提示。
+// 每次调用都重新问（不缓存，设置窗口轮询会反复问）；失败保留上一次已知值，绝不凭空造出提示。
 function refreshProviderReadiness() {
   const token = ++readinessRequest;
   try {
@@ -381,7 +381,7 @@ function refreshProviderReadiness() {
   }
 }
 
-// 字幕位置的提示行：与 popup 的 writeAvailabilityNotice() 同一顺序——硬性不可用 > 可操作提示 > 软提示：
+// 字幕位置的提示行：与 settings 的 writeAvailabilityNotice() 同一顺序——硬性不可用 > 可操作提示 > 软提示：
 //   none（Netflix 没给任何轨道，双原生与 AI 都无从显示，硬性阻断）> provider 未配置（与轨道无关，随时可修复、带配置入口）
 //   > unread（只是等不到载荷的观察态：配置好服务后它自己会回来）> 无提示。
 // 文案为空（本地化键缺失或后台未给）时宁可不显示，也不显示半句无意义的提示，因此绝不产出空文本提示条。
@@ -1088,7 +1088,7 @@ function budgetStoreRecord(store, windowKey) {
   return store?.records?.[windowKey] ?? null;
 }
 
-// 只有能派发翻译的观剧页面才写台账：浏览页、首页、弹窗侧栏永远不会派发请求，
+// 只有能派发翻译的观剧页面才写台账：浏览页、首页、设置窗口永远不会派发请求，
 // 只在自身内存里归零，免得占掉别人的窗口项或触发无谓的写入。
 function budgetWindowAnchorable(windowKey) {
   return Boolean(state.watchId) && Boolean(windowKey);

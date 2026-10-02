@@ -1,10 +1,13 @@
 /**
  * [INPUT]: 依赖 browser/chrome runtime.i18n（浏览器语言与默认文案）、runtime.storage.local 的 uiLanguage 偏好、runtime.getURL("_locales/<code>/messages.json") 指向的包内文案（同步 XHR 读取），DOM 上依赖 data-i18n / data-i18n-placeholder / data-i18n-title / data-i18n-aria-label / data-i18n-language
- * [OUTPUT]: 暴露 globalThis.i18n 的冻结 API：t(key, substitutions)、apply(root)、uiLanguage()、availableLanguages=["auto","en","zh_CN"]、setLanguage(code)、mountLanguageSwitcher()；auto 走 runtime.i18n.getMessage，具体语言从 _locales JSON 同步解析
- * [POS]: extension 扩展页共享的国际化薄封装，由 popup/onboarding/diagnostics 以 classic script 前置加载；content/page 不加载。存储本地化的唯一入口，页面脚本不得自行读取 uiLanguage 或直接调用 runtime.i18n.getMessage
+ * [OUTPUT]: 暴露 globalThis.i18n 的冻结 API：t(key, substitutions)、apply(root)、uiLanguage()、availableLanguages=["auto","en","zh_CN"]、setLanguage(code)、mountLanguageSwitcher()；auto 走 runtime.i18n.getMessage（substitutions 一并下传，参数补齐到 $1…$9），具体语言从 _locales JSON 同步解析后本地替换
+ * [POS]: extension 扩展页共享的国际化薄封装，由 settings/onboarding/diagnostics 以 classic script 前置加载；content/page 不加载。存储本地化的唯一入口，页面脚本不得自行读取 uiLanguage 或直接调用 runtime.i18n.getMessage
  * [CONTRACT]:
  *   偏好键: runtime.storage.local["uiLanguage"]，取值 "auto"（默认，等价改造前的浏览器语言行为）| "en" | "zh_CN"；
  *   非 auto 时 i18n.t() 从 _locales/<code>/messages.json 同步解析，缺失/损坏时退化为 getMessage，再退化为 key 本身。
+ *   占位符语义两态一致：$1…$n 按调用方传入的顺序替换；未提供的参数保留原占位符（auto 侧靠把缺位填成字面 $n 再交给
+ *   getMessage 实现——浏览器会把没传参数的 $n 抹成空串，因此绝不能只传调用方原样的数组）；替换只扫一遍报文，
+ *   参数值本身不会被二次展开。绝不抛错，也不返回半句话。
  *   uiLanguage() 返回包码（"zh_CN"），documentElement.lang 写合法 BCP-47 标签（"zh-CN"）。
  *   标记契约: 页面只需 <select data-i18n-language>（内部留空，含 aria-label 时用 data-i18n-aria-label），
  *   选项由 mountLanguageSwitcher() 依据 availableLanguages 生成并在脚本载入时自动挂载（DOM 未就绪则等 DOMContentLoaded），
@@ -29,7 +32,7 @@
   const AVAILABLE_LANGUAGES = Object.freeze([AUTO, ...BUNDLED_LOCALES]);
   const OPTION_KEYS = { auto: "uiLanguageAuto", en: "uiLanguageEn", zh_CN: "uiLanguageZhCn" };
   // 同步偏好缓存：真实浏览器里 storage 回调是异步任务，而扩展页脚本在顶层求值时就调用 i18n.t()
-  // （popup/onboarding 的预设表），故需要一份解析期可同步读取的镜像。权威事实始终是
+  // （settings/onboarding 的预设表），故需要一份解析期可同步读取的镜像。权威事实始终是
   // runtime.storage.local.uiLanguage，镜像只是同一值的同步视图，setLanguage 两者同写。
   const CACHE_KEY = "bilayer.uiLanguage";
   const RELOAD_FLAG = "bilayer.uiLanguage.reloaded";
@@ -72,12 +75,33 @@
     }
   }
 
-  function fromBrowser(key) {
+  // auto 路径必须把 substitutions 一并交给浏览器：getMessage(key) 会把 $1…$9 当成“未提供的参数”抹成空串，
+  // 那样 31 个带占位符的键在默认 auto 下全是半句话（本模块原先的缺陷）。
+  function fromBrowser(key, substitutions) {
     try {
-      return runtime?.i18n?.getMessage?.(key) ?? "";
+      return runtime?.i18n?.getMessage?.(key, substitutions) ?? "";
     } catch {
       return "";
     }
+  }
+
+  // 交给浏览器的参数补齐到 $1…$9：缺位填成它自己的字面占位符，浏览器一次性替换后原位留下 $n，
+  // 于是 auto 与包内两条路径的替换语义完全一致（未提供的参数保留原占位符，绝不被静默抹掉）。
+  // 浏览器替换只扫一遍报文，不会二次展开参数值本身。
+  function browserArguments(args) {
+    return Array.from({ length: 9 }, (unused, index) => {
+      const value = args[index];
+      return value === undefined ? `$${index + 1}` : String(value);
+    });
+  }
+
+  // 包内路径的本地替换：与 browserArguments 同一语义（未提供即保留 $n），键名/文案不改。
+  function substitute(message, args) {
+    if (!args.length) return message;
+    return message.replace(/\$(\d)/g, (match, index) => {
+      const value = args[Number(index) - 1];
+      return value === undefined ? match : String(value);
+    });
   }
 
   function bundleUrl(locale) {
@@ -151,17 +175,13 @@
   }
 
   function t(key, substitutions) {
-    let message = preference === AUTO ? "" : fromBundle(messages(preference), key);
-    if (!message) message = fromBrowser(key);
-    if (!message) return key;
-
     const args = substitutions == null ? [] : Array.isArray(substitutions) ? substitutions : [substitutions];
-    if (!args.length) return message;
 
-    return message.replace(/\$(\d)/g, (match, index) => {
-      const value = args[Number(index) - 1];
-      return value === undefined ? match : String(value);
-    });
+    // auto 只走浏览器报文，绝不加载包内文件；显式语言先取包内报文，缺失才回落 getMessage
+    const bundled = preference === AUTO ? "" : fromBundle(messages(preference), key);
+    if (bundled) return substitute(bundled, args);
+
+    return fromBrowser(key, browserArguments(args)) || key;
   }
 
   function uiLanguage() {

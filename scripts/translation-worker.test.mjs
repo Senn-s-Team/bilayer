@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Node.js test/vm 与真实 service_worker.js、translationScheduler.js、overlay.js，模拟多 provider 扩展存储（可注入 get 行为以模拟抛错/挂起读取）和 Chat Completions 响应
- * [OUTPUT]: 验证 provider 切换、日文原文注音结构化请求经 worker/scheduler/overlay 渲染、混合汉字/假名的空数组约束、兼容服务回包及 ID 校验、权限/错误、原始报文秘密边界、AI 就绪度查询（已配置/无凭证远端/无密钥本地端点/无匹配条目、notice/tracksNotice/unreadNotice 三条文案各自独立解析、键缺失时分别回落 null 与空串、文案跟随 storage.local.uiLanguage 的包内解析与按语言缓存、auto/缺失/非法值一律走 getMessage 且不取包、包拒绝或不存在或非法 JSON 时逐级降级、存储读失败、对非观剧页与异物发送者的授权拒绝），以及采集开关跨 worker 重启的持久化与首请求门控、读取失败时的 fail-closed 与重试、用户切换与并发翻译交错时用户意图优先、清理缓冲绝不写入未知的开关键
+ * [INPUT]: 依赖 Node.js test/vm 与真实 service_worker.js、translationScheduler.js、overlay.js，模拟多 provider 扩展存储（可注入 get 行为以模拟抛错/挂起读取）、Chat Completions 响应与可注入失败方式的 action/windows/tabs VM 桩
+ * [OUTPUT]: 验证 provider 切换、日文原文注音结构化请求经 worker/scheduler/overlay 渲染、混合汉字/假名的空数组约束、兼容服务回包及 ID 校验、权限/错误、原始报文秘密边界、AI 就绪度查询（已配置/无凭证远端/无密钥本地端点/无匹配条目、notice/tracksNotice/unreadNotice 三条文案各自独立解析、键缺失时分别回落 null 与空串、文案跟随 storage.local.uiLanguage 的包内解析与按语言缓存、auto/缺失/非法值一律走 getMessage 且不取包、包拒绝或不存在或非法 JSON 时逐级降级、存储读失败、对非观剧页与异物发送者的授权拒绝），采集开关跨 worker 重启的持久化与首请求门控、读取失败时的 fail-closed 与重试、用户切换与并发翻译交错时用户意图优先、清理缓冲绝不写入未知的开关键，以及设置窗口的打开与复用（工具栏点击与 BILAYER_OPEN_SETTINGS 走同一实现：首次 windows.create 弹出指向设置页的 type=popup 窗口、再次点击只 windows.update 聚焦既有窗口、引擎隐藏扩展页 tab.url 时按记住的开窗 id 复核复用（优先 storage.session，回退 storage.local 且由 onStartup 作废）、窗口已被关掉时照常新建、windows.create 缺失或拒绝时回落 tabs.create、两者都不可用才如实报 unavailable；设置页 sender 无论是否带 tab 都按 URL 授权，其它扩展页面、别的扩展 id 与网页仍被拒）
  * [POS]: scripts 的后台请求行为检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -13,7 +13,11 @@ const source = readFileSync(new URL("../extension/src/background/service_worker.
 const schedulerSource = readFileSync(new URL("../extension/src/content/translationScheduler.js", import.meta.url), "utf8");
 const overlaySource = readFileSync(new URL("../extension/src/content/overlay.js", import.meta.url), "utf8");
 const sender = { id: "extension-id", tab: { url: "https://www.netflix.com/watch/42" } };
-// 后台本地化桩：真实环境的文案由 _locales/{en,zh_CN}/messages.json 提供（键名由 popup 侧维护），
+// 设置页不再是 action popup，而是独立窗口/标签页里的文档：它与标签页文档一样带 sender.tab。
+const settingsSender = { id: "extension-id", url: "extension://src/settings/settings.html", tab: { id: 3, url: "extension://src/settings/settings.html" } };
+// 同 URL 但无 tab 的 sender（旧 action popup 文档形状）也必须继续放行。
+const settingsSenderNoTab = { id: "extension-id", url: "extension://src/settings/settings.html" };
+// 后台本地化桩：真实环境的文案由 _locales/{en,zh_CN}/messages.json 提供（键名由 settings 侧维护），
 // 这里只断言后台取了哪个键、返回值如何回填，不复制真实的提示句子。
 const I18N_MESSAGES = {
   noticeProviderMissing: "[noticeProviderMissing]",
@@ -47,24 +51,84 @@ const message = {
   contextBefore: [], contextAfter: ["How are you?"]
 };
 
-function createWorker(fetcher, stored = {}, permissionGranted = true, store = { ...stored }, storageControl = {}) {
+function createWorker(fetcher, stored = {}, permissionGranted = true, store = { ...stored }, storageControl = {}, platform = {}) {
   let listener;
+  let actionListener;
+  let startupListener;
   const localizedKeys = [];
   const readStorage = (defaults, callback, overrides = {}) => callback({
     ...defaults, aiRole: "secondary", providers: [{ id: "openai", name: "OpenAI 官方", endpoint: "", model: "gpt-4o-mini", credential: "private-key" }], aiProviderId: "openai", ...store, ...overrides
   });
+  // 设置窗口桩：记录每次 windows/tabs 调用。platform.createFails 让 windows.create 拒绝，
+  // platform.omitWindowsCreate 干脆不提供该方法（模拟没有 windows API 的引擎），用于断言 tabs.create 回落。
+  const settingsUrl = "extension://src/settings/settings.html";
+  const windowCalls = { getAll: [], get: [], create: [], update: [] };
+  const tabCalls = { create: [] };
+  const openWindows = [];
+  const windows = {
+    getAll(query) {
+      windowCalls.getAll.push(query);
+      // hideTabUrls：模拟 Chrome 未授予 tabs 权限时窗口里的 tab.url 一律为 null（扩展自己的页面也一样）。
+      return Promise.resolve(openWindows.map((win) => ({
+        id: win.id,
+        tabs: win.tabs.map((tab) => ({ id: tab.id, url: platform.hideTabUrls ? null : tab.url }))
+      })));
+    },
+    get(windowId) {
+      windowCalls.get.push(windowId);
+      if (platform.windowGone) return Promise.reject(new Error("no such window"));
+      return Promise.resolve({ id: windowId });
+    },
+    update(windowId, updateInfo) {
+      windowCalls.update.push({ windowId, updateInfo });
+      return Promise.resolve({ id: windowId });
+    }
+  };
+  if (!platform.omitWindowsCreate) {
+    windows.create = (options) => {
+      windowCalls.create.push(options);
+      if (platform.createFails) return Promise.reject(new Error("windows.create rejected"));
+      // 建出来的窗口在后续 getAll 里带着设置页标签页出现，第二次点击才可能命中「只聚焦」。
+      const created = { id: 900 + windowCalls.create.length, tabs: [{ id: 10, url: options.url }] };
+      openWindows.push(created);
+      return Promise.resolve(created);
+    };
+  }
+  const tabs = {
+    create(options) {
+      tabCalls.create.push(options);
+      if (platform.tabsCreateFails) return Promise.reject(new Error("tabs.create rejected"));
+      return Promise.resolve({ id: 20, url: options.url });
+    }
+  };
+  // storage.session（会话级）：设置窗口 id 优先记在这里，会话结束即失效。platform.session 可跨 worker 复用它；
+  // platform.omitStorageSession 整块移除，用来验证回退到 storage.local + onStartup 清理的那条路径。
+  const sessionStore = platform.session ?? {};
+  const session = {
+    get(defaults, callback) { callback({ ...defaults, ...sessionStore }); },
+    set(data, callback) { Object.assign(sessionStore, data); if (typeof callback === "function") callback(); }
+  };
   const runtime = {
-    storage: { local: {
-      get(defaults, callback) {
-        const fallback = (overrides) => readStorage(defaults, callback, overrides);
-        if (storageControl.get) return storageControl.get(defaults, callback, store, fallback);
-        fallback();
+    action: { onClicked: { addListener(callback) { actionListener = callback; } } },
+    windows,
+    tabs,
+    storage: {
+      local: {
+        get(defaults, callback) {
+          const fallback = (overrides) => readStorage(defaults, callback, overrides);
+          if (storageControl.get) return storageControl.get(defaults, callback, store, fallback);
+          fallback();
+        },
+        set(data, callback) { Object.assign(store, data); if (typeof callback === "function") callback(); }
       },
-      set(data, callback) { Object.assign(store, data); if (typeof callback === "function") callback(); }
-    } },
+      ...(platform.omitStorageSession ? {} : { session })
+    },
     permissions: { contains(_query, callback) { callback(permissionGranted); } },
     i18n: { getMessage(key) { localizedKeys.push(key); return I18N_MESSAGES[key] ?? ""; } },
-    runtime: { id: "extension-id", getURL(path) { return `extension://${path}`; }, onInstalled: { addListener() {} }, onMessage: { addListener(callback) { listener = callback; } } }
+    runtime: { id: "extension-id", getURL(path) { return `extension://${path}`; },
+      onInstalled: { addListener() {} },
+      onStartup: { addListener(callback) { startupListener = callback; } },
+      onMessage: { addListener(callback) { listener = callback; } } }
   };
   runInNewContext(source, {
     browser: runtime, fetch: fetcher, URL, TextEncoder, AbortController, structuredClone, setTimeout, clearTimeout
@@ -72,6 +136,16 @@ function createWorker(fetcher, stored = {}, permissionGranted = true, store = { 
   const run = (request = message, from = sender) => new Promise((resolve) => listener(request, from, resolve));
   // 断言“后台是否真的去解析了提示句”：未配置时才取 noticeProviderMissing。
   run.localizedKeys = localizedKeys;
+  run.settingsUrl = settingsUrl;
+  run.windows = windows;
+  run.windowCalls = windowCalls;
+  run.tabCalls = tabCalls;
+  run.openWindows = openWindows;
+  run.sessionStore = sessionStore;
+  // 模拟点击工具栏图标：后台监听器返回开窗的 promise，测试据此等待落定。
+  run.triggerAction = () => actionListener?.();
+  // 模拟浏览器启动：后台据此作废上个会话记住的窗口 id。
+  run.triggerStartup = () => startupListener?.();
   return run;
 }
 
@@ -267,9 +341,7 @@ test("popup provider connectivity test uses the selected provider and returns on
     aiProviderId: "custom",
     providers: [{ id: "custom", name: "Custom", endpoint: "", model: "c1", credential: "key2" }]
   });
-  const result = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "custom" }, {
-    id: "extension-id", url: "extension://src/popup/popup.html"
-  });
+  const result = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "custom" }, settingsSender);
   assert.deepEqual(JSON.parse(JSON.stringify(result)), { ok: true, jsonMode: "json_schema" });
   assert.equal(JSON.parse(sent.options.body).model, "c1");
   assert.equal(sent.options.headers.Authorization, "Bearer key2");
@@ -300,7 +372,7 @@ test("raw diagnostic page sees exact request and malformed response without leak
   assert.equal(records[0].failure.reason, "items_mismatch");
   assert.equal((await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" }, sender)).ok, false);
   assert.equal((await worker({ type: "BILAYER_GET_RAW_DIAGNOSTICS" },
-    { id: "extension-id", url: "extension://src/popup/popup.html" })).ok, false);
+    settingsSender)).ok, false);
   assert.equal((await worker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, sender)).ok, false);
   assert.equal((await worker({ type: "BILAYER_CLEAR_RAW_DIAGNOSTICS" }, page)).ok, true);
   assert.equal((await get()).records.length, 0);
@@ -864,9 +936,7 @@ test("connectivity probe falls back to json_object and none when json_schema is 
     providers: [{ id: "deepseek", name: "DeepSeek", endpoint: "https://api.deepseek.com/v1/chat/completions", model: "deepseek-chat", credential: "key" }]
   });
 
-  const result = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "deepseek" }, {
-    id: "extension-id", url: "extension://src/popup/popup.html"
-  });
+  const result = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "deepseek" }, settingsSender);
   assert.equal(result.ok, true);
   assert.equal(result.jsonMode, "json_object");
   assert.equal(calls[0]?.type, "json_schema");
@@ -888,9 +958,7 @@ test("connectivity probe marks jsonMode as none and warns when both json_schema 
     providers: [{ id: "legacy", name: "Legacy", endpoint: "https://legacy.example/v1/chat/completions", model: "legacy-v1", credential: "key" }]
   });
 
-  const result = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "legacy" }, {
-    id: "extension-id", url: "extension://src/popup/popup.html"
-  });
+  const result = await worker({ type: "BILAYER_TEST_PROVIDER", providerId: "legacy" }, settingsSender);
   assert.equal(result.ok, true);
   assert.equal(result.jsonMode, "none");
   assert.equal(result.warning, "unsupported_json_mode");
@@ -903,7 +971,6 @@ test("connectivity probe marks jsonMode as none and warns when both json_schema 
 // ---------------------------------------------------------------------------
 
 const readinessRequest = { type: "BILAYER_AI_READINESS" };
-const popupSender = { id: "extension-id", url: "extension://src/popup/popup.html" };
 
 test("AI readiness answers provider configuration and localized hints without any network call", async () => {
   let fetches = 0;
@@ -1001,9 +1068,16 @@ test("AI readiness is limited to watch-page content scripts and extension pages"
   // 其它扩展 id 即使挂在观剧页上也不行
   assert.equal((await worker(readinessRequest, { id: "other-extension", tab: { url: "https://www.netflix.com/watch/42" } })).ok, false);
 
-  // 观剧页内容脚本与扩展自有页面（popup/onboarding/diagnostics）可以问
+  // 观剧页内容脚本与扩展自有页面（设置页/onboarding/diagnostics）可以问
   assert.equal((await worker(readinessRequest, sender)).ok, true);
-  assert.equal((await worker(readinessRequest, popupSender)).ok, true);
+  // 设置页现在是窗口/标签页文档（带 tab），旧 action popup 的无 tab 形状也必须继续通过
+  assert.equal((await worker(readinessRequest, settingsSender)).ok, true);
+  assert.equal((await worker(readinessRequest, settingsSenderNoTab)).ok, true);
+  // 其它扩展页面（同一扩展 id，非设置页/向导页/诊断页 URL）仍被拒
+  assert.equal((await worker(readinessRequest, {
+    id: "extension-id", url: "extension://src/settings/other.html",
+    tab: { id: 4, url: "extension://src/settings/other.html" }
+  })).ok, false);
   assert.equal((await worker(readinessRequest, {
     id: "extension-id", url: "extension://src/onboarding/onboarding.html",
     tab: { id: 1, url: "extension://src/onboarding/onboarding.html" }
@@ -1142,4 +1216,163 @@ test("a key missing from the bundle falls back to the browser message, then to a
     if (savedUnread === undefined) delete I18N_MESSAGES.noticeSubtitleTracksUnread;
     else I18N_MESSAGES.noticeSubtitleTracksUnread = savedUnread;
   }
+});
+
+// ---------------------------------------------------------------------------
+// 设置窗口：工具栏点击与 BILAYER_OPEN_SETTINGS 共用同一实现，授权只看扩展自有页面 URL
+// ---------------------------------------------------------------------------
+
+// VM 里造的窗口参数/返回对象与本文件不同 realm，deepStrictEqual 会因原型不同报“结构相同但非同一引用”。
+const plain = (value) => JSON.parse(JSON.stringify(value));
+
+// 连通性测试的固定回包：后台按 id === "connection" 校验探测结果。
+const connectionProbeFetcher = async () => Response.json({ choices: [{ finish_reason: "stop", message: {
+  content: JSON.stringify({ items: [{ id: "connection", text: "OK" }] })
+} }] });
+
+test("the toolbar icon opens one settings popup window and only focuses it on later clicks", async () => {
+  const worker = createWorker(async () => { throw new Error("must not reach the network"); });
+
+  await worker.triggerAction();
+  assert.deepEqual(plain(worker.windowCalls.getAll), [{ populate: true }]);
+  assert.deepEqual(plain(worker.windowCalls.create).map(({ url, type }) => ({ url, type })),
+    [{ url: worker.settingsUrl, type: "popup" }]);
+  assert.equal(worker.windowCalls.update.length, 0);
+  assert.equal(worker.tabCalls.create.length, 0);
+
+  // 设置窗口已经开着：再次点击不再叠窗，只聚焦既有窗口（url 可见时不需要动记录的 id）
+  await worker.triggerAction();
+  assert.equal(worker.openWindows.length, 1);
+  assert.equal(worker.windowCalls.create.length, 1);
+  assert.deepEqual(plain(worker.windowCalls.update),
+    [{ windowId: plain(worker.openWindows[0]).id, updateInfo: { focused: true } }]);
+  assert.equal(worker.windowCalls.get.length, 0);
+  assert.equal(worker.tabCalls.create.length, 0);
+});
+
+test("a settings window is reused by its remembered id when the engine hides tab urls", async () => {
+  const store = {};
+  const session = {};
+  const platform = { hideTabUrls: true, session };
+  const worker = createWorker(connectionProbeFetcher, {}, true, store, {}, platform);
+
+  await worker.triggerAction();
+  assert.deepEqual(plain(worker.windowCalls.create).map(({ url, type }) => ({ url, type })),
+    [{ url: worker.settingsUrl, type: "popup" }]);
+  // 开窗 id 记在会话存储里，供 url 不可见的引擎在下次点击时复核
+  assert.equal(session.__settings_window_id__, plain(worker.openWindows[0]).id);
+  assert.equal(store.__settings_window_id__, undefined);
+
+  // 同一 worker 再点：getAll 看不到 url，靠记录的 id 校验并聚焦既有窗口，不叠第二个窗口
+  await worker.triggerAction();
+  assert.equal(worker.windowCalls.create.length, 1);
+  assert.deepEqual(plain(worker.windowCalls.get), [session.__settings_window_id__]);
+  assert.deepEqual(plain(worker.windowCalls.update),
+    [{ windowId: session.__settings_window_id__, updateInfo: { focused: true } }]);
+
+  // 后台被回收后重启（同一份会话存储）：仍然只聚焦，不再叠窗
+  const restarted = createWorker(connectionProbeFetcher, {}, true, store, {}, platform);
+  assert.deepEqual(plain(await restarted({ type: "BILAYER_OPEN_SETTINGS" }, settingsSender)),
+    { ok: true, reused: true });
+  assert.equal(restarted.windowCalls.create.length, 0);
+  assert.deepEqual(plain(restarted.windowCalls.update),
+    [{ windowId: session.__settings_window_id__, updateInfo: { focused: true } }]);
+
+  // 记录的窗口已经被用户关掉（windows.get 拒绝）：如实开一个新的，并更新记录
+  const gone = createWorker(connectionProbeFetcher, {}, true, store, {}, { ...platform, windowGone: true });
+  assert.deepEqual(plain(await gone({ type: "BILAYER_OPEN_SETTINGS" }, settingsSender)),
+    { ok: true, reused: false });
+  assert.equal(gone.windowCalls.create.length, 1);
+  assert.equal(session.__settings_window_id__, plain(gone.openWindows[0]).id);
+});
+
+test("without session storage the window id is forgotten when the browser starts", async () => {
+  const store = {};
+  const platform = { hideTabUrls: true, omitStorageSession: true };
+  const first = createWorker(connectionProbeFetcher, {}, true, store, {}, platform);
+
+  await first.triggerAction();
+  assert.equal(store.__settings_window_id__, plain(first.openWindows[0]).id);
+
+  // 浏览器重启：窗口 id 会被新会话复用，启动事件必须把上个会话的记录作废
+  const restarted = createWorker(connectionProbeFetcher, {}, true, store, {}, platform);
+  restarted.triggerStartup();
+  assert.equal(store.__settings_window_id__, null);
+
+  await restarted.triggerAction();
+  assert.equal(restarted.windowCalls.get.length, 0);
+  assert.equal(restarted.windowCalls.create.length, 1);
+});
+
+test("a missing or rejecting windows API falls back to a settings tab", async () => {
+  const noApi = createWorker(async () => { throw new Error("must not reach the network"); }, {}, true, {}, {}, { omitWindowsCreate: true });
+  assert.equal("create" in noApi.windows, false);
+  await noApi.triggerAction();
+  assert.equal(noApi.windowCalls.create.length, 0);
+  assert.deepEqual(plain(noApi.tabCalls.create).map(({ url }) => url), [noApi.settingsUrl]);
+
+  const rejected = createWorker(async () => { throw new Error("must not reach the network"); }, {}, true, {}, {}, { createFails: true });
+  await rejected.triggerAction();
+  assert.equal(rejected.windowCalls.create.length, 1);
+  assert.equal(rejected.windowCalls.update.length, 0);
+  assert.deepEqual(plain(rejected.tabCalls.create).map(({ url }) => url), [rejected.settingsUrl]);
+
+  // 连回落路径都不可用时如实报错，不静默装作开过窗口
+  const doomed = createWorker(async () => { throw new Error("must not reach the network"); }, {}, true, {}, {}, { createFails: true, tabsCreateFails: true });
+  assert.deepEqual(plain(await doomed({ type: "BILAYER_OPEN_SETTINGS" }, settingsSender)),
+    { ok: false, errorCode: "unavailable" });
+});
+
+test("the settings page is authorized by URL whether or not the sender carries a tab", async () => {
+  const worker = createWorker(connectionProbeFetcher);
+  const probe = (from) => worker({ type: "BILAYER_TEST_PROVIDER", providerId: "openai" }, from);
+
+  // 独立窗口/标签页里的设置页文档：有 sender.tab 不再是拒绝理由（action popup 时代才要求无 tab）
+  assert.deepEqual(plain(await probe(settingsSender)), { ok: true, jsonMode: "json_schema" });
+  // 旧 action popup 的无 tab 形状是同一 URL、同一身份，同样通过
+  assert.deepEqual(plain(await probe(settingsSenderNoTab)), { ok: true, jsonMode: "json_schema" });
+
+  // 就绪度查询对同一 sender 也放行，返回就绪信息而不是“未配置”的假象
+  assert.deepEqual(plain(await worker(readinessRequest, settingsSender)), {
+    ok: true, configured: true, notice: null,
+    tracksNotice: "[noticeSubtitleTracksMissing]", unreadNotice: "[noticeSubtitleTracksUnread]"
+  });
+
+  // 其它扩展页面、别的扩展 id 与网页仍被拒
+  const denied = [
+    { id: "extension-id", url: "extension://src/settings/other.html", tab: { id: 4, url: "extension://src/settings/other.html" } },
+    { id: "other-extension", url: worker.settingsUrl, tab: { id: 5, url: worker.settingsUrl } },
+    { id: "extension-id", url: "https://www.netflix.com/watch/42", tab: { url: "https://www.netflix.com/watch/42" } }
+  ];
+  for (const from of denied) {
+    assert.deepEqual(plain(await probe(from)), { ok: false, errorCode: "configuration" }, JSON.stringify(from));
+  }
+});
+
+test("BILAYER_OPEN_SETTINGS opens the settings window only for extension pages", async () => {
+  const worker = createWorker(async () => { throw new Error("must not reach the network"); });
+  const onboarding = { id: "extension-id", url: "extension://src/onboarding/onboarding.html",
+    tab: { id: 1, url: "extension://src/onboarding/onboarding.html" } };
+
+  assert.deepEqual(plain(await worker({ type: "BILAYER_OPEN_SETTINGS" }, onboarding)),
+    { ok: true, reused: false });
+  assert.deepEqual(plain(worker.windowCalls.create).map(({ url, type }) => ({ url, type })),
+    [{ url: worker.settingsUrl, type: "popup" }]);
+
+  // 设置页自己请求时命中已有窗口，只聚焦（与工具栏点击同一条实现）
+  assert.deepEqual(plain(await worker({ type: "BILAYER_OPEN_SETTINGS" }, settingsSenderNoTab)),
+    { ok: true, reused: true });
+  assert.equal(worker.windowCalls.create.length, 1);
+  assert.deepEqual(plain(worker.windowCalls.update),
+    [{ windowId: plain(worker.openWindows[0]).id, updateInfo: { focused: true } }]);
+
+  // 其它扩展页面与观剧页内容脚本被拒，且不产生任何开窗/开标签调用
+  for (const from of [
+    { id: "extension-id", url: "extension://src/settings/other.html", tab: { id: 4, url: "extension://src/settings/other.html" } },
+    sender
+  ]) {
+    assert.deepEqual(plain(await worker({ type: "BILAYER_OPEN_SETTINGS" }, from)),
+      { ok: false, errorCode: "configuration" }, JSON.stringify(from));
+  }
+  assert.equal(worker.tabCalls.create.length, 0);
 });

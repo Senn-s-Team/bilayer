@@ -7,6 +7,204 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A shared design layer under `extension/src/styles/`, loaded by every extension page. `tokens.css`
+  declares nothing but custom properties — primitives (neutral ramps, brand blue, amber, success,
+  warning, danger, font families, spacing/radius/type scales, control heights, durations and
+  easing) plus semantic tokens named by role (`--bg`, `--fg`, `--surface`, `--border`,
+  `--accent`, `--success`, `--warning`, `--danger`, `--focus-ring`, and the one floating shadow
+  `--shadow-popover`) — and is the single
+  source of truth for light and dark: `:root` holds the light branch and
+  `@media (prefers-color-scheme: dark)` overrides the same names, so `color-scheme` is declared once.
+  `controls.css` is the one baseline for controls — switches, `range` tracks (WebKit and Gecko
+  written in pairs), color inputs, selects with a self-drawn `--select-arrow`, text/number/url/
+  password/search/textarea fields, and three button tiers — each with hover, active, focus-visible
+  and disabled states and the same focus ring. `settings.html`, `onboarding.html`, and
+  `diagnostics.html` link both files before their own stylesheet and no longer declare a local
+  palette, a second light/dark branch, or a duplicate control baseline; the page stylesheets keep
+  only layout and variant overrides, and every page's frozen class names (`.btn`, `.preset-chip`,
+  `.icon-btn`, `.quiet-button`, `.payload-format`, …) are listed as members of a shared tier rather
+  than re-declared.
+- `runtime.action.onClicked` plus a `BILAYER_OPEN_SETTINGS` message, both routed through one
+  `openSettingsWindow()` in the background: an already-open settings page is only focused (a second
+  click never stacks another window), then a remembered window id is verified with `windows.get` and
+  focused, then `windows.create({ type: "popup", width: 1240, height: 940, url })` opens the window,
+  and engines without a usable `windows` API fall back to `tabs.create`. The height is the window's
+  **outer** size: Chrome's title bar eats about 88 px, so 940 leaves an inner height of roughly 852,
+  which keeps the tallest tab (the AI page, ≈717 px of content) on one screen with no panel
+  scrolling. The width is 1240 so the wider rail (see the clamp below) still leaves the content
+  column roughly as wide as before. The remembered id lives in `storage.session` under `__settings_window_id__` (nothing to
+  clean up when the session ends) and falls back to `storage.local` invalidated on
+  `runtime.onStartup`, so an id from a previous session can never focus an unrelated window.
+- Motion primitives and the flat token vocabulary behind the settings surface.
+  `extension/src/settings/settings.css` adds `@keyframes bl-rise` (a tab panel's direct children
+  rise into place over 780 ms via `--bl-duration-panel`, staggered 45 ms per item and capped at the
+  eighth), `bl-breathe` (the loading state) and `bl-pop` (the selected mark growing in); all three
+  animate only `transform`/`opacity`. A single `prefers-reduced-motion: reduce` block at the
+  end of `extension/src/styles/controls.css` neutralises transition and animation durations for all
+  three sharing pages, and the settings sheet keeps its own stricter copy that also forces
+  `animation: none`, so a reduced-motion element lands in its natural state instead of staying
+  invisible through a delay. `extension/src/styles/tokens.css` carries the vocabulary that flat
+  language draws from — the radius ladder `--bl-radius-2xs/-xs/-sm/-md/-lg/-xl` (2/3/4/6/8/10 px, no
+  capsule step) with the three role aliases `--radius-tag` (badges, labels, progress bars, subtitle
+  lines), `--radius-control` (buttons, inputs, segments, list rows) and `--radius-surface` (panels,
+  cards, popovers, while a window-level shell takes `--bl-radius-xl`), the durations
+  `--bl-duration-slower/panel`, the easings `--bl-ease-out-expo/inout-quint/springy`, and the
+  semantic pair the flat contract is built on — `--groove` (the one recessed fill) and
+  `--shadow-popover` (the one floating shadow). The glass vocabulary it replaced is deleted in the
+  same pass (`--bl-bezel*`, `--bl-radius-shell*/core*/2xl/pill/circle`, `--shell-ring*`,
+  `--shell-tray`, `--core-base`, `--core-sheen*`, `--core-ring`, `--rail-sheen`, `--groove-ring`,
+  `--groove-inset`, `--switch-inset`, `--thumb-shadow`, `--shadow-soft*`, `--shadow-card`,
+  `--shadow-header`, `--shadow-accent`, `--accent-glow`, `--stage-frame*`, `--stage-sheen`,
+  `--stage-inset`, `--surface-blur`, `--bl-shadow-lg`), each remaining name declared under both the
+  light `:root` and the dark `prefers-color-scheme` branch.
+- Regression coverage for the diagnostics page and the in-place status flow: a new
+  `scripts/diagnostics.test.mjs` exercises the four export outcomes through `#exportStatus` plus the
+  "render as UI" ruby path, and `scripts/settings.test.mjs` gains five cases for the draft
+  endpoint/model-fetch failures being reported in place. The suite goes 206 → 216 and `npm run check`
+  stays green.
+
+### Changed
+
+- The settings UI is no longer the toolbar popup. `extension/manifest.json` drops
+  `action.default_popup` (leaving `action.default_title`): as long as that key exists the browser
+  opens the popup itself and swallows `action.onClicked`, so removing it is what hands the toolbar
+  click back to the extension. Clicking the icon now opens or focuses a standalone, resizable
+  settings window that defaults to 1240×940 (outer height; ≈852 inner), and the module moved with it:
+  `extension/src/popup/` became `extension/src/settings/`, with
+  `popup.html`/`popup.css`/`popup-ai.css`/`popup.js` renamed
+  to `settings.html`/`settings.css`/`settings-ai.css`/`settings.js`, `scripts/popup.test.mjs` to
+  `scripts/settings.test.mjs`, and the ten `popup*` message keys to `settings*` in both bundles
+  (`_locales/en` and `_locales/zh_CN` stay key for key).
+- **User-visible:** the interface now follows the system appearance. The previous `:root` block was
+  permanently dark; light is now the default branch and dark is applied by `prefers-color-scheme`
+  overriding the same tokens, so the settings window, wizard, and diagnostics page switch with
+  macOS instead of staying dark.
+- The settings window uses the whole viewport: `html, body` fill it with no page-level scrollbar and
+  `.tab-panel` is the only scroll source (the appearance page no longer nests a second scroller).
+  At ≥900 px the subtitles panel uses two columns, the AI page lays its four cards out 2×2, and the
+  provider page widens into a master/detail split; at ≤820 px the sidebar collapses into a top tab
+  bar, so the default 1240×940 window and smaller resizes both work.
+- **User-visible:** the settings rail is wider and no longer cramped. `.app-shell`'s first column
+  goes from a fixed `168px` to `clamp(180px, 17.5%, 224px)`, so it scales with the window (≈217 px at
+  1240 wide, ≈180 px at 1000) instead of staying pinched, and the `168px` workarounds it forced are
+  gone: `.sidebar-language-label` and `.sidebar-language-select` lose their negative inline margins,
+  `width: calc(100% + 12px)` compensation and `letter-spacing: -0.02em` tightening (the select
+  returns to the baseline self-drawn arrow and padding). The tab buttons take a step more horizontal
+  padding and a 38 px row height — the flat selected state (`--accent-soft` fill, 2 px accent bar,
+  `bl-pop`) and the focus ring are unchanged. The provider page's wide-viewport master column widens
+  from 200 px to 240 px. `openSettingsWindow()` widens the window to 1240 (height still 940) so the
+  content column keeps its width and the four panes still fit with no panel scrollbar.
+- **User-visible: the visual direction switched from a translucent double-shell language to a flat,
+  engineered surface.** The intermediate pass drew every settings card as a pure-CSS double shell
+  (a 6 px `transparent` border split by `background-clip`/`background-origin` into an aluminium
+  tray + core + top sheen, with concentric corners and multi-layer diffuse shadows); that is gone
+  in favour of **one opaque surface + a 1 px `--border` hairline + one corner-radius ladder + a
+  single shadow for floating layers only**. `.settings-list`, `.track-grid`, `.style-section`, and
+  `.ai-section` are now a flat `--surface` fill with a 1 px `var(--border)` edge and
+  `--radius-surface` (6 px), no `border` transparency, no `background-clip`, no sheen and no shadow;
+  hover lifts the edge to `--border-strong` only. The nested groups (`.ai-toggle-list`,
+  `.provider-editor`, `.ai-credential`, the segmented-control troughs, `.preset-list`,
+  `.role-selector`) are recessed `--groove` fills with the same hairline, and `settings-ai.css`
+  reuses that construction for the provider master/detail split and the small model-menu popover,
+  which is the one element allowed the single `--shadow-popover`. Hierarchy is therefore expressed
+  by the hairline and surface-value differences alone. All large-radius and capsule corners are
+  removed (`--bl-radius-*` sits at 2/3/4/6/8/10 px with no `pill`/`circle` step) and the three page
+  stylesheets reference the role aliases rather than raw steps, while the type, spacing and motion
+  scales are unchanged. The sans stack drops `"Helvetica Neue"`
+  (`-apple-system, BlinkMacSystemFont, system-ui, "SF Pro Text", "SF Pro Display", sans-serif`) and
+  `--bl-ease-standard` goes from `ease` to `cubic-bezier(0.32, 0.72, 0, 1)`. Two contrast
+  corrections carried over: `--bl-blue-600` `#2f6fe4 → #2b66da` (white text on the solid primary
+  button 4.65 → 5.23) and `--bl-green-700` `#14883f → #0f7a38` (light `.track-status[ready]` 4.47 →
+  5.35); the lowest re-measured pair is 5.00:1, none under 4.5:1. Hover feedback is graded — passive
+  containers keep only the hairline and never translate, while interactive elements (`.select-card`,
+  `.preset-pill`/`.preset-chip`, segmented buttons, tabs, the three button tiers, model-menu rows,
+  provider-list rows) keep their ≤2 px lift and `.98` press, and the sidebar's 向导/诊断 `↗` now
+  sits in its own 20 px square chip (`--bl-radius-2xs` + `--groove`) that shifts diagonally and
+  scales on hover. At wide viewports cards size to their content (`align-items: start`) so a short
+  card no longer stretches into a dead column, and the subtitles and provider pages are rebalanced
+  accordingly. `tokens.css`/`controls.css` are shared by settings, onboarding, and diagnostics; both
+  other pages were re-checked for regressions and given the same flat treatment (see the entries
+  below).
+- **User-visible: blocking `window.alert` dialogs are gone from both extension pages.** The eight
+  call sites — five in `extension/src/settings/settings.js`, three in
+  `extension/src/diagnostics/diagnostics.js` — now write their message into an in-place status line:
+  the settings window's new `#newDraftStatus` (`extension/src/settings/settings.html`) and the
+  diagnostics head's new `#exportStatus` (`extension/src/diagnostics/diagnostics.html`), both
+  `role="status" aria-live="polite"`, with `data-state="error"` set on failure and the empty text
+  hidden by `.live-status:empty`. Every message reuses the existing i18n keys — **no new keys are
+  added** — and each former `alert` keeps its control flow (the early `return` after the message).
+- `extension/src/diagnostics/diagnostics.css` (960 lines) is split by concern to stay under the
+  repo's ≤800-line limit: `diagnostics.css` now holds the page shell, request list, detail header and
+  connection drawer, and a new `diagnostics-payload.css` holds the payload toolbar, the searchable
+  JSON tree and the subtitle-preview card. `diagnostics.html` links them in order
+  tokens → controls → diagnostics → payload, and both files keep the flat contract (hairline and
+  surface-value layering, `--radius-tag/-control/-surface`, no sheen/blur/shadow). The collapsed
+  JSON-node marker no longer carries the hardcoded Chinese `content: " · 已折叠"`; it is drawn
+  geometrically (a border-built chevron rotated by state) so no locale text lives in CSS.
+- The onboarding page (`extension/src/onboarding/onboarding.css` + `onboarding.html`) is reworked to
+  the flat contract and hardened: the window uses `100dvh`/`92dvh` instead of `100vh`/`92vh`,
+  `.step-viewport` is the single scroll source so the footer is never pushed off, seven inline
+  `style=` attributes are moved to classes (`.is-hidden`/`.is-invisible`/`.select-card.is-static`),
+  the `👁` emoji is replaced by an inline SVG at the same stroke spec as the page's other icons,
+  static option cards are distinguished with `.is-static` so they no longer read as clickable, and
+  the blanket `transition: all` and width transitions are removed in favour of explicit
+  `--bl-ease-*` transitions; headline copy gains `text-wrap: balance` and a line-length cap.
+- Both READMEs' **Credits** section drops the references that the flat switch made untrue: the
+  macOS/Apple entry no longer claims translucent `backdrop-filter` surfaces (the pages are flat),
+  and the Neumorphism bullet is removed, leaving the system font stack and spring easing as the
+  acknowledged Apple-adjacent styling. The two READMEs stay section-for-section aligned.
+
+### Fixed
+
+- `isAllowedTestSender` no longer identifies the settings UI by "URL matches and `sender.tab` is
+  absent". Documents in a standalone window carry `sender.tab` exactly like tab documents, so that
+  rule silently rejected **Test connection**, **Fetch models**, and the AI readiness query from the
+  new window form. Authorization is now `sender.id === runtime.runtime.id` plus the settings/
+  onboarding URL allowlist (the identity check stays mandatory, so nothing widens to arbitrary
+  extension pages or web pages).
+- The long-lived settings window no longer polls Netflix while it is hidden:
+  `scheduleStatePoll` bails out on `document.hidden` before any `tabs.query`/`sendMessage`, and a
+  `visibilitychange` listener restarts the chain the moment the window becomes visible again, so the
+  timer cannot stall permanently and a background window issues no page reads.
+- Provider edits no longer drop concurrent changes. `providers` is stored as one array and the
+  onboarding wizard writes the whole array, so editing a field, adding a service, or deleting the
+  active service now reads the latest stored list back (`readLatestProviders`) and merges by id
+  instead of writing a stale in-memory snapshot over services added elsewhere in the meantime; a
+  deletion that would empty the list falls back to a clone of the default providers.
+- `i18n.t()` dropped every placeholder on the default `auto` path. `fromBrowser` called
+  `runtime.i18n.getMessage(key)` with no substitutions, and a browser blanks an unsupplied
+  `$1…$9` to an empty string, so the local `$n` replacement then had nothing left to substitute — all
+  31 keys that carry `$n` rendered as half a sentence in the default language (the AI page's usage
+  readout showed `:  /  requests ·  /  characters`). The browser call now receives arguments
+  (`fromBrowser(key, substitutions)`), `t()` returns a bundled hit through the local `substitute()`
+  and otherwise `fromBrowser(key, browserArguments(args)) || key`, and `browserArguments()` pads to
+  nine slots with each missing slot filled by its own literal `$n` — the one thing that survives
+  Chrome's blanking, since both `getMessage(key)` and `getMessage(key, [])` strip them — so `auto` and
+  the bundled path agree on a single semantics: substitute in order, keep an unsupplied placeholder
+  literal, and never re-expand a substituted value (verified: the browser does not expand argument
+  values a second time). `scripts/i18n.test.mjs` doubles that blanking behaviour in its `getMessage`
+  stub and adds four regressions — `auto` keeps every supplied value, unsupplied arguments stay
+  literal on both paths, explicit locales still resolve from the bundle without consulting the
+  browser, and a throwing or absent `getMessage` still degrades to the key. Three of the four fail
+  against the pre-fix code and all pass after (24/24; the full suite goes 202 → 206). End to end,
+  `auto` and `en` render `This watch session: 0 / 80 requests · 0 / 40,000 characters` and `zh_CN`
+  renders `本次观看：请求 0 / 80 · 字符 0 / 40,000`, and the other placeholder key `providerSavedHost`
+  returns from `Saved ; grant domain permission before use` to `Saved api.example.com; …`. **Known
+  and deliberately unfixed:** the same defect still exists in
+  `extension/src/background/service_worker.js`'s `localizedMessage(key, uiLanguage)` fallback
+  (`:822`), which likewise passes no substitutions; it is currently unreachable because the only keys
+  it fetches (`noticeProviderMissing`, `noticeSubtitleTracksMissing`, `noticeSubtitleTracksUnread`)
+  carry no `$n`, but adding `$n` to a background-delivered message would reproduce it (recorded in
+  `extension/src/background/CLAUDE.md`).
+- `renderRubyTextTo` in `extension/src/diagnostics/diagnostics.js` threw a `ReferenceError` because
+  it matched on an undeclared `rubyPattern`; the bug was user-reachable by opening an older payload
+  that carried `ruby` markup and switching to the **Render as UI** tab, which blanked the payload
+  area with no message. The regex is now constructed locally inside the function, matching
+  `extension/src/content/overlay.js`'s `renderRubyText`, so a shared `g`-flagged constant can no
+  longer leak `lastIndex` between calls and truncate later renders.
+
 ## [0.3.5] - 2026-09-29
 
 ### Added

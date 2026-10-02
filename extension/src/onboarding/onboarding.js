@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 browser/chrome storage、tabs、permissions 与 runtime 消息 API，依赖 i18n 全局取本地化文案
  * [OUTPUT]: 驱动向导步骤切换、环境握手、模式分流、AI 连通性测试与模型发现、双字幕全量外观回写，并保证最后一步确定性进入可交互完成态
- * [POS]: src/onboarding 的核心交互逻辑，被 onboarding.html 消费；模型发现与 popup 的「获取模型」共用 BILAYER_LIST_MODELS 协议
+ * [POS]: src/onboarding 的核心交互逻辑，被 onboarding.html 消费；模型发现与设置窗口的「获取模型」共用 BILAYER_LIST_MODELS 协议
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 const runtime = globalThis.browser ?? globalThis.chrome;
@@ -163,7 +163,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
       secondaryMaxWidth: 86
     };
 
-    // 与 popup 外观面板同源：预览间距与字体族映射必须逐字一致
+    // 与设置窗口外观面板同源：预览间距与字体族映射必须逐字一致
     const LAYOUT_PREVIEW = {
       compact: { gap: 4 },
       balanced: { gap: 8 },
@@ -200,7 +200,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
     const completionText = document.querySelector("#completionText");
     const btnCompletionNetflix = document.querySelector("#btnCompletionNetflix");
 
-    // 外观控件表：suffix 与 popup 的 STYLE_ROLE_SUFFIXES 同名，直接拼出 visualSettings 键
+    // 外观控件表：suffix 与 settings.js 的 STYLE_ROLE_SUFFIXES 同名，直接拼出 visualSettings 键
     const styleControls = {
       FontSize: { element: sliderFontSize, display: fontSizeDisplay, numeric: true, format: (value) => `${value} px` },
       VerticalOffset: { element: sliderOffset, display: offsetDisplay, numeric: true, format: (value) => `${value}%` },
@@ -234,7 +234,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
         if (!control.element) continue;
         const value = visualSettings[`${activeVisualRole}${suffix}`];
         control.element.value = value;
-        // 与 popup 的 writeAdvancedValues 一致：读数取自控件本身，滑块对齐 step 后才显示
+        // 与 settings.js 的 writeAdvancedValues 一致：读数取自控件本身，滑块对齐 step 后才显示
         writeStyleDisplay(suffix, control.numeric ? Number(control.element.value) : value);
       }
       if (previewPrimary) previewPrimary.classList.toggle("is-editing", activeVisualRole === "primary");
@@ -279,7 +279,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
 
     layoutChips.forEach((chip) => {
       chip.onclick = () => {
-        // 与 popup 一致：位置预设只切 subtitleLayoutPreset，逐行偏移量由自由模式滑杆单独维护
+        // 与设置窗口一致：位置预设只切 subtitleLayoutPreset，逐行偏移量由自由模式滑杆单独维护
         const layout = chip.dataset.onboardingLayout;
         visualSettings.subtitleLayoutPreset = layout;
         layoutChips.forEach((c) => c.classList.toggle("is-active", c.dataset.onboardingLayout === layout));
@@ -608,7 +608,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
       });
     };
 
-    // ===== 模型发现：与 popup 的「获取模型」共用 background 的 BILAYER_LIST_MODELS =====
+    // ===== 模型发现：与设置窗口的「获取模型」共用 background 的 BILAYER_LIST_MODELS =====
     // background 只从存储中的 provider 读取密钥，所以发送前必须先把当前草稿落盘为临时 provider
     const MODEL_TEST_PROVIDER_ID = "onboarding-test";
 
@@ -724,7 +724,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
         writeModelFeedback("error", message);
       };
 
-      // 与 popup 的「获取模型」一致：没有密钥先要求保存/输入密钥
+      // 与设置窗口的「获取模型」一致：没有密钥先要求保存/输入密钥
       if (!credential) {
         showError(i18n.t("providerModelsNeedKey"));
         inputApiKey.focus();
@@ -775,7 +775,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
     };
 
     function renderVisualPreview() {
-      // 与 popup writePreview 一致：预设决定堆叠间距，自由模式才使用逐行底部位置
+      // 与 settings.js 的 writePreview 一致：预设决定堆叠间距，自由模式才使用逐行底部位置
       const preset = visualSettings.subtitleLayoutPreset;
       if (previewStage) {
         previewStage.dataset.layout = preset;
@@ -790,7 +790,7 @@ const runtime = globalThis.browser ?? globalThis.chrome;
       applyOnboardingStyle(previewSecondary, "secondary");
     }
 
-    // 与 popup applyPreviewStyle 逐行同构：同一套字号缩放、最大宽度与字体族映射
+    // 与 settings.js 的 applyPreviewStyle 逐行同构：同一套字号缩放、最大宽度与字体族映射
     function applyOnboardingStyle(element, role) {
       if (!element) return;
       const val = (suffix) => visualSettings[`${role}${suffix}`];

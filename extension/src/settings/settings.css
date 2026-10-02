@@ -1,0 +1,724 @@
+/*
+ * [INPUT]: 依赖 tokens.css 的语义令牌（扁平契约的 --radius-tag/-control/-surface、--groove、--border、--shadow-popover，以及 --bl-ease-* 缓动）与 controls.css 的控件基线，以及 settings.html 的状态、四页签、字幕轨道与样式控件结构
+ * [OUTPUT]: 提供整窗可缩放的四页签侧栏（≤820px 退化为顶部 tab bar）、界面语言切换、诊断快捷入口、单一滚动源工作区（滚动只发生在 .tab-panel）、页签换页的错峰入场动画，以及扁平卡片（一层不透明 --surface + 1px --border 发丝外框 + --radius-surface(6px)）、内凹槽次级分组、排版阶梯、状态标记与宽视口多列铺开。字幕页在宽视口下保持**单列主轴**（启用字幕 → 字幕来源 → 播放显示各占整行），宽度由区内两级网格用满：轨道两张 .track-card 并排（1px 分隔线随之从横向改纵向）、播放显示的两条 .setting-row 并排；标题右侧的两个 .icon-button 落进 .action-group 的内凹工具簇。控件外观一律留给 controls.css，本表只写布局、组件变体、扁平表面与排版收尾（标题 text-wrap: balance、成段文字/状态行 text-wrap: pretty，旧浏览器自动降级为普通断行）
+ * [POS]: settings 基础视觉层，由 settings.html 在 tokens.css/controls.css 之后加载；整窗设置界面（默认窗口 1240×940（窗口外高，内高约 852），非固定弹窗）。卡片不再用双层壳：无透明边框、无 background-clip 分层、无顶部高光，卡片只靠 1px 发丝边与表面色分层，面板/卡片一律不投阴影
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+
+* { box-sizing: border-box; }
+
+/* 整窗语义：填满视口且禁止页面级滚动条，滚动只下放到 .tab-panel（单一滚动源） */
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+
+body {
+  font-family: var(--bl-font-sans);
+  color: var(--fg);
+  background: var(--app-backdrop);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p { margin: 0; }
+
+/* 排版收尾：页面级/分组级标题平衡断行，成段说明避免末行孤字 */
+h1, h2, h3 { text-wrap: balance; }
+
+p, small { text-wrap: pretty; }
+
+/* ===== 动效基元（全部只动 transform/opacity，且被 prefers-reduced-motion 覆盖） ===== */
+@keyframes bl-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes bl-breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .4; transform: scale(.8); }
+}
+
+/* 选中标记条的弹簧生长：scaleY 自带 transform-origin，不触发布局 */
+@keyframes bl-pop {
+  from { opacity: 0; transform: scaleY(.3); }
+  to { opacity: 1; transform: scaleY(1); }
+}
+
+/* ===== 扁平表面（一层不透明底 + 1px 发丝外框 + 6px 圆角）=====
+   不再有外托/内芯两层色块、没有透明边框与 background-clip、没有顶部高光；
+   分级只靠「1px 发丝线 + 表面色深浅 + 间距」，面板/卡片一律不投阴影 */
+.settings-list:not(.ai-toggle-list),
+.track-grid,
+.style-section,
+.ai-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-surface);
+  background-color: var(--surface);
+  transition: border-color var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+/* 被动容器（不承载点击）hover 只把外框提一档表达「鼠标停在这块区域」：不位移、不投影 */
+.settings-list:not(.ai-toggle-list):hover,
+.track-grid:hover,
+.style-section:hover,
+.ai-section:hover {
+  border-color: var(--border-strong);
+}
+
+/* 内凹槽：嵌在表面里的次级分组（嵌套开关组、服务表单块、分段控件底槽）——只刻进去，不再加壳 */
+.ai-toggle-list,
+.provider-editor,
+.ai-credential,
+.preset-list,
+.role-selector {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background-color: var(--groove);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ===== 设置窗口框架与导航 ===== */
+.app-shell {
+  display: grid;
+  /* 侧栏按视口比例伸缩并夹在上下限内：1240 宽约 217px、1000 宽约 180px（命中下限），窗口继续缩窄也不再挤压内容。
+     下限 180px 时英文最长项 “Translation Services” 118.8px 仍能单行不截断；≤820px 本列退化为顶部 tab bar，见文件末尾媒体查询 */
+  grid-template-columns: clamp(180px, 17.5%, 224px) minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 侧栏是常驻的不透明表面：右缘由 1px 发丝线分隔，不再磨砂、不再有顶部高光 */
+.app-sidebar {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background-color: var(--sidebar-bg);
+}
+
+.app-header { min-height: 83px; padding: var(--bl-space-9) var(--bl-space-5) var(--bl-space-8); }
+
+.brand { display: flex; align-items: center; min-width: 0; gap: var(--bl-space-3); }
+
+.brand-mark {
+  flex: none;
+  border-radius: var(--radius-control);
+}
+
+.brand h1 {
+  overflow: hidden;
+  font-size: var(--bl-font-md);
+  font-weight: var(--bl-weight-bold);
+  line-height: var(--bl-leading-tight);
+  letter-spacing: -.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 头部同样是不透明表面：底缘一条 1px 发丝线，不投漫射底影、不磨砂 */
+.workspace-header {
+  flex: none;
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bl-space-6);
+  padding: var(--bl-space-6) var(--bl-space-9);
+  border-bottom: 1px solid var(--border);
+  background: var(--header-bg);
+}
+
+.workspace-heading { min-width: 0; }
+
+/* 排版阶梯第 1 级：页标题＝最大字号 + 最紧字距 */
+.workspace-heading h2 {
+  font-size: 19px;
+  font-weight: var(--bl-weight-bold);
+  letter-spacing: -.028em;
+  line-height: var(--bl-leading-tight);
+}
+
+.page-status {
+  display: flex;
+  align-items: center;
+  gap: var(--bl-space-3);
+  margin-top: var(--bl-space-2);
+  color: var(--fg-muted);
+  font-size: var(--bl-font-sm);
+  line-height: var(--bl-leading-snug);
+  text-wrap: pretty;
+}
+
+/* 状态点：三态只靠颜色区分（loading 另加呼吸，reduced-motion 下整段动画失效），不再有光晕 */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: var(--bl-radius-2xs);
+  background: var(--fg-faint);
+  transition: background-color var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+.status-dot[data-state="ready"] { background: var(--success); }
+.status-dot[data-state="error"] { background: var(--danger); }
+.status-dot[data-state="loading"] {
+  background: var(--warning);
+  animation: bl-breathe 1.9s var(--bl-ease-inout-quint) infinite;
+}
+
+/* 页签列表＝凹槽底，选中项改用扁平强调色填充 + 左侧 2px 强调色条 */
+.tab-list {
+  display: grid;
+  align-content: start;
+  gap: var(--bl-space-1);
+  margin: 0 var(--bl-space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-2);
+  background: var(--groove);
+}
+
+.tab-button {
+  position: relative;
+  border: 0;
+  border-radius: var(--radius-control);
+  /* 行高提到 38px、横向内边距加一档，让四条页签在加宽后的侧栏里更透气 */
+  min-height: 38px;
+  padding: 0 var(--bl-space-6);
+  color: var(--fg-muted);
+  background: transparent;
+  font-size: var(--bl-font-sm);
+  font-weight: var(--bl-weight-medium);
+  text-align: left;
+  transition: background-color var(--bl-duration-base) var(--bl-ease-standard), color var(--bl-duration-base) var(--bl-ease-standard),
+    transform var(--bl-duration-base) var(--bl-ease-spring);
+}
+
+.tab-button:hover:not(.is-active) { background: var(--control); color: var(--fg); transform: translateX(1px); }
+
+/* 选中形态＝扁平强调色填充 + 左侧 2px 强调色条，不发光、不投阴影、不改变按钮盒 */
+.tab-button.is-active {
+  color: var(--fg-emphasis);
+  background: var(--accent-soft);
+  font-weight: var(--bl-weight-semibold);
+}
+
+.tab-button.is-active::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  border-radius: var(--bl-radius-2xs) 0 0 var(--bl-radius-2xs);
+  background: var(--accent);
+  content: "";
+  transform-origin: 50% 50%;
+  animation: bl-pop var(--bl-duration-slower) var(--bl-ease-springy) backwards;
+}
+
+/* 自绘 box-shadow 的元素必须自己把焦点环带回来（否则会盖掉 controls.css 的 button:focus-visible） */
+.tab-button:focus-visible { box-shadow: var(--focus-ring); }
+
+.sidebar-tools {
+  display: flex;
+  margin-top: auto;
+  flex-direction: column;
+  gap: var(--bl-space-1);
+  border-top: 1px solid var(--border);
+  padding: var(--bl-space-5) var(--bl-space-4) var(--bl-space-6);
+}
+
+/* 侧栏界面语言控件：只声明与全局 select / .field-label 不同的部分 */
+.sidebar-language-label {
+  display: block;
+  padding: 0 var(--bl-space-1) var(--bl-space-3);
+  /* 11px/570 的 “Interface language” 宽 102px，加宽后的侧栏内容区足够单行容纳，无需再收紧字距 */
+  white-space: nowrap;
+}
+
+/* 自绘箭头回到 controls.css 基线（padding-right + 右侧 4px 定位）：加宽后的侧栏能完整容纳三个选项而不裁切 */
+.sidebar-language-select {
+  min-height: var(--bl-control-lg);
+  margin-bottom: var(--bl-space-2);
+  background-color: var(--control);
+  font-weight: var(--bl-weight-medium);
+}
+
+.sidebar-action {
+  display: flex;
+  width: 100%;
+  min-height: var(--bl-control-xl);
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: 0 var(--bl-space-4);
+  color: var(--fg-muted);
+  background: transparent;
+  font-size: var(--bl-font-sm);
+  font-weight: var(--bl-weight-medium);
+  text-align: left;
+  transition: background-color var(--bl-duration-base) var(--bl-ease-standard), color var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+.sidebar-action:hover { color: var(--fg-emphasis); background: var(--control); }
+
+/* 标签与图标字形分开定量：图标字形与 .icon-button 的 SVG 同为 --bl-icon-size，标签回到基准字号 */
+.sidebar-action span[data-i18n] { font-size: var(--bl-font-sm); }
+
+/* 「按钮里的按钮」：裸箭头收进自己的小方形底座，hover 时随箭头斜向位移并放大，形成内部张力 */
+.sidebar-action span[aria-hidden="true"] {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: var(--bl-radius-2xs);
+  color: var(--fg-faint);
+  background: var(--groove);
+  font-size: 11px;
+  line-height: 1;
+  place-items: center;
+  transition: transform var(--bl-duration-base) var(--bl-ease-springy), background-color var(--bl-duration-base) var(--bl-ease-standard),
+    color var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+.sidebar-action:hover span[aria-hidden="true"] {
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+  transform: translate(1.5px, -1.5px) scale(1.08);
+}
+
+/* 页签面板是唯一滚动源：由 .workspace 的 flex 行高决定高度，不再硬算 100% - 72px */
+.tab-panel {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: var(--bl-space-9);
+  padding: var(--bl-space-9) var(--bl-space-9) var(--bl-space-10);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/* 换页时面板直接子项错峰淡入上浮：display 由 none 恢复即重跑动画，无需任何 JS 参与 */
+.tab-panel:not([hidden]) > * {
+  animation: bl-rise var(--bl-duration-panel) var(--bl-ease-out-expo) backwards;
+}
+
+.tab-panel:not([hidden]) > *:nth-child(1) { animation-delay: 0ms; }
+.tab-panel:not([hidden]) > *:nth-child(2) { animation-delay: 45ms; }
+.tab-panel:not([hidden]) > *:nth-child(3) { animation-delay: 90ms; }
+.tab-panel:not([hidden]) > *:nth-child(4) { animation-delay: 135ms; }
+.tab-panel:not([hidden]) > *:nth-child(5) { animation-delay: 180ms; }
+.tab-panel:not([hidden]) > *:nth-child(6) { animation-delay: 225ms; }
+.tab-panel:not([hidden]) > *:nth-child(7) { animation-delay: 270ms; }
+.tab-panel:not([hidden]) > *:nth-child(n + 8) { animation-delay: 315ms; }
+
+[hidden],
+.tab-panel[hidden],
+.tab-panel.provider-split-panel[hidden] {
+  display: none !important;
+}
+
+.tab-panel::-webkit-scrollbar { width: var(--bl-space-4); }
+
+.tab-panel::-webkit-scrollbar-thumb {
+  border: var(--bl-space-1) solid transparent;
+  border-radius: var(--bl-radius-2xs);
+  background: var(--scrollbar-thumb);
+  background-clip: content-box;
+}
+
+.tab-panel::-webkit-scrollbar-thumb:hover { background: var(--border-hover); background-clip: content-box; }
+
+.tab-panel::-webkit-scrollbar-track { background: transparent; }
+
+/* ===== 标题与分组（层级阶梯：页标题 19px → 分组标题 14px → 卡片标题 11px 大写字距标签） ===== */
+h2 {
+  font-size: var(--bl-font-sm);
+  font-weight: var(--bl-weight-bold);
+  letter-spacing: -.005em;
+}
+
+.section-heading, .action-group, .range-heading, .setting-row { display: flex; align-items: center; }
+
+.section-heading, .range-heading, .setting-row { justify-content: space-between; }
+
+.section-heading { min-height: var(--bl-space-12); gap: var(--bl-space-6); }
+
+.section-heading h2 { font-size: var(--bl-font-lg); letter-spacing: -.015em; }
+
+.action-group {
+  gap: var(--bl-space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-1);
+  background-color: var(--groove);
+}
+
+.source-section, .playback-section { display: grid; gap: var(--bl-space-8); }
+
+/* ===== 模式卡片 (Onboarding 风格) ===== */
+.card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--bl-space-5); }
+
+.select-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bl-space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-surface);
+  padding: var(--bl-space-6) var(--bl-space-8);
+  color: var(--surface-fg);
+  background: var(--card-bg);
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--bl-duration-base) var(--bl-ease-spring), border-color var(--bl-duration-base) var(--bl-ease-standard),
+    background-color var(--bl-duration-base) var(--bl-ease-standard);
+}
+
+.select-card:hover { border-color: var(--border-hover); background: var(--card-bg-hover); transform: translateY(-1px); }
+.select-card:active { transform: scale(.99); }
+
+/* 选中态：扁平强调色填充 + 强调色描边，不发光、不叠渐变、不投阴影 */
+.select-card.is-selected {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.select-card:focus-visible { box-shadow: var(--focus-ring); }
+
+.card-badge {
+  position: absolute;
+  top: var(--bl-space-5);
+  right: var(--bl-space-6);
+  padding: var(--bl-space-1) var(--bl-space-3);
+  border-radius: var(--radius-tag);
+  color: var(--badge-fg);
+  background: var(--badge-bg);
+  font-size: var(--bl-font-2xs);
+  font-weight: var(--bl-weight-semibold);
+}
+
+/* 选中徽标用强调底色 + --fg-emphasis 正文（明暗两态分别 14:1 / 7:1，不再靠浅蓝上的深蓝） */
+.select-card.is-selected .card-badge { color: var(--fg-emphasis); background: var(--accent-badge); }
+
+.select-card strong { color: var(--fg); font-size: var(--bl-font-lg); font-weight: var(--bl-weight-semibold); letter-spacing: -.01em; }
+
+.select-card span:not(.card-badge) { color: var(--fg-muted); font-size: var(--bl-font-xs); line-height: var(--bl-leading-snug); text-wrap: pretty; }
+
+/* ===== 字幕来源与通用表单 ===== */
+.track-grid { display: grid; }
+
+.settings-list { display: block; }
+
+.track-card { display: grid; gap: var(--bl-space-4); padding: var(--bl-space-6) var(--bl-space-7); }
+
+.track-card + .track-card { border-top: 1px solid var(--border); }
+
+.field, .range-field { display: grid; min-width: 0; gap: var(--bl-space-3); }
+
+.field-label, .range-heading, .compact-field {
+  color: var(--fg-muted);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-medium);
+  line-height: var(--bl-leading-snug);
+}
+
+/* 状态文字：颜色之外再加形状信号（idle 空心环 / loading 空心环呼吸 / ready 实心点 / error 实心条） */
+.track-status {
+  min-height: var(--bl-space-7);
+  color: var(--fg-muted);
+  font-size: var(--bl-font-sm);
+  line-height: var(--bl-leading-snug);
+  overflow-wrap: anywhere;
+}
+
+.track-status::before {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: var(--bl-space-3);
+  border-radius: var(--bl-radius-2xs);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+  content: "";
+  vertical-align: 1px;
+}
+
+.track-status[data-state="ready"] { color: var(--success); font-weight: var(--bl-weight-medium); }
+.track-status[data-state="loading"] { color: var(--warning); font-weight: var(--bl-weight-medium); }
+.track-status[data-state="error"] { color: var(--danger); font-weight: var(--bl-weight-medium); }
+
+.track-status[data-state="ready"]::before { background: currentColor; box-shadow: none; }
+.track-status[data-state="loading"]::before { animation: bl-breathe 1.9s var(--bl-ease-inout-quint) infinite; }
+
+/* error 换成一条短横，形状本身即可区分，不依赖色觉 */
+.track-status[data-state="error"]::before {
+  width: 8px;
+  height: 3px;
+  border-radius: var(--bl-radius-2xs);
+  background: currentColor;
+  box-shadow: none;
+}
+
+.setting-row {
+  min-height: 58px;
+  gap: var(--bl-space-6);
+  padding: var(--bl-space-6) var(--bl-space-7);
+  border-bottom: 1px solid var(--border);
+}
+
+.setting-row:last-child { border-bottom: 0; }
+
+.setting-row > span:first-child { display: grid; min-width: 0; gap: var(--bl-space-1); }
+
+.setting-row strong { font-size: var(--bl-font-sm); font-weight: var(--bl-weight-semibold); }
+
+.setting-row small { color: var(--fg-muted); font-size: var(--bl-font-xs); line-height: var(--bl-leading-snug); }
+
+/* ===== 样式编辑器 ===== */
+/* 面板自身即滚动源（继承 .tab-panel 的 overflow-y），内部不再嵌套第二层滚动区 */
+.styles-panel { grid-template-rows: auto auto; gap: var(--bl-space-8); }
+
+.style-stage { display: grid; gap: var(--bl-space-8); }
+
+.style-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) var(--bl-control-md); align-items: center; gap: var(--bl-space-4); }
+
+.style-settings-scroll { display: grid; align-content: start; gap: var(--bl-space-8); }
+
+/* 卡片 padding 回到壳宽时代之前的值：1px 发丝边框可忽略不计 */
+.style-section { display: grid; gap: var(--bl-space-7); padding: var(--bl-space-8) var(--bl-space-7); }
+
+.style-section h2 {
+  color: var(--fg-muted);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-bold);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.preset-list, .role-selector { display: grid; gap: var(--bl-space-1); padding: var(--bl-space-1); }
+
+.preset-list { grid-template-columns: repeat(4, 1fr); }
+
+.role-selector { grid-template-columns: repeat(2, 1fr); }
+
+/* 分段控件：与全局按钮同高同 token，选中项用扁平强调色填充 + 强调色描边，不发光 */
+:is(.preset-list, .role-selector) button {
+  min-height: var(--bl-control-md);
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--fg-muted);
+  background: transparent;
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-medium);
+  transition: background-color var(--bl-duration-base) var(--bl-ease-standard), color var(--bl-duration-base) var(--bl-ease-standard),
+    box-shadow var(--bl-duration-base) var(--bl-ease-standard), transform var(--bl-duration-base) var(--bl-ease-spring);
+}
+
+:is(.preset-list, .role-selector) button:hover:not(.is-active) { color: var(--fg); background: var(--control); transform: translateY(-.5px); }
+
+:is(.preset-list, .role-selector) button:active { transform: scale(.98); }
+
+:is(.preset-list, .role-selector) button.is-active {
+  color: var(--fg-emphasis);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  font-weight: var(--bl-weight-bold);
+  animation: bl-pop var(--bl-duration-base) var(--bl-ease-springy) backwards;
+}
+
+:is(.preset-list, .role-selector) button:focus-visible { box-shadow: var(--focus-ring); }
+
+:is(.preset-list, .role-selector) button.is-active:focus-visible {
+  box-shadow: var(--focus-ring), inset 0 0 0 1px var(--accent-line);
+}
+
+.role-selector button { display: inline-flex; align-items: center; justify-content: center; gap: var(--bl-space-3); }
+
+.role-swatch { width: 7px; height: 7px; flex: none; border-radius: var(--radius-tag); background: var(--role-primary); }
+.role-swatch.secondary { background: var(--role-secondary); }
+
+/* 字段格同样只按内容收口：短的那一格不再被拉高，标签因此不会被推离自己的控件 */
+.control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--bl-space-8) var(--bl-space-6); align-items: start; }
+
+.range-heading { gap: var(--bl-space-3); }
+
+.range-heading output {
+  color: var(--fg);
+  font-size: var(--bl-font-xs);
+  font-weight: var(--bl-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.compact-field { display: grid; min-width: 0; gap: var(--bl-space-3); }
+
+/* ===== 预览画板：屏幕语义 —— 平面深色底 + 1px 发丝外框 + 6px 圆角，不再反光、不投光 ===== */
+.preview {
+  position: relative;
+  display: flex;
+  height: 140px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--preview-gap, 8px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-surface);
+  /* padding 回到壳宽时代之前的值：1px 发丝边框可忽略，舞台内部几何与改版前逐像素一致（总高仍为 140px） */
+  padding: var(--bl-space-11) var(--bl-space-8) var(--bl-space-8);
+  background-color: var(--stage-bg);
+  text-align: center;
+}
+
+.preview-label {
+  position: absolute;
+  top: var(--bl-space-5);
+  left: var(--bl-space-6);
+  color: var(--stage-label-fg);
+  font-size: var(--bl-font-2xs);
+  font-weight: var(--bl-weight-medium);
+  letter-spacing: .02em;
+}
+
+.preview-line {
+  z-index: 1;
+  width: fit-content;
+  max-width: 330px;
+  margin-inline: auto;
+  border-radius: var(--radius-tag);
+  padding: var(--bl-space-1) var(--bl-space-3);
+  color: var(--stage-fg);
+  background: var(--stage-line-bg);
+  font-family: var(--bl-font-sans);
+  font-weight: var(--bl-weight-bold);
+  line-height: var(--bl-leading-tight);
+  overflow-wrap: anywhere;
+  text-shadow: var(--stage-line-shadow);
+  outline: 1px solid transparent;
+  outline-offset: 3px;
+  transition: outline-color var(--bl-duration-base) var(--bl-ease-standard), transform var(--bl-duration-base) var(--bl-ease-spring);
+}
+
+.preview-line.primary.is-editing { outline-color: var(--role-primary-ring); }
+.preview-line.secondary.is-editing { outline-color: var(--role-secondary-ring); }
+
+.preview[data-layout="free"] .preview-line { position: absolute; left: 50%; margin: 0; transform: translateX(-50%); }
+.preview[data-layout="free"] .preview-line.primary { bottom: var(--preview-primary-bottom, 65px); }
+.preview[data-layout="free"] .preview-line.secondary { bottom: var(--preview-secondary-bottom, 28px); }
+
+/* ===== 宽视口：同一套 DOM 纯 CSS 铺开 =====
+   字幕页保持单列主轴（顶部「启用字幕」整行 → 来源区整行 → 播放显示整行），宽度交给区内两级网格用满：
+   轨道两张卡并排、播放显示的两条设置行并排。不靠拉高矮卡填空，也就没有右下死区。
+   AI 页仍是两列卡片，但卡片按内容收口（align-items: start），宁可底部参差也不留空壳 */
+@media (min-width: 900px) {
+  /* 轨道卡与播放设置行在区内并排：分隔线一并从横向改成纵向 */
+  .tab-panel[data-panel="subtitles"] .track-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .track-card + .track-card {
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  .playback-section > .settings-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .playback-section .setting-row { border-bottom: 0; }
+
+  .playback-section .setting-row + .setting-row { border-left: 1px solid var(--border); }
+
+  /* AI 页：四张设置卡片两列排布，顶部提示块整行横跨 */
+  .tab-panel[data-panel="ai"] { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .tab-panel[data-panel="ai"] > .availability { grid-column: 1 / -1; }
+}
+
+/* 翻译服务页（主/详分栏加宽与详情两列）的组件级覆盖写在 settings-ai.css，因为它后于本表加载 */
+
+/* ===== 窄窗口（≤820px）：侧栏退化为顶部 tab bar，面板允许内部滚动 ===== */
+@media (max-width: 820px) {
+  .app-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+
+  .app-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--bl-space-2);
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding-right: var(--bl-space-5);
+  }
+
+  .app-header { min-height: 0; padding: var(--bl-space-5) var(--bl-space-3) var(--bl-space-5) var(--bl-space-7); }
+
+  .tab-list {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--bl-space-1);
+    margin: var(--bl-space-3) var(--bl-space-2);
+    padding: var(--bl-space-1);
+  }
+
+  .tab-button { flex: none; min-height: var(--bl-control-md); padding: 0 var(--bl-space-5); text-align: center; white-space: nowrap; }
+  .tab-button.is-active::before { display: none; }
+
+  .sidebar-tools {
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--bl-space-3);
+    margin-top: 0;
+    margin-left: auto;
+    border-top: 0;
+    padding: var(--bl-space-3) 0 var(--bl-space-3) var(--bl-space-2);
+  }
+
+  .sidebar-language-label { padding: 0 var(--bl-space-1) 0 0; white-space: nowrap; }
+
+  .sidebar-language-select { width: auto; min-width: 108px; margin: 0; }
+
+  .sidebar-action { width: auto; min-height: var(--bl-control-md); }
+}
+
+@media (max-width: 470px) {
+  .workspace-header { padding-inline: var(--bl-space-7); }
+
+  .tab-panel { padding-inline: var(--bl-space-7); }
+
+  /* .ai-fields 的单列退化写在 settings-ai.css（它后于本表加载，才能覆盖组件基线） */
+  .control-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 全局降级：本页所有动画在此整段失效（animation: none 让元素直接落在自然态，
+   不会在延时里保持不可见，也不会有 from 帧的闪动），过渡同时压到 0 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition-duration: .01ms !important;
+  }
+}

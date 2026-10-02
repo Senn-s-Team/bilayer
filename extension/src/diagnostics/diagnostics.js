@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 browser/chrome runtime 消息及同源 export.html 下载框架
- * [OUTPUT]: 轮询原始报文，提供 JSON 检查器及不导航主页面的导出入口
+ * [INPUT]: 依赖 browser/chrome runtime 消息及同源 export.html 下载框架；导出结果就地写入 diagnostics.html 的 #exportStatus 状态行
+ * [OUTPUT]: 轮询原始报文，提供 JSON 检查器及不导航主页面的导出入口；导出无记录/失败/框架未就绪时把文案写进 #exportStatus（data-state=error，无文案则收回 display），不再用阻塞式 alert
  * [POS]: diagnostics 模块的交互层，只允许扩展诊断页读取 background 内存记录
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -35,7 +35,8 @@ const elements = {
   jsonPathValue: document.querySelector("#jsonPathValue"),
   toggleRaw: document.querySelector("#toggleRaw"),
   copyPayload: document.querySelector("#copyPayload"),
-  exportCases: document.querySelector("#exportCases")
+  exportCases: document.querySelector("#exportCases"),
+  exportStatus: document.querySelector("#exportStatus")
 };
 
 let records = [];
@@ -87,6 +88,15 @@ function showLocalPreview() {
   render();
 }
 
+// 导出结果就地写在头部状态行里（原来用阻塞式 alert）；.live-status 自带 display，需显式收回才隐藏
+function writeExportStatus(message) {
+  const status = elements.exportStatus;
+  const text = message ?? "";
+  status.textContent = text;
+  status.dataset.state = text ? "error" : "";
+  status.style.display = text ? "" : "none";
+}
+
 function bindControls() {
   elements.refresh.addEventListener("click", () => void refresh());
   elements.toggle.addEventListener("click", async () => {
@@ -131,21 +141,22 @@ function bindControls() {
   });
   elements.exportCases?.addEventListener("click", () => {
     if (!records.length) {
-      alert(i18n.t("diagExportEmpty"));
+      writeExportStatus(i18n.t("diagExportEmpty"));
       return;
     }
+    writeExportStatus("");
     const dateStr = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const filename = `netflix-subtitles-cases-${dateStr}.json`;
     const text = JSON.stringify(records, null, 2);
     if (runtime.downloads?.download) {
       const url = `data:application/json;charset=utf-8,${encodeURIComponent(text)}`;
       runtime.downloads.download({ url, filename, saveAs: true }, () => {
-        if (runtime.runtime.lastError) alert(i18n.t("diagExportFailed"));
+        if (runtime.runtime.lastError) writeExportStatus(i18n.t("diagExportFailed"));
       });
       return;
     }
     if (!exportFrame.contentWindow?.downloadCases) {
-      alert(i18n.t("diagExportNotReady"));
+      writeExportStatus(i18n.t("diagExportNotReady"));
       return;
     }
     exportFrame.contentWindow.downloadCases(filename, text);
@@ -603,6 +614,8 @@ function renderRubyTextTo(container, rawText) {
   text = text.replace(/\{([一-龯々〆ヵヶ]+)[(（]([ぁ-ん]+)[)）]\}/g, "{$1|$2}");
   text = text.replace(/\{([^|{}]+)\|([^|{}]*[一-龯々〆ヵヶ][^|{}]*)\}/g, "$1$2");
   text = text.replace(/\{([^{}|]+)\}/g, "$1");
+  // 与 overlay.js 的 renderRubyText 同构：正则必须在函数内局部构造，共享带 g 的常量会在两次调用间残留 lastIndex 而截断后续渲染
+  const rubyPattern = /\{([^|{}]+)\|([^|{}]+)\}/g;
   let lastIndex = 0;
   let match;
 

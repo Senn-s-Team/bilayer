@@ -1,7 +1,7 @@
 <!--
-  [INPUT]: 依赖 popup.css 与 popup-ai.css 的 macOS 设置面板样式及 popup.js 的模式、provider、翻译参数、会话额度与日志交互
-  [OUTPUT]: 提供四个设置页签、会话翻译额度字段及其用量读数、AI 页顶部「翻译服务」卡片中的当前翻译服务选择器（#aiProviderSelect，选项由 popup.js 依 currentProviders 写入）、字幕页模式卡片下与 AI 页共用的 AI 不可用提示块（#modeAvailability/#aiAvailability，覆盖无轨道/读不到轨道/未配置服务）、侧栏界面语言切换与直达报文面板的侧栏操作及独立工作区
-  [POS]: popup 模块的 DOM 壳；翻译提示词、前瞻参数与会话额度位于 provider 表单之外，由 manifest action.default_popup 加载
+  [INPUT]: 依赖 ../styles/tokens.css 与 ../styles/controls.css 的令牌层/控件基线、settings.css 与 settings-ai.css 的 macOS 设置面板样式，及 settings.js 的模式、provider、翻译参数、会话额度与日志交互
+  [OUTPUT]: 提供四个设置页签、会话翻译额度字段及其用量读数、AI 页顶部「翻译服务」卡片中的当前翻译服务选择器（#aiProviderSelect，选项由 settings.js 依 currentProviders 写入）、字幕页模式卡片下与 AI 页共用的 AI 不可用提示块（#modeAvailability/#aiAvailability，覆盖无轨道/读不到轨道/未配置服务）、侧栏界面语言切换与直达报文面板的侧栏操作及独立工作区、新增服务草案内部的就地状态行（#newDraftStatus，承载端点校验/模型目录拉取的失败说明）
+  [POS]: settings 模块的 DOM 壳；翻译提示词、前瞻参数与会话额度位于 provider 表单之外，由 background.openSettingsWindow() 以 windows.create({type:'popup'}) 独立窗口加载，windows API 不可用时回落标签页
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
 <!doctype html>
@@ -10,8 +10,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Bilayer</title>
-    <link rel="stylesheet" href="./popup.css">
-    <link rel="stylesheet" href="./popup-ai.css">
+    <link rel="stylesheet" href="../styles/tokens.css">
+    <link rel="stylesheet" href="../styles/controls.css">
+    <link rel="stylesheet" href="./settings.css">
+    <link rel="stylesheet" href="./settings-ai.css">
   </head>
   <body>
     <main class="app-shell">
@@ -19,11 +21,11 @@
         <header class="app-header">
           <div class="brand">
             <img class="brand-mark" src="../../icons/icon-48.png" width="32" height="32" alt="">
-            <h1 data-i18n="popupBrand">双字幕</h1>
+            <h1 data-i18n="settingsBrand">双字幕</h1>
           </div>
         </header>
 
-        <nav class="tab-list" aria-label="设置分类" data-i18n-aria-label="popupNavAria" role="tablist" aria-orientation="vertical">
+        <nav class="tab-list" aria-label="设置分类" data-i18n-aria-label="settingsNavAria" role="tablist" aria-orientation="vertical">
           <button class="tab-button is-active" id="subtitlesTab" type="button" role="tab" aria-selected="true" aria-controls="subtitlesPanel" data-tab="subtitles" data-i18n="tabSubtitles">字幕</button>
           <button class="tab-button" id="aiTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="aiPanel" data-tab="ai" data-i18n="tabAi">AI 翻译</button>
           <button class="tab-button" id="providerTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="providerPanel" data-tab="provider" data-i18n="tabProviders">翻译服务</button>
@@ -32,8 +34,8 @@
         <div class="sidebar-tools">
           <label class="field-label sidebar-language-label" for="uiLanguage" data-i18n="uiLanguageLabel">界面语言</label>
           <select class="sidebar-language-select" id="uiLanguage" data-i18n-language aria-label="界面语言" data-i18n-aria-label="uiLanguageAria"></select>
-          <button class="sidebar-action" id="openOnboarding" type="button" aria-label="打开新手向导" data-i18n-aria-label="popupOnboardingAria"><span data-i18n="popupOnboardingLabel">向导</span> <span aria-hidden="true">↗</span></button>
-          <button class="sidebar-action" id="openRawDiagnostics" type="button" aria-label="打开诊断报文面板" data-i18n-aria-label="popupDiagnosticsAria"><span data-i18n="popupDiagnosticsLabel">诊断</span> <span aria-hidden="true">↗</span></button>
+          <button class="sidebar-action" id="openOnboarding" type="button" aria-label="打开新手向导" data-i18n-aria-label="settingsOnboardingAria"><span data-i18n="settingsOnboardingLabel">向导</span> <span aria-hidden="true">↗</span></button>
+          <button class="sidebar-action" id="openRawDiagnostics" type="button" aria-label="打开诊断报文面板" data-i18n-aria-label="settingsDiagnosticsAria"><span data-i18n="settingsDiagnosticsLabel">诊断</span> <span aria-hidden="true">↗</span></button>
         </div>
       </aside>
 
@@ -43,7 +45,7 @@
             <h2 id="activePageTitle" data-i18n="tabSubtitles">字幕</h2>
             <div class="page-status" role="status" aria-live="polite">
               <span id="statusDot" class="status-dot" data-state="loading"></span>
-              <span id="pageStatus" data-i18n="popupStatusConnecting">正在连接 Netflix</span>
+              <span id="pageStatus" data-i18n="settingsStatusConnecting">正在连接 Netflix</span>
             </div>
           </div>
         </header>
@@ -81,7 +83,7 @@
             <span data-i18n="modeAiDesc">大模型依据前后文生成生动口语译文，支持预翻译与模型切换。</span>
           </button>
         </div>
-        <!-- AI 不可用提示（字幕页）：由 popup.js 依页面状态的 subtitleAvailability/providerReadiness 填文，
+        <!-- AI 不可用提示（字幕页）：由 settings.js 依页面状态的 subtitleAvailability/providerReadiness 填文，
              条件不成立时保持 hidden，因此不会出现陈旧警告 -->
         <div id="modeAvailability" class="availability" role="status" aria-live="polite" hidden>
           <p id="modeAvailabilityLabel" class="availability-label"></p>
@@ -146,7 +148,7 @@
           <button id="aiAvailabilityAction" class="inline-link" type="button" hidden data-i18n="aiConfigureProviders">配置翻译服务 →</button>
         </div>
         <!-- 卡片 0: 当前翻译服务：与「翻译服务」页签主列表同源（currentProviders + aiProviderId），
-             选项由 popup.js 写入，绝不读取或显示凭证；无已配置服务时禁用并给出解释 -->
+             选项由 settings.js 写入，绝不读取或显示凭证；无已配置服务时禁用并给出解释 -->
         <section class="ai-section" aria-labelledby="aiProviderTitle">
           <h2 id="aiProviderTitle" data-i18n="aiProviderSection">翻译服务</h2>
           <label class="field" for="aiProviderSelect">
@@ -222,7 +224,7 @@
           </div>
           <p class="ai-consent" data-i18n="aiScheduleHelp">预翻译默认最多 10 组、限播放前方 60 秒；0 只翻译当前句。前后文默认每侧 2 条，仅用于语境消歧。</p>
           <p class="ai-consent" data-i18n="aiBudgetHelp">两项上限互不影响，任一项设为 0 即表示该项不限。计数包含前后文。</p>
-          <p class="ai-consent" data-i18n="aiBudgetWindowHelp">统计窗口是两项上限共用的计量周期，且跨重新加载保留：本次观看在刷新同一剧集页面后继续累计，本小时与本日按本机时间分桶。用量会持久化保存，关闭弹窗不会重置。</p>
+          <p class="ai-consent" data-i18n="aiBudgetWindowHelp">统计窗口是两项上限共用的计量周期，且跨重新加载保留：本次观看在刷新同一剧集页面后继续累计，本小时与本日按本机时间分桶。用量会持久化保存，关闭设置窗口不会重置。</p>
         </section>
 
         <!-- 卡片 3: 全局提示词 -->
@@ -353,6 +355,8 @@
                 <span class="field-label" data-i18n="providerNewDraftKey">API 密钥 (API Key)</span>
                 <input id="newDraftKey" type="password" autocomplete="off" placeholder="sk-..." spellcheck="false">
               </label>
+
+              <p id="newDraftStatus" class="ai-credential-status" role="status" aria-live="polite" hidden></p>
 
               <div class="new-draft-actions">
                 <button id="saveNewDraftBtn" class="ai-button ai-button-primary" type="button" data-i18n="providerNewDraftSave">保存密钥并添加</button>
@@ -506,6 +510,6 @@
       </div>
     </main>
     <script src="../i18n.js"></script>
-    <script src="./popup.js"></script>
+    <script src="./settings.js"></script>
   </body>
 </html>

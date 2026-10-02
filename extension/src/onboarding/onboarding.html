@@ -1,7 +1,7 @@
 <!--
-  [INPUT]: 依赖 browser/chrome storage 与 tabs API，支持向 background 发送连通性测试与模型列表请求，依赖 i18n.js 挂载 [data-i18n-language]
+  [INPUT]: 依赖 styles/tokens.css 与 styles/controls.css（本页样式表之前加载）、browser/chrome storage 与 tabs API，支持向 background 发送连通性测试与模型列表请求，依赖 i18n.js 挂载 [data-i18n-language]
   [OUTPUT]: 提供三步新手引导界面（环境检测、模式与 AI 服务/模型发现、全量外观微调）与页内完成态出口，输出用户选择的字幕模式、AI 服务配置与外观初始值并持久化
-  [POS]: src/onboarding 的核心页面，衔接首次安装与 popup 设置面板，具备完整实机与离线回落能力
+  [POS]: src/onboarding 的核心页面，衔接首次安装与设置窗口（settings.html），具备完整实机与离线回落能力
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
 <!doctype html>
@@ -10,6 +10,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title data-i18n="onboardingTitle">Bilayer · 新手引导</title>
+  <link rel="stylesheet" href="../styles/tokens.css">
+  <link rel="stylesheet" href="../styles/controls.css">
   <link rel="stylesheet" href="./onboarding.css">
 </head>
 <body>
@@ -26,7 +28,7 @@
 
       <div class="header-tools">
         <!-- 界面语言切换：选项与持久化由 i18n.js 挂载 [data-i18n-language] 时注入 -->
-        <select class="language-select" id="selectUiLanguage" data-i18n-language aria-label="Interface language" data-i18n-aria-label="uiLanguageAria"></select>
+        <select class="language-select" id="selectUiLanguage" data-i18n-language aria-label="界面语言" data-i18n-aria-label="uiLanguageAria"></select>
 
         <nav class="stepper" aria-label="向导步骤" data-i18n-aria-label="onboardingStepperAria">
           <div class="step-item is-active" id="stepItem1">
@@ -58,15 +60,15 @@
             <span class="status-dot" id="envDot" data-state="ready"></span>
             <span id="envMessage" data-i18n="onboardingEnvReady">已探测到 Netflix 播放页面，字幕引擎就绪</span>
           </div>
-          <button type="button" class="btn btn-outline" id="btnOpenNetflix" style="display: none;" data-i18n="onboardingOpenNetflix">打开 Netflix ↗</button>
+          <button type="button" class="btn btn-outline is-hidden" id="btnOpenNetflix" data-i18n="onboardingOpenNetflix">打开 Netflix ↗</button>
         </div>
 
         <div class="card-grid">
-          <div class="select-card" style="cursor: default;">
+          <div class="select-card is-static">
             <strong data-i18n="onboardingPermissionTitle">Safari 权限配置</strong>
             <span data-i18n="onboardingPermissionDesc">在 Safari 设置 → 扩展中勾选“在每个网站上始终允许”或“在 netflix.com 上始终允许”。</span>
           </div>
-          <div class="select-card" style="cursor: default;">
+          <div class="select-card is-static">
             <strong data-i18n="onboardingWebappTitle">独立 Web App 用户</strong>
             <span data-i18n="onboardingWebappDesc">若在“添加到程序坞”的独立 Netflix 窗口使用，需在该窗口的设置菜单内单独启用扩展。</span>
           </div>
@@ -97,7 +99,7 @@
         <div class="ai-drawer" id="aiDrawer">
           <div class="preset-header">
             <span class="form-label" data-i18n="onboardingPresetTitle">常用服务预设</span>
-            <span style="font-size: 11px; color: var(--text-muted);" data-i18n="onboardingPresetNote">密钥仅留存在本地 Safari 存储</span>
+            <span class="preset-note" data-i18n="onboardingPresetNote">密钥仅留存在本地 Safari 存储</span>
           </div>
 
           <div class="preset-pill-group" role="group" aria-label="常用服务预设" data-i18n-aria-label="onboardingPresetTitle">
@@ -115,7 +117,7 @@
               <label class="form-label" for="inputApiKey" data-i18n="providerNewDraftKey">API 密钥 (API Key)</label>
               <input type="password" id="inputApiKey" class="text-input" placeholder="sk-..." autocomplete="off">
               <div class="input-actions">
-                <button type="button" class="icon-btn" id="toggleKeyVisibility" title="切换明文显示" data-i18n-title="onboardingKeyToggle">👁</button>
+                <button type="button" class="icon-btn" id="toggleKeyVisibility" title="切换明文显示" data-i18n-title="onboardingKeyToggle"><svg viewBox="0 0 20 20" fill="none" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 10s2.8-4.6 7.5-4.6 7.5 4.6 7.5 4.6-2.8 4.6-7.5 4.6S2.5 10 2.5 10Z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
               </div>
             </div>
             <div class="form-field">
@@ -175,7 +177,7 @@
         </div>
 
         <div class="preview-stage" id="previewStage">
-          <div class="stage-badge" id="previewBadge" style="display: none;">
+          <div class="stage-badge is-hidden" id="previewBadge">
             <span class="stage-badge-dot"></span>
             <span data-i18n="onboardingAiStream">AI 实时翻译流</span>
           </div>
@@ -318,8 +320,8 @@
         <span class="status-dot" data-state="ready"></span>
         <span id="completionText" data-i18n="onboardingSaved">保存就绪 ✓</span>
       </div>
-      <button type="button" class="btn btn-quiet" id="btnBack" style="visibility: hidden;" data-i18n="onboardingBack">上一步</button>
-      <div style="display: flex; gap: 10px;">
+      <button type="button" class="btn btn-quiet is-invisible" id="btnBack" data-i18n="onboardingBack">上一步</button>
+      <div class="footer-actions">
         <button type="button" class="btn btn-quiet" id="btnSkip" data-i18n="onboardingSkip">跳过向导</button>
         <button type="button" class="btn btn-primary" id="btnForward" data-i18n="onboardingNext">下一步</button>
         <button type="button" class="btn btn-accent" id="btnCompletionNetflix" data-i18n="onboardingOpenNetflix" hidden>打开 Netflix ↗</button>
