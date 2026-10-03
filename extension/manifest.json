@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "default_locale": "en",
   "name": "__MSG_extName__",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "__MSG_extDescription__",
   "icons": {
     "16": "icons/icon-16.png",
@@ -30,6 +30,7 @@
         "src/content/subtitleParser.js",
         "src/content/subtitleStore.js",
         "src/content/netflixAdapter.js",
+        "src/content/translationCache.js",
         "src/content/translationScheduler.js",
         "src/content/overlay.js",
         "src/content/fullscreenMount.js",

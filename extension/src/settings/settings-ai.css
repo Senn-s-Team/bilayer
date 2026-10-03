@@ -1,6 +1,6 @@
 /*
  * [INPUT]: 依赖 tokens.css 的语义令牌（扁平契约的 --radius-tag/-control/-surface、--groove、--border、--shadow-popover）与 controls.css 的控件基线，以及 settings.css 的面板布局与 settings.html 的字幕模式和 AI 设置结构
- * [OUTPUT]: 提供翻译设置分组（卡片表面由 settings.css 统一声明，本层只落内容栅格与 11px 大写字距的卡片标题）、AI 不可用提示（.availability 告警槽 + 左侧 3px 微条、软提示 .availability.is-soft、褪色的 .select-card.is-unavailable）、服务预设按钮容器、翻译服务页的一体化分栏（.provider-split-view 单层表面 + 1px 发丝边 + 6px 圆角，且**按内容收口**：面板 height: auto、两栏 align-items: start、两侧窗格 overflow: visible——内层滚动一律交还 .tab-panel，全页只有一根滚动条）、模型下拉（浮层：--surface + 1px 发丝边 + 唯一的 --shadow-popover），AI 页额度读数之后的连续 .ai-consent 用相邻兄弟选择器收成一簇内凹细注（首/末块各补圆角、段间 1px 发丝分隔、负外边距吃掉 .ai-section 的行距），以及宽视口下分栏加宽（--split-master）与详情表单两列、窄视口下单列退化，外加成段说明的行长上限（.ai-consent/.availability-hint 收在 65ch）
+ * [OUTPUT]: 提供 AI 缓存跨列卡片布局、local retention disclosure/统计/确认操作的窄屏布局，翻译设置分组、AI 不可用提示、服务分栏与模型下拉浮层，以及字幕/AI 设置中的行长与响应式布局
  * [POS]: settings 的 AI 与字幕模式视觉层，在 tokens.css/controls.css/settings.css 之后加载；组件级响应式覆盖写在本层以保证层叠顺序。全层无磨砂/无模糊、无光泽、无胶囊圆角，表面一律「不透明底 + 1px 发丝边」，只有下拉浮层投单层收敛阴影
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -338,6 +338,79 @@
   line-height: var(--bl-leading-relaxed);
 }
 
+.ai-cache-section { min-width: 0; }
+.ai-cache-section .ai-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ai-cache-retention[hidden] { display: none; }
+
+.ai-cache-retention:not([hidden]) {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background-color: var(--groove);
+}
+
+.ai-cache-retention summary {
+  display: flex;
+  min-height: var(--bl-control-lg);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bl-space-4);
+  padding: 0 var(--bl-space-4);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: var(--bl-font-sm);
+  font-weight: var(--bl-weight-medium);
+  list-style: none;
+}
+
+.ai-cache-retention summary::-webkit-details-marker { display: none; }
+.ai-cache-retention summary::after { width: 6px; height: 6px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; content: ""; transform: rotate(45deg); }
+.ai-cache-retention[open] summary::after { transform: rotate(225deg); }
+#aiCacheRetentionValue { margin-left: auto; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+
+.ai-cache-local-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bl-space-6);
+  padding: 0 var(--bl-space-4) var(--bl-space-4);
+}
+
+.ai-cache-readout {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--bl-space-3);
+  color: var(--fg-muted);
+  font-size: var(--bl-font-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-cache-actions,
+.ai-cache-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bl-space-3);
+}
+
+.ai-cache-confirm {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--bl-space-4);
+  background-color: var(--groove);
+}
+
+
+.diagnostics-panel { display: block; }
+
+@media (max-width: 700px) {
+  .ai-cache-readout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ai-cache-section .ai-fields,
+  .ai-cache-local-fields { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* 凭证块也是刻进卡片的凹槽（settings.css 统一声明），这里只保留纵向节奏 */
 .ai-credential {
   display: grid;
@@ -478,6 +551,7 @@
 }
 
 .ai-toggle-list .setting-row { border-bottom: 0; }
+
 
 /* ===== 响应式：同一套 DOM，组件级覆盖写在本表末端以保证层叠顺序 ===== */
 /* 宽视口：保留主/详分栏并利用宽度——加宽服务列表列、详情表单两列 */

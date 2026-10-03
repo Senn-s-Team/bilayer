@@ -3,16 +3,16 @@
 
 成员清单
 i18n.js: 扩展页共享的国际化薄封装，提供 t/apply/uiLanguage/availableLanguages/setLanguage/mountLanguageSwitcher 冻结 API，偏好存于 storage.local.uiLanguage 并从 _locales/<code>/messages.json 同步解析（同步读取被拒时异步补取），自动挂载 [data-i18n-language] 选择器
-background/: 扩展后台上下文，负责安装默认设置、旧键迁移、字幕下载兜底及多 provider BYOK 翻译请求
-content/: Netflix 页面隔离上下文，负责双原生/原生加 AI 互斥渲染、独立 AI 源轨道、可调前瞻、首句等待、按可配置窗口（session/hour/day）执行并持久化的翻译输入额度与 overlay
-diagnostics/: 独立扩展诊断页，开启后台原始报文采集并在宽屏面板查看完整请求体、响应体与请求头；页面视觉层按语义拆为 diagnostics.css（外壳/列表/详情）与 diagnostics-payload.css（报文区/JSON 树/视效预览）
+background/: 扩展后台上下文，隔离 provider 凭证与上游请求，负责本机译文缓存和原始诊断的独立 IndexedDB 存储、授权、分页及清理写入隔离
+content/: Netflix 页面隔离上下文，负责字幕渲染、输入额度、源轨道快照及按 occurrence 的精确缓存复用；session 缓存属于播放页，local 存取由 background 执行
+diagnostics/: 设置窗口内按需挂载的诊断控制器，查询摘要后按选中项读取完整报文，提供过滤、搜索、JSON 树、字幕视图与完整历史导出；保留同源 export 框架承接下载
 onboarding/: 独立引导与首次安装落地页，负责环境检测、模式分流、AI 端点录入与实机预览
 page/: Netflix 页面主世界桥接，负责观察私有播放器请求与元数据
-settings/: 四页签设置窗口（点扩展图标在独立窗口打开），负责字幕模式切换、全局翻译设置与额度上限/统计窗口及用量读数、provider 增删与独立凭证、AI 页当前翻译服务选择（写 aiProviderId，与翻译服务页签主列表双向同步）、AI 不可用提示（页面状态报告无字幕轨道、读不到轨道或未配置服务时）、兼容域名授权及原始诊断入口
-styles/: 扩展页共享的设计令牌（tokens.css）与控件唯一基线（controls.css），由 settings.html 在组件样式表之前加载
+settings/: 五页签设置窗口，统一字幕、AI 翻译、翻译服务、外观和内联诊断；AI 页维护缓存保存方式/策略/保留上限及管理动作，页面状态只提供用量、可用性与命中，不投射凭证
+styles/: 扩展页共享的设计令牌（tokens.css）与控件唯一基线（controls.css），由 settings.html 和 onboarding.html 在各自组件样式表之前加载；内联诊断复用 settings 的共享层
 
 设计边界:
-page 只采集 Netflix 页面事实;content 维护模式和字幕播放状态、据页面事实判定字幕可用性与服务就绪、按所选窗口执行并持久化输入额度且回报用量与有效窗口且不读取密钥;settings 分离全局翻译配置、额度上限与统计窗口、服务凭证并提供诊断入口，用量、字幕可用性与服务就绪一律只读页面状态（不自行探测、不代读凭证），仅在设置窗口内呈现并引导（无字幕轨道为硬提示并阻止新选中 AI，读不到轨道为软提示且不阻止，未配置服务为可操作提示），AI 页的当前翻译服务选择器与翻译服务页签共用同一份 provider 列表与同一个 aiProviderId（无第二数据源、双向同步，只显示服务名与模型，不读取或显示凭证）;diagnostics 仅在用户显式开启时读取 background 内存中的原始报文;background 隔离凭证并请求上游。uiLanguage 偏好由 i18n.js 独占读写，页面只声明 `[data-i18n-language]` 标记，任何设置保存都不得写入或清空该键。styles/ 只声明设计令牌与控件基线（明暗跟随 prefers-color-scheme 的唯一事实来源），三个扩展页的组件样式表只写布局与变体覆盖，不得再声明调色板或第二套控件外观。
+page 只采集 Netflix 页面事实；content 负责字幕时间线、按窗口持久化输入额度和会话译文缓存，不读取凭证；background 执行上游请求并报告实际语义元数据，译文缓存与诊断历史使用独立对象存储和清理世代，清理互不影响。settings 从同一份 providers/aiProviderId 设置选择翻译服务，字幕可用性与服务就绪只读页面状态；诊断仅在首次选中时挂载，页签活跃且窗口可见才轮询，历史只对自身 settings URL 授权。缓存复用以剧集、源语言/类型、完整目标语言和有效自定义提示词为硬条件，服务信息只作来源记录，重复句按 occurrence 保存；仅缓存策略由 content 与后台双重阻止未命中请求。uiLanguage 偏好由 i18n.js 独占读写，页面只声明 `[data-i18n-language]` 标记，设置保存不得覆盖该键。styles/ 是明暗令牌和控件基线的唯一来源，页面样式仅保留布局及变体。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 

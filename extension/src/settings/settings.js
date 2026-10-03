@@ -1,7 +1,7 @@
 /**
- * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API、document 的 hidden/visibilitychange 及 settings.html 的导航、翻译、会话额度字段（含额度统计窗口选择器）、AI 页当前翻译服务选择器（#aiProviderSelect）和模型下拉控件；保存服务的模型目录由 background 读取密钥并发现，providers 的写入基线由 storage.local 读回，BILAYER_GET_STATE 的 translationBudget 提供当前窗口用量与有效窗口，subtitleAvailability（unknown/unread/none/available）/providerReadiness 提供字幕轨道可用性与翻译服务就绪状态
- * [OUTPUT]: 提供四页签导航、只读模型选择、按服务缓存的模型目录及菜单内过滤、AI 页当前翻译服务选择（写 aiProviderId，与翻译服务页签的主列表双向同步）、会话额度设置（上限与计量窗口）与实时用量读数、AI 不可用提示（无字幕轨道/读不到轨道/未配置服务）与扩展内的字幕/provider 操作，以及常驻窗口的可见性门控轮询（隐藏时不读取标签页、重新可见立即补一轮）和 providers 的读-改-写合并（改字段/新增/删除均以存储最新列表为基线）；新增服务草案的端点校验与模型目录拉取失败就地写进 #newDraftStatus 状态行（data-state=error），不再用阻塞式 alert
- * [POS]: settings 交互层；由 background.openSettingsWindow() 以独立窗口加载，windows API 不可用时回落标签页，字幕模式由 aiRole 单一状态表示，翻译设置、输入额度与统计窗口全局共享，密钥和端点只属于所选 provider；额度读数与不可用提示只读页面状态，不自行计数也不自行探测
+ * [INPUT]: 依赖 browser/chrome storage/tabs/permissions API、document 的 hidden/visibilitychange、settings.html 五页签与 cache controls、i18n 和 globalThis.BilayerDiagnostics.mount(root) 空 root/setActive(boolean) API；cache stats/clear 走后台协议，页面 cache 状态来自 BILAYER_GET_STATE.translationCache
+ * [OUTPUT]: 提供字幕/AI/provider/cache 设置与逐 episode 操作、缓存统计状态和第五页签诊断 controller 生命周期
+ * [POS]: settings 窗口交互协调层；credentials 由 background 管理；cache settings 独立归一化且只写显式 changed keys，stats 拒绝旧请求/旧 episode 回包，clear 事务成功后才广播；页面状态读数复用既有可见性门控轮询
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -242,7 +242,6 @@ const elements = {
   fetchProviderModels: document.querySelector("#fetchProviderModels"),
   providerModelList: document.querySelector("#providerModelList"),
   openOnboarding: document.querySelector("#openOnboarding"),
-  openRawDiagnostics: document.querySelector("#openRawDiagnostics"),
   nativeMode: document.querySelector("#nativeMode"),
   aiMode: document.querySelector("#aiMode"),
   modeDescription: document.querySelector("#modeDescription"),
@@ -274,6 +273,30 @@ const elements = {
   secondaryPreview: document.querySelector("#secondaryPreview")
 };
 
+const CACHE_DEFAULTS = Object.freeze({ aiCacheMode: "session", aiCachePolicy: "prefer", aiCacheRetentionDays: 30, aiCacheMaxMiB: 256 });
+const CACHE_MODES = new Set(["session", "local"]);
+const CACHE_POLICIES = new Set(["prefer", "only"]);
+const CACHE_RANGES = { aiCacheRetentionDays: 3650, aiCacheMaxMiB: 65536 };
+const cacheControls = {
+  mode: document.querySelector("#aiCacheMode"), policy: document.querySelector("#aiCachePolicy"),
+  retentionDays: document.querySelector("#aiCacheRetentionDays"), maxMiB: document.querySelector("#aiCacheMaxMiB"),
+  local: document.querySelector("#aiCacheLocalControls"), retentionValue: document.querySelector("#aiCacheRetentionValue"),
+  usage: document.querySelector("#aiCacheUsage"), currentUsage: document.querySelector("#aiCacheCurrentUsage"),
+  hits: document.querySelector("#aiCacheHits"), annotations: document.querySelector("#aiCacheAnnotations"),
+  noEpisode: document.querySelector("#aiCacheNoEpisode"), storageError: document.querySelector("#aiCacheStorageError"),
+  retranslate: document.querySelector("#aiCacheRetranslate"), clearCurrent: document.querySelector("#aiCacheClearCurrent"),
+  clearAll: document.querySelector("#aiCacheClearAll"), confirm: document.querySelector("#aiCacheConfirm"),
+  confirmText: document.querySelector("#aiCacheConfirmText"), confirmYes: document.querySelector("#aiCacheConfirmYes"),
+  confirmNo: document.querySelector("#aiCacheConfirmNo"), status: document.querySelector("#aiCacheStatus")
+};
+const diagnosticsRoot = document.querySelector("#diagnosticsPanel");
+let diagnosticsController = null;
+let pendingCacheAction = "";
+let cacheStatsRequest = 0;
+// 后台读失败和播放页写失败独立持有，任一正常回包都不能遮掉另一方的失败。
+let cacheStatsError = "";
+let pageCacheStorageError = "";
+
 let currentSettings = { ...DEFAULT_SETTINGS };
 let currentProviders = DEFAULT_PROVIDERS.map((provider) => ({ ...provider }));
 let currentPageState = null;
@@ -297,15 +320,20 @@ async function init() {
   const [stored, pageState] = await Promise.all([readStoredSettings(), readPageState()]);
   currentWatchId = readWatchId(pageState);
   currentSettings = normalizeSettings(stored);
+  applyCacheSettings(stored);
   if (stored.aiStyleGuide === LEGACY_TRANSLATION_PROMPT) await writeSettings({ aiStyleGuide: DEFAULT_TRANSLATION_PROMPT });
   currentProviders = Array.isArray(stored.providers) && stored.providers.length ? stored.providers : DEFAULT_PROVIDERS.map((provider) => ({ ...provider }));
   if (!currentProviders.some((provider) => provider.id === currentSettings.aiProviderId)) currentSettings.aiProviderId = currentProviders[0].id;
   applyPageState(pageState, true);
   writeControls();
   bindControls();
-  // 常驻窗口的可见性自愈：隐藏期间到期的轮询轮次被跳过，重新可见时用既有入口立刻补一轮，链不会因此永久停摆
+  bindCacheControls();
+  updateCacheAvailability();
+  void refreshCacheStats();
+  // 常驻窗口的可见性自愈：隐藏期间跳过状态轮询，重新可见时立即补一轮并恢复诊断控制器。
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) scheduleStatePoll(0);
+    updateDiagnosticsActivity();
   });
   readCredentialStatus();
   scheduleStatePoll();
@@ -369,12 +397,6 @@ function bindNavigation() {
   elements.openOnboarding?.addEventListener("click", () => {
     const url = runtime?.runtime?.getURL("src/onboarding/onboarding.html")
       ?? new URL("../onboarding/onboarding.html", location.href).href;
-    if (runtime?.tabs?.create) void runtime.tabs.create({ url });
-    else window.open(url, "_blank");
-  });
-  elements.openRawDiagnostics.addEventListener("click", () => {
-    const url = runtime?.runtime?.getURL("src/diagnostics/diagnostics.html")
-      ?? new URL("../diagnostics/diagnostics.html", location.href).href;
     if (runtime?.tabs?.create) void runtime.tabs.create({ url });
     else window.open(url, "_blank");
   });
@@ -534,6 +556,7 @@ function selectTab(tabName) {
   document.querySelectorAll("[data-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.panel !== tabName;
   });
+  updateDiagnosticsActivity();
 }
 
 async function selectLayoutPreset(preset) {
@@ -796,7 +819,7 @@ function applyPageState(pageState, forceTrackUpdate = false) {
     if (pageState?.settings) {
       const providerId = currentSettings.aiProviderId;
       const budgetWindow = currentSettings.aiBudgetWindow;
-      currentSettings = normalizeSettings(pageState.settings);
+      currentSettings = normalizeSettings({ ...currentSettings, ...pageState.settings });
       currentSettings.aiProviderId = providerId;
       // content 若尚未回传该键（旧版本页面状态），保留设置窗口自己已持久化的窗口，避免读数前缀回退成默认值
       if (pageState.settings.aiBudgetWindow === undefined) currentSettings.aiBudgetWindow = budgetWindow;
@@ -817,6 +840,9 @@ function applyPageState(pageState, forceTrackUpdate = false) {
   writeBudgetReadout();
   writeStatus();
   writeAvailability();
+  updateCacheAvailability();
+  updateCacheStatsFromPage(pageState);
+  if (watchChanged) void refreshCacheStats();
 }
 
 function populateTrackSelects() {
@@ -1416,6 +1442,10 @@ function writeTranslationStatus(role, status) {
       writeRoleStatus(role, i18n.t("statusAiTranslating", [status.count ?? 0]), "loading");
       break;
     case "error": {
+      if (status.error === "cache_miss") {
+        writeRoleStatus(role, i18n.t("cacheMiss"), "warning");
+        break;
+      }
       const errors = {
         auth: i18n.t("statusErrorAuth"),
         rate_limit: i18n.t("providerErrorRateLimit"),
@@ -1624,10 +1654,9 @@ function readWatchId(pageState) {
 
 function readStoredSettings() {
   return new Promise((resolve) => {
-    runtime.storage.local.get({ ...DEFAULT_SETTINGS, providers: DEFAULT_PROVIDERS }, resolve);
+    runtime.storage.local.get({ ...DEFAULT_SETTINGS, ...CACHE_DEFAULTS, providers: DEFAULT_PROVIDERS }, resolve);
   });
 }
-
 // providers 是整数组存储键：任何单点修改（改字段、新增、删除）都必须先读回存储里的最新列表再按 id 合并，
 // 否则另一个表面（新手向导同样写整个数组）在设置页打开期间新增的服务会被这份陈旧快照整体抹掉。
 // 空列表与初始化一致回落 DEFAULT_PROVIDERS，并克隆一份以免写回时改到常量本身。
@@ -1645,6 +1674,167 @@ function readLatestProviders() {
 function writeSettings(update) {
   return new Promise((resolve) => runtime.storage.local.set(update, resolve));
 }
+function normalizeCacheSettings(stored = {}) {
+  const result = {
+    aiCacheMode: CACHE_MODES.has(stored.aiCacheMode) ? stored.aiCacheMode : CACHE_DEFAULTS.aiCacheMode,
+    aiCachePolicy: CACHE_POLICIES.has(stored.aiCachePolicy) ? stored.aiCachePolicy : CACHE_DEFAULTS.aiCachePolicy
+  };
+  for (const [key, max] of Object.entries(CACHE_RANGES)) {
+    const value = stored[key];
+    result[key] = Number.isInteger(value) && value >= 0 && value <= max ? value : CACHE_DEFAULTS[key];
+  }
+  return result;
+}
+
+function applyCacheSettings(stored) {
+  const normalized = normalizeCacheSettings(stored);
+  Object.assign(currentSettings, normalized);
+  const changed = Object.fromEntries(Object.entries(normalized).filter(([key, value]) =>
+    Object.hasOwn(stored, key) && stored[key] !== value));
+  if (Object.keys(changed).length) void writeSettings(changed);
+  cacheControls.mode.value = currentSettings.aiCacheMode;
+  cacheControls.policy.value = currentSettings.aiCachePolicy;
+  cacheControls.retentionDays.value = String(currentSettings.aiCacheRetentionDays);
+  cacheControls.maxMiB.value = String(currentSettings.aiCacheMaxMiB);
+  writeCacheModeVisibility();
+  writeCacheRetentionSummary();
+}
+
+function writeCacheModeVisibility() { cacheControls.local.hidden = currentSettings.aiCacheMode !== "local"; }
+
+function writeCacheRetentionSummary() {
+  const days = currentSettings.aiCacheRetentionDays ? i18n.t("aiCacheRetentionDays", [currentSettings.aiCacheRetentionDays]) : i18n.t("aiCacheUnlimited");
+  const size = currentSettings.aiCacheMaxMiB ? `${currentSettings.aiCacheMaxMiB} MiB` : i18n.t("aiCacheUnlimitedMiB");
+  cacheControls.retentionValue.textContent = `${days} · ${size}`;
+}
+
+function bindCacheControls() {
+  const fields = { mode: "aiCacheMode", policy: "aiCachePolicy", retentionDays: "aiCacheRetentionDays", maxMiB: "aiCacheMaxMiB" };
+  for (const [field, key] of Object.entries(fields)) cacheControls[field].addEventListener("change", () => {
+    const raw = cacheControls[field].value;
+    const value = field === "mode" ? (CACHE_MODES.has(raw) ? raw : CACHE_DEFAULTS[key])
+      : field === "policy" ? (CACHE_POLICIES.has(raw) ? raw : CACHE_DEFAULTS[key])
+        : raw.trim() !== "" && Number.isInteger(Number(raw)) && Number(raw) >= 0 && Number(raw) <= CACHE_RANGES[key] ? Number(raw) : CACHE_DEFAULTS[key];
+    cacheControls[field].value = String(value);
+    if (currentSettings[key] === value) return;
+    currentSettings[key] = value;
+    void writeSettings({ [key]: value });
+    if (field === "mode") writeCacheModeVisibility();
+    writeCacheRetentionSummary();
+    if (field === "mode" || field === "policy") scheduleStatePoll(0);
+  });
+  cacheControls.retranslate.addEventListener("click", () => requestCacheConfirmation("retranslate"));
+  cacheControls.clearCurrent.addEventListener("click", () => requestCacheConfirmation("clear-current"));
+  cacheControls.clearAll.addEventListener("click", () => requestCacheConfirmation("clear-all"));
+  cacheControls.confirmYes.addEventListener("click", () => void runCacheAction());
+  cacheControls.confirmNo.addEventListener("click", () => { pendingCacheAction = ""; cacheControls.confirm.hidden = true; });
+}
+
+function updateCacheAvailability() {
+  const available = Boolean(currentWatchId);
+  cacheControls.noEpisode.hidden = available;
+  for (const button of [cacheControls.retranslate, cacheControls.clearCurrent]) {
+    button.disabled = !available;
+    button.title = available ? "" : i18n.t("aiCacheNoEpisode");
+  }
+  cacheControls.clearAll.disabled = false;
+}
+
+function requestCacheConfirmation(action) {
+  if (action !== "clear-all" && !currentWatchId) return;
+  pendingCacheAction = action;
+  cacheControls.confirmText.textContent = i18n.t(action === "retranslate" ? "aiCacheConfirmRetranslate" : action === "clear-all" ? "aiCacheConfirmAll" : "aiCacheConfirmCurrent");
+  cacheControls.confirm.hidden = false;
+}
+
+async function runCacheAction() {
+  const action = pendingCacheAction;
+  pendingCacheAction = "";
+  cacheControls.confirm.hidden = true;
+  if (!action || (!currentWatchId && action !== "clear-all")) return;
+  try {
+    if (action === "retranslate") {
+      await broadcastCacheAction("retranslate", currentWatchId);
+    } else {
+      const episodeId = action === "clear-current" ? currentWatchId : undefined;
+      const result = await sendBackgroundMessage({ type: "BILAYER_CLEAR_TRANSLATION_CACHE", ...(episodeId ? { episodeId } : {}) });
+      if (!result?.ok) throw new Error(result?.errorCode ?? "storage_unavailable");
+      await broadcastCacheAction(action === "clear-current" ? "clear-current" : "clear-all", episodeId);
+      await refreshCacheStats();
+    }
+    cacheControls.status.textContent = i18n.t(action === "retranslate" ? "aiCacheRetranslateStarted" : "aiCacheCleared");
+  } catch (error) {
+    cacheControls.status.textContent = i18n.t("aiCacheOperationError", [String(error?.message ?? error)]);
+  }
+}
+
+async function broadcastCacheAction(action, episodeId) {
+  const tabs = await new Promise(queryActiveTabs);
+  const targets = [];
+  for (const tab of tabs) {
+    if (!Number.isInteger(tab.id) || (tab.url && !isNetflixUrl(tab.url))) continue;
+    const state = await sendToTab(tab.id, { type: "BILAYER_GET_STATE" });
+    const watchId = readWatchId(state);
+    if (watchId && (!episodeId || watchId === episodeId)) targets.push(tab.id);
+  }
+  await Promise.all(targets.map((tabId) => sendToTab(tabId, { type: "BILAYER_CACHE_ACTION", action, ...(episodeId ? { episodeId } : {}) })));
+}
+
+function sendBackgroundMessage(message) {
+  return new Promise((resolve, reject) => runtime.runtime.sendMessage(message, (response) => {
+    if (runtime.runtime.lastError) reject(new Error(runtime.runtime.lastError.message));
+    else resolve(response);
+  }));
+}
+
+async function refreshCacheStats() {
+  const request = ++cacheStatsRequest;
+  const episodeId = currentWatchId;
+  try {
+    const result = await sendBackgroundMessage({ type: "BILAYER_GET_TRANSLATION_CACHE_STATS", ...(episodeId ? { episodeId } : {}) });
+    if (request !== cacheStatsRequest || episodeId !== currentWatchId) return;
+    if (!result?.ok || result.storageError) throw new Error(result?.storageError ?? result?.errorCode ?? "storage_unavailable");
+    cacheStatsError = "";
+    writeCacheStorageError();
+    cacheControls.usage.textContent = i18n.t("aiCacheUsage", [formatCacheBytes(result.bytes), result.subtitleCount ?? 0, result.episodeCount ?? 0]);
+    cacheControls.currentUsage.textContent = currentWatchId
+      ? i18n.t("aiCacheCurrentUsage", [formatCacheBytes(result.currentEpisodeBytes ?? 0), result.currentEpisodeSubtitleCount ?? 0])
+      : i18n.t("aiCacheNoEpisode");
+  } catch (error) {
+    if (request !== cacheStatsRequest || episodeId !== currentWatchId) return;
+    cacheStatsError = String(error?.message ?? error);
+    writeCacheStorageError();
+  }
+}
+
+function formatCacheBytes(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  return bytes < 1048576 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MiB`;
+}
+
+function updateCacheStatsFromPage(pageState) {
+  const cache = pageState?.translationCache;
+  pageCacheStorageError = cache?.storageError ?? "";
+  writeCacheStorageError();
+  if (!cache) return;
+  if (Number.isFinite(cache.hits)) cacheControls.hits.textContent = i18n.t("aiCacheHits", [cache.hits]);
+  if (Number.isFinite(cache.annotationMissing)) cacheControls.annotations.textContent = i18n.t("aiCacheAnnotations", [cache.annotationMissing]);
+}
+
+function writeCacheStorageError() {
+  const error = cacheStatsError || pageCacheStorageError;
+  cacheControls.storageError.hidden = !error;
+  cacheControls.storageError.textContent = error ? i18n.t("aiCacheStorageError", [error]) : "";
+}
+
+function updateDiagnosticsActivity() {
+  const active = activeSettingsTab() === "diagnostics" && !document.hidden;
+  if (!active) { diagnosticsController?.setActive(false); return; }
+  if (!diagnosticsController && diagnosticsRoot && globalThis.BilayerDiagnostics) diagnosticsController = globalThis.BilayerDiagnostics.mount(diagnosticsRoot);
+  diagnosticsController?.setActive(true);
+}
+
+function activeSettingsTab() { return document.querySelector('[role="tab"][aria-selected="true"]')?.dataset.tab ?? ""; }
 
 function normalizeSettings(stored) {
   const settings = { ...DEFAULT_SETTINGS };
@@ -1672,7 +1862,7 @@ function normalizeSettings(stored) {
   if (!Object.hasOwn(LAYOUT_PREVIEW, settings.subtitleLayoutPreset) && settings.subtitleLayoutPreset !== "free") {
     settings.subtitleLayoutPreset = DEFAULT_SETTINGS.subtitleLayoutPreset;
   }
-
+  Object.assign(settings, normalizeCacheSettings(stored));
   return settings;
 }
 

@@ -262,7 +262,6 @@ function createDocument() {
     },
     dispatch(type, event) { for (const handler of listeners.get(type) ?? []) handler({ type, ...event }); }
   };
-  // 让冒泡链在根节点处继续落到 document 监听器上
   const root = all[0]?.parent;
   if (root) root.document = document;
   return { document, all };
@@ -292,14 +291,16 @@ const WATCH_STATE = {
   providerReadiness: { configured: true, notice: "" }
 };
 
-function createPopup({ stored = {}, queryResult = [{ id: 7, url: "https://www.netflix.com/watch/80000001" }], pageState = WATCH_STATE, grantPermissions = true } = {}) {
+function createPopup({ stored = {}, queryResult = [{ id: 7, url: "https://www.netflix.com/watch/80000001" }], pageState = WATCH_STATE, grantPermissions = true, cacheStats = { ok: true, bytes: 2048, subtitleCount: 3, episodeCount: 1, currentEpisodeSubtitleCount: 3, currentEpisodeBytes: 1024 } } = {}) {
   const { document, all } = createDocument();
   const byId = new Map(all.filter((element) => element.id).map((element) => [element.id, element]));
   const writes = [];
   const tabCalls = [];
   const stateReads = [];
+  const runtimeMessages = [];
   const messages = [];
   const permissionRequests = [];
+  const tabMessages = [];
   const timers = new Map();
   const storageState = structuredClone({ providers: [PROVIDER_A], aiRole: "off", ...stored });
   let nextTimerId = 1;
@@ -307,7 +308,9 @@ function createPopup({ stored = {}, queryResult = [{ id: 7, url: "https://www.ne
 
   const storage = {
     get(defaults, callback) {
-      callback({ ...(defaults && typeof defaults === "object" ? structuredClone(defaults) : {}), ...structuredClone(storageState) });
+      const keys = Array.isArray(defaults) ? defaults : Object.keys(defaults ?? storageState);
+      callback(Object.fromEntries(keys.filter((key) => Object.hasOwn(storageState, key) || (!Array.isArray(defaults) && Object.hasOwn(defaults ?? {}, key)))
+        .map((key) => [key, structuredClone(Object.hasOwn(storageState, key) ? storageState[key] : defaults[key])])));
     },
     set(patch, callback) {
       writes.push(structuredClone(patch));
@@ -320,8 +323,11 @@ function createPopup({ stored = {}, queryResult = [{ id: 7, url: "https://www.ne
     storage: { local: storage },
     runtime: {
       getURL: (path) => `safari-web-extension://bilayer-app/${path}`,
-      sendMessage(message, callback) { messages.push({ message: structuredClone(message), callback }); },
-      lastError: undefined
+      sendMessage(message, callback) {
+        runtimeMessages.push({ message: structuredClone(message), callback });
+        messages.push({ message: structuredClone(message), callback });
+        if (message.type === "BILAYER_GET_TRANSLATION_CACHE_STATS") callback?.(structuredClone(cacheStats));
+      },
     },
     permissions: { request(request, callback) { permissionRequests.push(structuredClone(request)); callback(grantPermissions); } },
     tabs: {
@@ -330,8 +336,10 @@ function createPopup({ stored = {}, queryResult = [{ id: 7, url: "https://www.ne
         callback(structuredClone(queryResult));
       },
       sendMessage(tabId, message, callback) {
+        tabMessages.push({ tabId, message: structuredClone(message) });
         stateReads.push({ tabId, type: message?.type });
-        callback(typeof pageState === "function" ? pageState(message) : structuredClone(pageState));
+        const response = typeof pageState === "function" ? pageState({ ...message, __tabId: tabId }) : structuredClone(pageState);
+        callback(message?.type === "BILAYER_GET_STATE" ? response : { ok: true });
       },
       create(details, callback) { tabCalls.push({ type: "create", details: structuredClone(details) }); callback?.({ id: 99 }); }
     }
@@ -351,6 +359,14 @@ function createPopup({ stored = {}, queryResult = [{ id: 7, url: "https://www.ne
     location,
     window,
     i18n: { t: translate, apply() {}, uiLanguage: () => "en" },
+    BilayerDiagnostics: {
+      mounts: [],
+      mount(root) {
+        const controller = { activations: [], setActive(active) { this.activations.push(active); } };
+        this.mounts.push({ root, controller });
+        return controller;
+      }
+    },
     URL,
     crypto: { randomUUID: () => `draft-${nextUuid++}` },
     alert: (message) => alerts.push(String(message)),
@@ -369,9 +385,14 @@ function createPopup({ stored = {}, queryResult = [{ id: 7, url: "https://www.ne
     tabCalls,
     stateReads,
     messages,
+    runtimeMessages,
+    tabMessages,
+    diagnostics: context.BilayerDiagnostics,
     permissionRequests,
     storageState,
     alerts,
+    fireDocument(type, event = {}) { document.dispatch(type, event); },
+    applyPageState(state) { context.__nextPageState = state; runInNewContext("applyPageState(__nextPageState)", context); },
     element(id) {
       const element = byId.get(id);
       assert.ok(element, `markup 缺少 #${id}`);
@@ -391,7 +412,7 @@ function createPopup({ stored = {}, queryResult = [{ id: 7, url: "https://www.ne
     async flush() {
       for (let index = 0; index < 6; index++) await new Promise((resolve) => setImmediate(resolve));
     },
-    fireDocument(type) { document.dispatch(type, {}); },
+    findMessageIndex(type) { return messages.findIndex((entry) => entry.message.type === type); },
     click(id) { this.element(id).dispatch("click"); },
     change(id, value) {
       const element = this.element(id);
@@ -588,7 +609,7 @@ test("模型目录拉取失败就地提示，重试成功后状态清空且目�
   assert.deepEqual(draftStatus(popup), { text: "", state: "", hidden: true }, "进入拉取态先清掉旧提示");
   assert.equal(popup.element("fetchNewDraftModels").disabled, true, "拉取期间按钮保持禁用");
 
-  popup.reply(0, { ok: false, errorCode: "auth" });
+  popup.reply(popup.findMessageIndex("BILAYER_LIST_MODELS"), { ok: false, errorCode: "auth" });
   assert.equal(popup.alerts.length, 0, `拉取失败分支不得再弹阻塞式对话框：${JSON.stringify(popup.alerts)}`);
   assert.deepEqual(draftStatus(popup), { text: translate("providerKeyInvalidModels"), state: "error", hidden: false });
   assert.equal(popup.element("fetchNewDraftModels").disabled, false, "失败后按钮恢复可用");
@@ -596,12 +617,12 @@ test("模型目录拉取失败就地提示，重试成功后状态清空且目�
   popup.click("fetchNewDraftModels");
   await popup.flush();
   assert.deepEqual(draftStatus(popup), { text: "", state: "", hidden: true }, "重试时先清空上一次的失败提示");
-  popup.reply(1, { ok: false, errorCode: "network" });
+  popup.reply(popup.messages.findLastIndex((entry) => entry.message.type === "BILAYER_LIST_MODELS"), { ok: false, errorCode: "network" });
   assert.deepEqual(draftStatus(popup), { text: translate("providerModelsListFailed"), state: "error", hidden: false });
 
   popup.click("fetchNewDraftModels");
   await popup.flush();
-  popup.reply(2, { ok: true, models: ["gpt-4o-mini", "gpt-4o"] });
+  popup.reply(popup.messages.findLastIndex((entry) => entry.message.type === "BILAYER_LIST_MODELS"), { ok: true, models: ["gpt-4o-mini", "gpt-4o"] });
   assert.deepEqual(draftStatus(popup), { text: "", state: "", hidden: true }, "成功后不得留下错误提示");
   assert.deepEqual(popup.element("newDraftModelList").children.map((child) => child.textContent), ["gpt-4o-mini", "gpt-4o"]);
   assert.equal(popup.alerts.length, 0, `不得再弹阻塞式对话框：${JSON.stringify(popup.alerts)}`);
@@ -622,4 +643,169 @@ test("草案保存成功：状态无提示、视图收起且服务写入存储�
   assert.equal(popup.element("providerNewDraftView").hidden, true, "保存后面板收起");
   assert.deepEqual(draftStatus(popup), { text: "", state: "", hidden: true });
   assert.equal(popup.alerts.length, 0);
+});
+
+test("缓存 enum 非法时回默认、数字支持完整边界且仅写变更键", async () => {
+  const popup = await createReadyPopup({ stored: { aiCacheMode: "invalid", aiCachePolicy: "invalid", aiCacheRetentionDays: 3650, aiCacheMaxMiB: 65536 } });
+  assert.equal(popup.element("aiCacheMode").value, "session");
+  assert.equal(popup.element("aiCachePolicy").value, "prefer");
+  assert.equal(popup.element("aiCacheRetentionDays").value, "3650");
+  assert.equal(popup.element("aiCacheMaxMiB").value, "65536");
+  assert.equal(popup.storageState.aiCacheMode, "session");
+  assert.equal(popup.storageState.aiCachePolicy, "prefer");
+  assert.equal(popup.writes.some((write) => Object.hasOwn(write, "aiCacheRetentionDays")), false);
+  popup.change("aiCacheMode", "local");
+  popup.change("aiCacheRetentionDays", "0");
+  popup.change("aiCacheMaxMiB", "0");
+  assert.equal(popup.storageState.aiCacheRetentionDays, 0);
+  assert.equal(popup.storageState.aiCacheMaxMiB, 0);
+  assert.equal(popup.element("aiCacheRetentionValue").textContent, `${translate("aiCacheUnlimited")} · ${translate("aiCacheUnlimitedMiB")}`);
+});
+test("缓存非法或缺失设置只回写规范值", async () => {
+  const popup = await createReadyPopup({ stored: { aiCacheMode: "locality", aiCachePolicy: "sometimes", aiCacheRetentionDays: -1, aiCacheMaxMiB: 65537 } });
+  assert.deepEqual(popup.storageState.aiCacheMode, "session");
+  assert.deepEqual(popup.storageState.aiCachePolicy, "prefer");
+  assert.equal(popup.storageState.aiCacheRetentionDays, 30);
+  assert.equal(popup.storageState.aiCacheMaxMiB, 256);
+  assert.ok(popup.writes.some((write) => write.aiCachePolicy === "prefer"));
+});
+
+test("本机缓存控件只在 local 模式显示，切换只持久化改变键并读取统计", async () => {
+  const popup = await createReadyPopup({ stored: { aiCacheMode: "local", aiCachePolicy: "only", aiCacheRetentionDays: 14, aiCacheMaxMiB: 768 } });
+  assert.equal(popup.element("aiCacheLocalControls").hidden, false);
+  assert.equal(popup.element("aiCacheRetentionDays").value, "14");
+  assert.equal(popup.element("aiCacheMaxMiB").value, "768");
+  const statsRequest = popup.runtimeMessages.find((entry) => entry.message.type === "BILAYER_GET_TRANSLATION_CACHE_STATS");
+  assert.deepEqual(statsRequest.message, { type: "BILAYER_GET_TRANSLATION_CACHE_STATS", episodeId: WATCH_STATE.watchId });
+  statsRequest.callback({ ok: true, bytes: 2048, subtitleCount: 3, episodeCount: 1, currentEpisodeSubtitleCount: 3 });
+  assert.match(popup.element("aiCacheUsage").textContent, /3/);
+  popup.change("aiCacheMode", "session");
+  assert.deepEqual(popup.writes.at(-1), { aiCacheMode: "session" });
+  assert.equal(popup.element("aiCacheLocalControls").hidden, true);
+  assert.equal(popup.element("aiCacheClearAll").disabled, false);
+});
+
+test("无播放 watchId 时禁用当前剧集动作，但全量清理仍可用", async () => {
+   const popup = await createReadyPopup({ pageState: { url: "https://www.netflix.com/browse", tracks: [] }, queryResult: [{ id: 7, url: "https://www.netflix.com/browse" }], stored: { aiCacheMode: "local" } });
+   assert.equal(popup.element("aiCacheRetranslate").disabled, true);
+   assert.equal(popup.element("aiCacheClearCurrent").disabled, true);
+   assert.equal(popup.element("aiCacheClearCurrent").title, translate("aiCacheNoEpisode"));
+   popup.click("aiCacheRetranslate");
+   popup.click("aiCacheClearCurrent");
+  assert.equal(popup.element("aiCacheClearAll").disabled, false);
+   assert.equal(popup.runtimeMessages.some((entry) => ["BILAYER_CACHE_ACTION", "BILAYER_CLEAR_TRANSLATION_CACHE"].includes(entry.message.type)), false);
+ });
+
+test("当前剧集清理先提交本机缓存，再广播对应 watchId 的 session 清理", async () => {
+  const popup = await createReadyPopup({ stored: { aiCacheMode: "local" } });
+  popup.click("aiCacheClearCurrent");
+  popup.click("aiCacheConfirmYes");
+  await popup.flush();
+  const clear = popup.runtimeMessages.find((entry) => entry.message.type === "BILAYER_CLEAR_TRANSLATION_CACHE");
+  assert.deepEqual(clear.message, { type: "BILAYER_CLEAR_TRANSLATION_CACHE", episodeId: WATCH_STATE.watchId });
+  assert.equal(popup.tabMessages.some((entry) => entry.message.type === "BILAYER_CACHE_ACTION"), false);
+  popup.reply(popup.findMessageIndex("BILAYER_CLEAR_TRANSLATION_CACHE"), { ok: true });
+  await popup.flush();
+  const broadcasts = popup.tabMessages.filter((entry) => entry.message.type === "BILAYER_CACHE_ACTION" && entry.message.action === "clear-current");
+  assert.deepEqual(broadcasts.map((entry) => entry.tabId), [7]);
+});
+test("重译当前剧集经公开 cache action 广播，既不清本机持久缓存也不跨剧集", async () => {
+  const popup = await createReadyPopup({ stored: { aiCacheMode: "local" }, queryResult: [
+    { id: 7, url: "https://www.netflix.com/watch/80000001" },
+    { id: 8, url: "https://www.netflix.com/watch/80000002" }
+  ], pageState: (message) => message?.type === "BILAYER_GET_STATE"
+    ? { ...WATCH_STATE, watchId: message.__tabId === 8 ? "episode-two" : WATCH_STATE.watchId }
+    : WATCH_STATE });
+  popup.click("aiCacheRetranslate");
+  popup.click("aiCacheConfirmYes");
+  await popup.flush();
+  assert.equal(popup.runtimeMessages.some((entry) => entry.message.type === "BILAYER_CLEAR_TRANSLATION_CACHE"), false);
+  const actions = popup.tabMessages.filter((entry) => entry.message.type === "BILAYER_CACHE_ACTION" && entry.message.action === "retranslate");
+  assert.deepEqual(actions.map((entry) => entry.tabId), [7]);
+  assert.deepEqual(actions[0].message, { type: "BILAYER_CACHE_ACTION", action: "retranslate", episodeId: WATCH_STATE.watchId });
+  assert.equal(popup.element("aiCacheConfirmText").textContent, translate("aiCacheConfirmRetranslate"));
+});
+
+test("全量清理先提交后台全部记录再广播所有可达播放页", async () => {
+  const popup = await createReadyPopup({ stored: { aiCacheMode: "session" }, queryResult: [
+    { id: 7, url: "https://www.netflix.com/watch/80000001" },
+    { id: 8, url: "https://www.netflix.com/watch/80000002" }
+  ], pageState: (message) => message?.type === "BILAYER_GET_STATE"
+    ? { ...WATCH_STATE, watchId: message.__tabId === 8 ? "episode-two" : WATCH_STATE.watchId }
+    : WATCH_STATE });
+  popup.click("aiCacheClearAll");
+  popup.click("aiCacheConfirmYes");
+  await popup.flush();
+  const clear = popup.runtimeMessages.find((entry) => entry.message.type === "BILAYER_CLEAR_TRANSLATION_CACHE");
+  assert.deepEqual(clear.message, { type: "BILAYER_CLEAR_TRANSLATION_CACHE" }, "全量清理不得传 episodeId");
+  assert.equal(popup.tabMessages.some((entry) => entry.message.type === "BILAYER_CACHE_ACTION"), false);
+  popup.reply(popup.findMessageIndex("BILAYER_CLEAR_TRANSLATION_CACHE"), { ok: true });
+  await popup.flush();
+  const broadcasts = popup.tabMessages.filter((entry) => entry.message.type === "BILAYER_CACHE_ACTION" && entry.message.action === "clear-all");
+  assert.deepEqual(broadcasts.map((entry) => entry.tabId), [7, 8]);
+});
+
+
+test("播放页不可达时仍从后台读取本机缓存统计", async () => {
+  const popup = await createReadyPopup({ stored: { aiCacheMode: "local" }, queryResult: [], cacheStats: { ok: true, bytes: 0, subtitleCount: 0, episodeCount: 0, currentEpisodeSubtitleCount: 0 } });
+  const stats = popup.runtimeMessages.find((entry) => entry.message.type === "BILAYER_GET_TRANSLATION_CACHE_STATS");
+  assert.deepEqual(stats.message, { type: "BILAYER_GET_TRANSLATION_CACHE_STATS" });
+  assert.match(popup.element("aiCacheUsage").textContent, /0/);
+  assert.equal(popup.element("aiCacheCurrentUsage").textContent, translate("aiCacheNoEpisode"));
+  assert.equal(popup.element("aiCacheStorageError").hidden, true);
+  popup.applyPageState({ ...WATCH_STATE, translationCache: { mode: "local", policy: "only", hits: 7, subtitleCount: 4, annotationMissing: 2, storageError: null } });
+  assert.equal(popup.element("aiCacheHits").textContent, translate("aiCacheHits", [7]));
+  assert.equal(popup.element("aiCacheAnnotations").textContent, translate("aiCacheAnnotations", [2]));
+});
+
+test("诊断控制器仅在所选页签可见时懒挂载并随 visibility 切换", async () => {
+  const popup = await createReadyPopup({});
+  assert.equal(popup.diagnostics.mounts.length, 0);
+  popup.click("diagnosticsTab");
+  assert.equal(popup.diagnostics.mounts.length, 1);
+  assert.equal(popup.diagnostics.mounts[0].controller.activations.at(-1), true);
+  popup.document.hidden = true;
+  popup.fireDocument("visibilitychange");
+  assert.equal(popup.diagnostics.mounts[0].controller.activations.at(-1), false);
+  popup.document.hidden = false;
+  popup.fireDocument("visibilitychange");
+  assert.equal(popup.diagnostics.mounts[0].controller.activations.at(-1), true);
+  popup.click("aiTab");
+  assert.equal(popup.diagnostics.mounts[0].controller.activations.at(-1), false);
+  popup.click("diagnosticsTab");
+  assert.equal(popup.diagnostics.mounts.length, 1);
+});
+
+test("cache_miss 显示缓存未命中提示并保留 warning 状态", async () => {
+  const popup = await createReadyPopup({ stored: { aiRole: "secondary" } });
+  const poll = popup.tabMessages.findIndex((entry) => entry.message.type === "BILAYER_GET_STATE");
+  assert.notEqual(poll, -1, "初始化应通过既有状态消息查询播放页");
+  popup.tabMessages[poll].message;
+  popup.applyPageState({
+    ...WATCH_STATE,
+    settings: { ...popup.storageState, aiRole: "secondary" },
+    translationStatus: { phase: "error", error: "cache_miss" }
+  });
+  assert.equal(popup.element("secondaryStatus").textContent, translate("cacheMiss"));
+  assert.equal(popup.element("secondaryStatus").dataset.state, "warning");
+});
+
+test("后台统计失败不会被播放页正常状态遮掉", async () => {
+  const popup = await createReadyPopup({ cacheStats: { ok: false, errorCode: "storage_unavailable" } });
+  const error = popup.element("aiCacheStorageError");
+  assert.equal(error.hidden, false);
+  popup.applyPageState({ ...WATCH_STATE, translationCache: { hits: 0, annotationMissing: 0, storageError: null } });
+  assert.equal(error.hidden, false);
+  assert.match(error.textContent, /storage_unavailable/);
+});
+
+test("本机清理失败显示真实错误且不广播页面清理", async () => {
+  const popup = await createReadyPopup({ stored: { aiCacheMode: "local" } });
+  popup.click("aiCacheClearAll");
+  popup.click("aiCacheConfirmYes");
+  await popup.flush();
+  popup.reply(popup.findMessageIndex("BILAYER_CLEAR_TRANSLATION_CACHE"), { ok: false, errorCode: "storage_idb_transaction" });
+  await popup.flush();
+  assert.match(popup.element("aiCacheStatus").textContent, /storage_idb_transaction/);
+  assert.equal(popup.tabMessages.some((entry) => entry.message.type === "BILAYER_CACHE_ACTION"), false);
 });

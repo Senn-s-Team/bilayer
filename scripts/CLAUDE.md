@@ -8,13 +8,15 @@ xcode-env.sh: Xcode 定位公共层，被 source 后提供 resolve_developer_dir
 sign-app.sh: 签名与注册公共层，注入 entitlements、深层签名 .app 与嵌套 .appex、清除隔离属性并刷新 pluginkit；证书按 CERT_NAME > 本机 Apple Development > ad-hoc 顺序解析
 i18n.test.mjs: 驱动真实扩展页 i18n 模块与真实 _locales 报文，验证 uiLanguage 偏好解析、包内文案同步解析与降级、浏览器语言归一、$1 替换及 [data-i18n-language] 切换器的填充/选中/持久化
 onboarding.test.mjs: 解析真实 onboarding.html 构造迷你 DOM，验证向导完成态在标签页 API 失效时仍写入配置并进入可交互完成态、外观控件与位置预设语义、预览渲染数学、模型发现 BILAYER_LIST_MODELS 协议与原生/AI 模式 1→2→3 全路径无异常
-settings.test.mjs: 解析真实 settings.html 构造迷你 DOM，验证设置页 provider 写入不丢数据（providers 整数组写入的读-改-写合并：改字段/新增/删除都不丢其它表面在此期间新增的服务）与常驻窗口可见性门控（隐藏时不读取标签页、重新可见立即补一轮且链不停摆），以及新增服务草案的端点校验/模型目录拉取失败就地写进 #newDraftStatus 状态行且不再调用 window.alert
-diagnostics.test.mjs: 驱动真实 diagnostics.html 与脚本的初始化/点击路径，验证双语列表/详情按已知计数区分条数不符与其它校验失败、未知计数不推测为零、顶层数组字幕的 UI 复制；导出结果就地写进 #exportStatus（无记录/下载失败/框架未就绪/框架就绪四态都不弹窗），以及带 ruby 且无 readings 的响应逐字渲染注音与重复渲染一致性
-content.test.mjs: 驱动真实内容脚本，验证独立源、日文源字幕 ruby 注音回填、provider 切换、预取热更新、上下文重译与凭证隔离
+settings.test.mjs: 解析真实 settings.html 构造迷你 DOM，验证 providers 读-改-写合并、缓存模式/策略和完整数值范围、用量与清理提交后广播、诊断按需挂载及可见性门控；新增服务失败通过状态行呈现
+diagnostics.test.mjs: 在设置页 root 挂载真实诊断控制器，验证摘要分页/详情、正常异常分类、活跃可见性轮询隔离、JSON/字幕读取与完整历史导出；不依赖已删除的独立诊断页
+content.test.mjs: 驱动真实内容脚本、缓存与调度器，验证 source 注册/读取 scope、设置 sender 授权与 episode 边界、retranslate/clear 管理动作、实际语义元数据接受、缓存命中及策略状态
 overlay.test.mjs: 运行真实字幕层并模拟 Shadow DOM，验证相同字幕节点复用（含 ruby 注音）、ruby/rt 元素生成及单行更新、消失状态
-subtitle-store.test.mjs: 驱动真实字幕存储，验证同轨并发请求合并、切集后缓存失效以及 subtitleParser 多行字幕单行化折叠
-translation.test.mjs: 驱动真实调度器，验证首句优先、默认 10 组和 60-120 秒双上限、邻句、seek、预算、日文源 ruby 注音回填与多行译文单行化折叠
-translation-worker.test.mjs: 模拟后台请求，验证 provider 切换、日文源语言 ruby 振假名 Schema/提示词注入与结构校验、权限、阶段诊断与原始报文计数保留，以及单字幕/多对象序列/顶层数组兼容和漏译/ID 错配/非法字段拒绝
+translation.test.mjs: 驱动真实调度器，验证首句优先、预取/时间双上限、邻句、seek、预算、缓存恢复先于请求、连续 miss、only 零请求及注音严格锚定已接受译文；源注册和缓存写入失败仍保留成功正文并报告错误，空读音保持汉字注音缺失
+translation-cache.test.mjs: 驱动真实 occurrence matcher，覆盖重复句、所有最优对齐歧义、请求依赖、上下文连续性、session scope、provider 变化与注音兼容性
+indexeddb-harness.mjs: 后台持久化测试的零依赖 IndexedDB 模拟器，提供对象存储、索引与事务生命周期；真实浏览器验收另行覆盖原生事务行为
+diagnostics-store.test.mjs: 驱动真实诊断存储，覆盖迁移、分页、重启中断、清理世代隔离与导出快照行为
+translation-cache-store.test.mjs: 驱动真实本机缓存存储，覆盖来源注册、已校验批次、保留/空间上限、用量与清理写入隔离
 create-safari-project.sh: Safari 工程生成器，经 xcode-env.sh 解析 Xcode 后调用 converter、修正宿主 App bundle id 前缀（匹配可选引号形式）、为 Debug/Release 分配 dev/release bundle id，并把 converter 写入的构建机 SDK 版 MACOSX_DEPLOYMENT_TARGET 统一钉到 MACOS_MIN_VERSION（12.4）
 patch-safari-project.mjs: 生成后 pbxproj 幂等补丁，移除顶层 CLAUDE.md 引用、注入 Resources 之后的剥离构建阶段（删除 appex 内的 CLAUDE.md 与测试文件），并只为 Extension target 关闭脚本沙盒
 package-dmg.sh: Release 构建与 dmg 打包脚本，经 xcode-env.sh 解析 xcodebuild，产物输出到 dist/ 并包含 /Applications 快捷方式

@@ -7,6 +7,6 @@ controls.css: 控件唯一基线——checkbox 开关（.toggle/.toggle-track）
 
 令牌只声明自定义属性、不产生选择器副作用；控件外观只在这一层定义一次，组件样式表（settings.css、settings-ai.css、onboarding.css、diagnostics.css）只写布局与变体覆盖，不得再出现同名控件的第二条基线，页面里出现同档控件时把类名加进本层对应档位的选择器清单（HTML 类名冻结、无法改动时，页面侧只落一次几何并注明所属档位）。`--bl-*` 是尺度与色阶（含字体族与展示级字号），语义令牌按角色命名并只引用 primitives；明暗差异一律落在语义层，组件规则里不得出现裸色值。圆角只走扁平阶梯与三枚角色别名，长条状元素（轨道、进度条、状态条、徽标）一律不得使用 50%/胶囊圆角。仅有几处刻意固定的取值：预览画板（--stage-*）是「屏幕」语义，明暗两态都保持深色（平面深色底 + 1px 发丝外框，不反光）；第二字幕的角色标记（--role-secondary/--role-secondary-ring）沿用维护者给定的紫色而不是品牌琥珀；诊断页的语法着色借用语义令牌（键/数值=accent 家族、字符串=warning、布尔=success、参考线=border-strong）而不新增一整套 code 调色板。`--select-arrow` 是按钮/下拉自绘箭头的数据 URI，明暗两态各一条，只有颜色不同。
 
-接入方式：页面在本页组件样式表之前以 `<link>` 依次加载 tokens.css 与 controls.css（settings.html / onboarding.html / diagnostics.html 已接入），本页 CSS 只消费本层令牌与控件基线，不再声明第二套调色板或第二套明暗分支。
+接入方式：settings.html 与 onboarding.html 在本页组件样式表之前以 `<link>` 依次加载 tokens.css 与 controls.css；诊断控制器在 settings 第五页签内挂载，复用该窗口的共享层。本页 CSS 只消费本层令牌与控件基线，不再声明第二套调色板或第二套明暗分支。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

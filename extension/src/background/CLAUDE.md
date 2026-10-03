@@ -4,20 +4,28 @@
 成员清单
 service_worker.js: 初始化全局翻译默认值并迁移旧键，在首次安装时唤起 onboarding 引导页；settings 设置窗口的开窗/聚焦（openSettingsWindow：action.onClicked 与 BILAYER_OPEN_SETTINGS 共用，已开着只聚焦、扩展页 tab.url 不可见时按记住的窗口 id 复核复用，否则 windows.create 默认 1240×940，windows API 不可用或创建失败时回落 tabs.create；__settings_window_id__ 优先记在 storage.session，不支持时退回 storage.local 并在 onStartup 作废；设置页/向导页授权要求扩展身份与 URL 白名单，不排除 sender.tab）；字幕下载、多 provider 翻译（日文原文/译文注音使用固定字段的 readings 数组契约，避免动态键字典诱导空对象；请求侧明确注音来源，响应侧兼容旧 readings 字典及 furigana 字符串，集成外来语本地化准则）、settings 与 onboarding 连通性测试、AI 就绪度查询（`BILAYER_AI_READINESS`：只读 provider 条目、`aiProviderId` 与 `uiLanguage` 偏好（同一次 `storage.local.get`），不请求上游不缓存，返回 `{configured, notice, tracksNotice, unreadNotice}`，提示句跟随 `storage.local.uiLanguage`（auto 走 `runtime.i18n.getMessage`，具体语言异步解析包内 `_locales/<code>/messages.json` 并按语言缓存）；`tracksNotice` 对应「本片无轨道」、`unreadNotice` 对应「读不到轨道清单」）、兼容服务解析单字幕对象、逗号分隔对象序列及顶层条目数组，逐条规范化 readings 后再严格校验数量、字段与 ID；默认常态保留最近 20 次原始诊断，失败摘要仅按白名单保留错误码、原因与显式提供且非 undefined 的 expectedCount/receivedCount，不复制正文或凭证
 
-设计边界:
-后台不保存页面级字幕状态；翻译时才读取所选 provider 的本地凭证。官方 OpenAI 使用固定 host 与严格 JSON Schema；兼容端点必须是 HTTPS `/chat/completions`（localhost/127.0.0.1 可用 HTTP），且必须拥有运行时授权。兼容服务可规范化单个 `{id,text}`、多个逗号分隔对象或顶层条目数组（含 Markdown 围栏）；数组逐条沿用 readings 规范化，结果必须与请求字幕的数量及 ID 完全匹配，空文本、额外字段与畸形 readings 仍由原有校验拒绝。原始报文仅由独立 diagnostics 页显式开启和读取；Authorization 只留在 background。诊断 `failure` 不复制回包正文或凭证，仅保留 `errorCode`、`reason` 与显式提供且非 undefined 的 `expectedCount`/`receivedCount`；数量或 ID 不匹配时保留真实数量，无 items 数组时 `receivedCount` 为 null，未提供数量的失败省略这两个键。
+diagnostics_store.js: 与 translation_cache_store.js 共用 `bilayer-background` IndexedDB v2；以 diagnosticSummaries、diagnosticPayloads、meta 分表保存摘要/完整报文/版本游标，旧 storage.local 记录仅在事务提交后删除，pending 请求在新 worker 启动时标为 worker_interrupted，generation 阻止 clear 后的迟到完成复活记录；query/detail/export 的所有 request 在同一事务 callback 链完成，EXPORT 每页 payload 请求在事务完成前排队，防止原生 IndexedDB transaction inactive。
+translation_cache_store.js: 与 diagnostics_store.js 共用 `bilayer-background` IndexedDB v2；cacheSources 保存精确时间线和 trackKind，cacheBatches 保存已接受译文及无凭证 provenance，meta 持有 sequence/generation；统计按已接受 occurrence 去重，不把整轨长度当缓存译文数；注音补齐按原文或已接受译文逐字锚定并跨原批次更新；clear-current 只递增对应 episode token，clear-all 递增全局 token。
+
+IndexedDB 持久化（`importScripts("diagnostics_store.js", "translation_cache_store.js")` 必须位于 classic worker 入口最前）：两模块共享 `bilayer-background` v2，升级都创建同一组 store/index；不得另设数据库版本或只由单个模块升级 schema。`diagnostics_store.js` 把摘要/完整 request-response/meta 分表，无业务条数/年龄上限；旧 `__raw_diagnostics__` 仅在事务提交后删除，clear generation 阻止在途 finalize 复活已清记录。`service_worker.js` SET diagnostics preference 在加载读取前同步写入用户意图，序列化每次实际值写入，前一次写失败不毒化后续队列；读取迟到不得覆盖用户选择。
+诊断协议（仅接受自有 `settings.html` URL 与精确 `runtime.id`；旧 diagnostics 页面已删除）：`BILAYER_QUERY_RAW_DIAGNOSTICS` 接受 filter/search/limit/cursor，返回摘要分页与 filter counts/version/generation；`BILAYER_GET_RAW_DIAGNOSTIC` 用 id+generation 取完整单条；`BILAYER_EXPORT_RAW_DIAGNOSTICS` 按 cursor 导出完整记录页；`BILAYER_SET_RAW_DIAGNOSTICS` 设置持久采集偏好；`BILAYER_CLEAR_RAW_DIAGNOSTICS` 原子递增 generation 并清空摘要与 payload。存储错误必须显式返回 `storage_unavailable`，不得回成空结果。摘要的 `errorCode`、`error` 或 `failure` 任何一项存在时均属 abnormal，即使 validated 为 true。
+翻译缓存协议：REGISTER/READ 仅本扩展 Netflix watch 内容脚本，episode 必须等于 sender 的 watchId；STATS/CLEAR 仅精确自有 settings.html。source 身份散列 episode/sourceLanguage/trackKind/完整文本序列，READ 返回这些 scope 字段并仅返回有兼容批次的时间线。每次缓存操作读取当前 mode/retention/cap，避免 worker 已加载偏好后继续使用旧值。超过 maxBytes 的单条时间线不写入；过期及 LRU 删除在 readwrite 事务中选择和删除，防止用旧快照删掉并发新提交，容量优先保留在途来源但不会无条件超限。成功批次保存实际 prompt 的 semanticIntent、无凭证 provenance 和逐条 sourceText/translatedText；generation 在 dispatch 前读取并在提交事务中校验。成功 provider response 始终返回实际 cacheMetadata，持久化失败只附 storageError。subtitleCount/currentEpisodeSubtitleCount 按已接受 occurrence 去重，bytes 含时间线与批次；session 的存储由 content 持有。
+`aiCachePolicy="only"` 在后台拒绝任何 provider dispatch；缓存命中由 content 在发消息前消费，因此未命中不会制造 provider/诊断记录。
+注音补齐：`BILAYER_TRANSLATE_BATCH` 可带 `annotationOnly:true` 和 `annotationCapture`，逐项包含 sourceIndex、acceptedText、annotationText、annotationSide。后台请求回显注音锚点并只生成 readings；目标正文不相同或读音不属于锚点时拒绝响应，源注音始终保留已接受译文。local 补齐在 dispatch 前读取 generation，提交事务校验 token 与实际 semanticIntent，缓存写入失败不使有效译文/注音失效；补齐后重新执行容量限制。
+缓存并发边界：mode、policy、retention 和 capacity 按每条消息读取并归一化，翻译成功提交使用该请求的配置快照；并发管理消息不能改变已派发请求的持久化选择。READ 在每条时间线内按 createdAt 与提交 sequence 新到旧返回，新重译正文优先于旧正文。
 
 设置窗口（`openSettingsWindow` / `BILAYER_OPEN_SETTINGS`）:
-manifest 刻意不声明 `action.default_popup`：只要该键还在，浏览器就自己开弹窗并吞掉 `action.onClicked`，故删键才能拿回工具栏点击。`runtime.action?.onClicked` 与 `BILAYER_OPEN_SETTINGS`（仅 `isAllowedTestSender` 可发，否则回 `{ok:false,errorCode:"configuration"}`）都走同一个 `openSettingsWindow()`，查找顺序：① `windows.getAll({populate:true})` 中任一标签页 URL 等于 `runtime.getURL(SETTINGS_PAGE)` 的窗口 → `windows.update({focused:true})`，命中即复用、重复点击不叠窗；② 记住的窗口 id（`SETTINGS_WINDOW_KEY = "__settings_window_id__"`）经 `windows.get` 验证仍存在 → 聚焦。② 不可省：Chrome 未授予 `tabs` 权限时窗口内每个 `tab.url` 都是 null（连扩展自己的页面也一样），① 会必然落空；③ `windows.create({type:"popup", width:1240, height:940, url})` 并记住新窗口 id——高度是窗口外高（有头 Chrome 实测标题栏约吃掉 88px，内高约 852），1180×860 会让内容约 749px 的 AI 页重新出现面板内滚动，故取 940 让四个页签都不滚动；④ `windows` API 缺失或调用失败 → `runtime.tabs.create({url})`；两者都失败才回 `{ok:false,errorCode:"unavailable"}`，不静默吞掉点击。窗口 id 优先记在 `storage.session`（会话结束即失效，不会被下一次会话复用），不支持时退 `storage.local`，并在 `runtime.runtime.onStartup` 调 `forgetSettingsWindow()` 清旧记录，避免拿上一次会话的 id 去聚焦无关窗口。
-授权规则同步收紧为「身份 + URL」：`isAllowedTestSender(sender)` 要求 `sender.id === runtime.runtime.id` 且 URL 命中 settings.html 或 onboarding.html 白名单。旧写法「URL 匹配且 `!sender.tab`」在独立窗口形态下会误杀——窗口/标签页里的文档与内容脚本一样都带 `sender.tab`——使「测试连通性」「获取模型」「AI 就绪度」静默失败；身份仍是必过项，不放宽到任意扩展页或网页。
+后台诊断历史与缓存管理均仅接受精确自有 `settings.html` URL（另校验 `sender.id === runtime.runtime.id`）；diagnostics 内容不再由独立 diagnostics 页访问，onboarding/Netflix 页面不能读取诊断历史或触发管理操作。
+授权规则同步收紧为「身份 + URL」：`isAllowedTestSender(sender)` 要求 `sender.id === runtime.runtime.id` 且 URL 命中 settings.html 或 onboarding.html 白名单；诊断历史和缓存管理使用 `isSettingsSender(sender)` 的 settings.html 精确 URL。身份仍是必过项，不放宽到任意扩展页或网页。
 
 采集开关状态机（`loadRawDiagnosticsIfNeeded()` 单飞读取 + `BILAYER_SET_RAW_DIAGNOSTICS`）:
 - 未知：worker 生命周期初值 `rawCaptureEnabled = false`——“未知”一律 fail-closed，模块初值绝不表示开启。
 - 读取成功：采用持久化值（`__raw_capture_enabled__` 未设置视为 true），置 `rawCapturePreferenceKnown`，promise 缓存，此后不再读存储。
 - 读取失败（storage 抛错或 `runtime.runtime.lastError`）：不置任何采集值、不缓存失败，promise 清空使下一次调用重试；重试成功前保持 fail-closed。
 - 用户显式切换：立即赋值并立即只写 `__raw_capture_enabled__` 开关键（不等待尚未落地的读取），置 `capturePreferenceSetByUser` 与 `rawCapturePreferenceKnown`；前者使随后落地的读取不得覆盖用户值，用户值在本 worker 生命周期内始终权威。
-- 已知性规则：`__raw_capture_enabled__` 只在 `rawCapturePreferenceKnown` 为真（读取成功或用户切换过）时写入存储。缓冲落盘（捕获记录、CLEAR）永不写入未知的 fail-closed 占位值——否则“清理缓冲”会把用户从未读到的偏好静默翻转；缓冲/版本/序号三键在任何情况下都照常写入。
-- 交错语义：GET、CLEAR 与 translate 都 `await` 同一个加载 promise，因此不会读到模块初值；SET 不等待读取，立即生效并落盘。读取挂起时 SET 先到 → 立即回 `enabled` 并持久化，读取随后落地被跳过；读取先落地则用户值直接覆盖。SET 只单独写开关键，避免缓冲尚未读回时空 `__raw_diagnostics__` 覆盖已存记录；CLEAR 先读回开关再清空并落盘，故其写入的开关值就是用户实际持有的值。
+- 写入边界：SET 只序列化写 `__raw_capture_enabled__`，返回持久化成功或失败；诊断报文及版本/序号由 IndexedDB 事务持有，CLEAR 不修改采集偏好。
+- 交错语义：QUERY、CLEAR 与 translate 等待单飞读取；SET 同步生效且等实际写入完成才回响应，迟到读取不得覆盖用户值；读取失败允许下次重试。
+加载或迁移失败时 QUERY/GET/EXPORT/CLEAR 返回显式 storageError，不伪造空历史；翻译继续成功但该次不采集，下一次调用重试初始化。报文写失败保留在 QUERY.storageError，下一次成功报文提交才清除。
 
 AI 就绪度查询（`BILAYER_AI_READINESS`）:
 契约：请求 `{ type: "BILAYER_AI_READINESS" }` → `{ ok: true, configured: boolean, notice: string|null, tracksNotice: string, unreadNotice: string }`；失败（读取存储抛错/`runtime.runtime.lastError`）回 `{ ok: false, errorCode: "unavailable" }`，授权失败回 `{ ok: false, errorCode: "configuration" }`。
@@ -32,7 +40,7 @@ AI 就绪度查询（`BILAYER_AI_READINESS`）:
 - 降级链（每一步都不抛错、不返回半句话）：包内报文 → `runtime.i18n.getMessage` → `""`。fetch 失败只影响文案来源，**绝不变成 `{ok:false}`**。
 - **潜在同类风险（未修，约束后来者）**：回落分支 `runtime.i18n?.getMessage?.(key)`（service_worker.js:822）不传 substitutions，浏览器会把报文里的 `$1…$9` 抹成空串——与 `extension/src/i18n.js` 修复前的 auto 缺陷同源。当前被取的三个键 `noticeProviderMissing`/`noticeSubtitleTracksMissing`/`noticeSubtitleTracksUnread` 都不含 `$n`，故这条路径暂不可达；**一旦给后台投递的文案加 `$n`（无论哪个键），auto/回落路径就会渲染成半句话**，届时必须像 i18n.js 的 `browserArguments()` 那样把缺位补齐为字面占位符再下传。
 - 刻意的重复实现：service worker 没有 DOM 与 `localStorage`，无法加载 `i18n.js`（该模块解析期依赖同步 XHR），平台也拒绝 worker 内的同步请求，故这里只能异步取包并自持缓存；两处都必须与对方保持同一语义与同一键集。
-授权：`isReadinessSender()` = 观剧页内容脚本（`isAllowedSender`，Netflix `/watch/` 页）∪ 扩展自有页面（settings/onboarding 走 `isAllowedTestSender`，diagnostics 走 `isDiagnosticsSender`）；其余发送者一律 `configuration` 拒绝，且不返回任何文案。
+授权：`isReadinessSender()` 仅包含精确本扩展身份的 Netflix watch 内容脚本与 settings/onboarding URL 白名单；诊断历史仅 settings，已删除独立 diagnostics 页面入口。
 开销：只读一次 `providers`/`aiProviderId`/`uiLanguage`、不请求上游；`auto` 下零额外请求，具体语言下每个语言最多一次包内 fetch（缓存，含失败）；就绪度快照本身仍不缓存——settings 轮询与设置变更会反复问，陈旧快照会掩盖配置变化。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

@@ -1,9 +1,10 @@
 /**
- * [INPUT]: 依赖 browser/chrome storage、permissions API 与 host_permissions/optional_host_permissions 的跨域 fetch 能力
- * [OUTPUT]: 初始化默认值，提供字幕下载、多 provider 翻译（日文源/目标注音请求使用定长字段的 readings 条目数组，兼容旧字典/字符串回包供 ruby 渲染）、兼容服务对象序列与顶层条目数组规范化（逐条规范化 readings 后仍严格校验数量、字段与 ID）、AI 就绪度查询（BILAYER_AI_READINESS：只读 provider 条目、aiProviderId 与界面语言偏好 uiLanguage（同一次 storage.local.get），不触网不缓存，返回 {configured, notice, tracksNotice, unreadNotice}，提示句跟随 storage.local.uiLanguage：auto 走 runtime.i18n.getMessage、具体语言异步解析包内 _locales/<code>/messages.json 并缓存，缺失逐级回落 getMessage→空串，语义对齐 src/i18n.js）、诊断（失败摘要仅保留错误码、原因及显式提供的 expectedCount/receivedCount，不复制正文或凭证；采集开关未知即关闭：读取成功才采用持久化值、读取失败不缓存并在下次调用重试、用户显式切换立即落盘且优先于尚未落地的读取；开关值未知时缓冲落盘一律省略 `__raw_capture_enabled__`，GET/CLEAR 均先 await 单飞读取，采集判断前同样必须 await）、连通性测试与旧键迁移，以及设置窗口的唯一打开路径（openSettingsWindow：工具栏 action.onClicked 与 BILAYER_OPEN_SETTINGS 共用，已存在的设置页窗口只聚焦、引擎隐藏扩展页 tab.url 时按记住的开窗 id 复核复用（id 记在 storage.session，不支持时退回 storage.local 并在 onStartup 作废）、都未命中才 windows.create 弹独立窗口、windows.create 缺失或失败时回落 tabs.create；设置页/向导页的授权要求扩展身份与页面 URL 白名单，不以 sender.tab 排除独立窗口）
- * [POS]: background 生命周期入口；凭证仅存于 provider 条目且只在 worker 内读取，兼容服务必须通过端点校验与运行时域名授权
+ * [INPUT]: 依赖 browser/chrome storage、IndexedDB diagnostics_store.js 与 translation_cache_store.js、permissions API
+ * [OUTPUT]: 初始化默认设置并迁移历史键；提供诊断 QUERY/GET/EXPORT/SET/CLEAR 与翻译缓存 REGISTER/READ/STATS/CLEAR 消息、多 provider 翻译（成功返回实际 cacheMetadata，IDB 写失败不改写译文）、字幕下载、设置窗口与连通性服务
+ * [POS]: classic background service worker；入口同步加载两个持久层，凭证仅在 worker 内读取；诊断历史和缓存管理仅接受自有 settings.html URL；缓存提交使用请求配置快照，存储错误不伪装为空数据
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
+if (typeof importScripts === "function") importScripts("diagnostics_store.js", "translation_cache_store.js");
 
 const runtime = globalThis.browser ?? globalThis.chrome;
 const TRANSLATE_MESSAGE = "BILAYER_TRANSLATE_BATCH";
@@ -29,64 +30,41 @@ const MAX_RESPONSE_BYTES = 80000;
 const LOCALE_PATTERN = /^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/;
 const MODEL_PATTERN = /^[^\s\x00-\x1f]{1,120}$/;
 const PROVIDER_PATTERN = /^[\w-]{1,48}$/;
-const DIAGNOSTICS_PAGE = "src/diagnostics/diagnostics.html";
 const ONBOARDING_PAGE = "src/onboarding/onboarding.html";
 const SETTINGS_PAGE = "src/settings/settings.html";
-const rawDiagnostics = [];
-const MAX_RAW_DIAGNOSTICS = 20;
-let rawDiagnosticsVersion = 0;
-let rawDiagnosticSequence = 0;
-// 采集开关以“未知即关闭”为初值：读取成功或用户显式切换之前，任何请求都不得采集。
-let rawCaptureEnabled = false;
-// 单飞读取：仅成功时缓存；失败清空缓存，下一次调用必须重试，绝不把失败钉成“已加载”。
 let rawDiagnosticsLoad = null;
-// 本 worker 生命周期内用户显式切换过开关；用户意图优先于之后才落地的读取结果。
 let capturePreferenceSetByUser = false;
-// 采集开关值是否已知（读取成功，或用户在本 worker 内切换过）。未知时绝不把
-// fail-closed 占位值写进存储，否则清理缓冲会把用户从未读到的偏好静默翻转。
 let rawCapturePreferenceKnown = false;
+let diagnosticsPreferenceWrite = Promise.resolve();
+
 
 function loadRawDiagnosticsIfNeeded() {
   if (rawDiagnosticsLoad) return rawDiagnosticsLoad;
-  const attempt = new Promise((resolve) => {
+  rawDiagnosticsLoad = (async () => {
     try {
-      runtime.storage.local.get(["__raw_diagnostics__", "__raw_diagnostics_version__", "__raw_diagnostic_seq__", "__raw_capture_enabled__"], (stored) => {
-        if (runtime.runtime?.lastError) { resolve(false); return; }
-        if (!capturePreferenceSetByUser) rawCaptureEnabled = stored?.__raw_capture_enabled__ !== false;
-        rawCapturePreferenceKnown = true;
-        if (Array.isArray(stored?.__raw_diagnostics__) && stored.__raw_diagnostics__.length) {
-          rawDiagnostics.splice(0, rawDiagnostics.length, ...stored.__raw_diagnostics__.slice(-MAX_RAW_DIAGNOSTICS));
-          rawDiagnosticsVersion = stored.__raw_diagnostics_version__ ?? rawDiagnostics.length;
-          rawDiagnosticSequence = stored.__raw_diagnostic_seq__ ?? rawDiagnostics.length;
-        }
-        resolve(true);
-      });
-    } catch {
-      resolve(false);
-    }
-  });
-  rawDiagnosticsLoad = attempt.then((loaded) => { if (!loaded) rawDiagnosticsLoad = null; });
+      const stored = await new Promise((resolve, reject) => runtime.storage.local.get(["__raw_capture_enabled__"], (value) => {
+        if (runtime.runtime?.lastError) reject(new Error("storage_unavailable")); else resolve(value);
+      }));
+      if (!capturePreferenceSetByUser) rawCaptureEnabled = stored?.__raw_capture_enabled__ !== false;
+      rawCapturePreferenceKnown = true;
+      await BilayerDiagnosticsStore.initialize(
+        () => new Promise((resolve, reject) => runtime.storage.local.get(["__raw_diagnostics__", "__raw_diagnostics_version__", "__raw_diagnostic_seq__"], (value) => runtime.runtime?.lastError ? reject(new Error("storage_unavailable")) : resolve(value))),
+        () => new Promise((resolve, reject) => runtime.storage.local.remove(["__raw_diagnostics__", "__raw_diagnostics_version__", "__raw_diagnostic_seq__"], () => runtime.runtime?.lastError ? reject(new Error("storage_unavailable")) : resolve()))
+      );
+      diagnosticsStorageError = null;
+      return true;
+    } catch (error) { diagnosticsStorageError = error?.message ?? "storage_unavailable"; rawDiagnosticsLoad = null; return false; }
+  })();
   return rawDiagnosticsLoad;
 }
 
-// 切换开关只写开关键，避免在缓冲尚未读回时用空缓冲覆盖 `__raw_diagnostics__`。
-function persistRawCapturePreference() {
-  try {
-    runtime.storage.local.set({ __raw_capture_enabled__: rawCaptureEnabled });
-  } catch {}
+function persistRawCapturePreference(enabled) {
+  const write = diagnosticsPreferenceWrite.catch(() => {}).then(() => new Promise((resolve, reject) => runtime.storage.local.set({ __raw_capture_enabled__: enabled }, () => runtime.runtime?.lastError ? reject(new Error("storage_unavailable")) : resolve())));
+  diagnosticsPreferenceWrite = write;
+  return write;
 }
 
-function persistRawDiagnostics() {
-  try {
-    runtime.storage.local.set({
-      __raw_diagnostics__: rawDiagnostics.slice(-MAX_RAW_DIAGNOSTICS),
-      __raw_diagnostics_version__: rawDiagnosticsVersion,
-      __raw_diagnostic_seq__: rawDiagnosticSequence,
-      // 只在开关值已知时一并写入；未知时省略该键，避免用 fail-closed 占位值覆盖用户偏好。
-      ...(rawCapturePreferenceKnown ? { __raw_capture_enabled__: rawCaptureEnabled } : {})
-    });
-  } catch {}
-}
+
 
 const DEFAULT_SETTINGS = {
   onboardingCompleted: false,
@@ -220,65 +198,152 @@ runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type === "BILAYER_GET_RAW_DIAGNOSTICS") {
-    if (!isDiagnosticsSender(sender)) {
-      sendResponse({ ok: false, errorCode: "configuration" });
-      return true;
-    }
-    void loadRawDiagnosticsIfNeeded().then(() => {
-      sendResponse({
-        ok: true,
-        enabled: rawCaptureEnabled,
-        version: rawDiagnosticsVersion,
-        ...(message.version === rawDiagnosticsVersion ? {} : { records: rawDiagnostics.map((record) => structuredClone(record)) })
-      });
-    });
+  if (message?.type === "BILAYER_QUERY_RAW_DIAGNOSTICS" || message?.type === "BILAYER_GET_RAW_DIAGNOSTIC" || message?.type === "BILAYER_EXPORT_RAW_DIAGNOSTICS" || message?.type === "BILAYER_SET_RAW_DIAGNOSTICS" || message?.type === "BILAYER_CLEAR_RAW_DIAGNOSTICS") {
+    if (!isSettingsSender(sender)) { sendResponse({ ok: false, errorCode: "configuration" }); return true; }
+    void handleDiagnosticsMessage(message).then(sendResponse).catch((error) => sendResponse({ ok: false, errorCode: error?.message?.startsWith("storage_") ? error.message : "storage_unavailable" }));
     return true;
   }
-  if (message?.type === "BILAYER_SET_RAW_DIAGNOSTICS") {
-    if (!isDiagnosticsSender(sender) || typeof message.enabled !== "boolean") {
-      sendResponse({ ok: false, errorCode: "configuration" });
-      return true;
-    }
-    // 用户意图立即生效并立即落盘，不等待仍未完成的读取；该读取落地时不得覆盖此值。
+  if (["BILAYER_REGISTER_TRANSLATION_CACHE_SOURCE", "BILAYER_READ_TRANSLATION_CACHE", "BILAYER_GET_TRANSLATION_CACHE_STATS", "BILAYER_CLEAR_TRANSLATION_CACHE"].includes(message?.type)) {
+    if (!isAllowedSender(sender) && !isSettingsSender(sender)) { sendResponse({ ok: false, errorCode: "configuration" }); return true; }
+    void handleTranslationCacheMessage(message, sender).then(sendResponse).catch((error) => sendResponse({ ok: false, errorCode: error?.message?.startsWith("storage_") ? error.message : "storage_unavailable" }));
+    return true;
+  }
+  if (message?.type === "BILAYER_FETCH_SUBTITLE") {
+    void fetchSubtitle(message.url).then(sendResponse).catch((error) => sendResponse({ ok: false, status: 0, error: error?.message ?? String(error) }));
+    return true;
+  }
+
+  return false;
+});
+
+async function handleDiagnosticsMessage(message) {
+  if (message.type === "BILAYER_SET_RAW_DIAGNOSTICS") {
+    if (typeof message.enabled !== "boolean") return { ok: false, errorCode: "configuration" };
     capturePreferenceSetByUser = true;
     rawCapturePreferenceKnown = true;
     rawCaptureEnabled = message.enabled;
-    persistRawCapturePreference();
-    sendResponse({ ok: true, enabled: rawCaptureEnabled });
-    return true;
+    void loadRawDiagnosticsIfNeeded();
+    try { await persistRawCapturePreference(message.enabled); return { ok: true, enabled: message.enabled, persisted: true }; }
+    catch { return { ok: false, enabled: message.enabled, persisted: false, errorCode: "storage_unavailable" }; }
   }
-  if (message?.type === "BILAYER_CLEAR_RAW_DIAGNOSTICS") {
-    if (!isDiagnosticsSender(sender)) {
-      sendResponse({ ok: false, errorCode: "configuration" });
-      return true;
+  const loaded = await loadRawDiagnosticsIfNeeded();
+  if (!loaded) return { ok: false, errorCode: "storage_unavailable", enabled: rawCaptureEnabled,
+    preferenceKnown: rawCapturePreferenceKnown, storageError: { reason: diagnosticsStorageError ?? "storage_unavailable" } };
+  if (message.type === "BILAYER_CLEAR_RAW_DIAGNOSTICS") return await BilayerDiagnosticsStore.clear();
+  if (message.type === "BILAYER_GET_RAW_DIAGNOSTIC") return BilayerDiagnosticsStore.detail(message.id, message.generation);
+  if (message.type === "BILAYER_EXPORT_RAW_DIAGNOSTICS") return BilayerDiagnosticsStore.exportPage(message);
+  const page = await BilayerDiagnosticsStore.query({ ...message, enabled: rawCaptureEnabled, preferenceKnown: rawCapturePreferenceKnown });
+  return { ...page, storageError: diagnosticsStorageError ? { reason: diagnosticsStorageError } : null };
+}
+
+async function handleTranslationCacheMessage(message, sender) {
+  await loadRawDiagnosticsIfNeeded();
+  const preferences = await new Promise((resolve, reject) => runtime.storage.local.get({ aiCacheMode: "session", aiCacheRetentionDays: 30, aiCacheMaxMiB: 256 }, (stored) => {
+    if (runtime.runtime.lastError) reject(new Error("storage_unavailable")); else resolve(stored);
+  }));
+  const cacheMode = preferences.aiCacheMode === "local" ? "local" : "session";
+  const retentionDays = Number.isInteger(preferences.aiCacheRetentionDays) && preferences.aiCacheRetentionDays >= 0 && preferences.aiCacheRetentionDays <= 3650 ? preferences.aiCacheRetentionDays : 30;
+  const maxBytes = Number.isInteger(preferences.aiCacheMaxMiB) && preferences.aiCacheMaxMiB >= 0 && preferences.aiCacheMaxMiB <= 65536 ? preferences.aiCacheMaxMiB * 1048576 : 256 * 1048576;
+  if (message.type === "BILAYER_REGISTER_TRANSLATION_CACHE_SOURCE") {
+    if (!isAllowedSender(sender) || message.episodeId !== watchIdFromSender(sender)) return { ok: false, errorCode: "configuration" };
+    const result = await BilayerTranslationCacheStore.registerSource(message, cacheMode, { maxBytes });
+    return result;
+  }
+  if (message.type === "BILAYER_READ_TRANSLATION_CACHE") {
+    if (!isAllowedSender(sender) || message.episodeId !== watchIdFromSender(sender)) return { ok: false, errorCode: "configuration" };
+    if (cacheMode !== "local") return { ok: true, snapshots: [] };
+    return BilayerTranslationCacheStore.read(message, { retentionDays, maxBytes });
+  }
+  if (message.type === "BILAYER_GET_TRANSLATION_CACHE_STATS") {
+    if (!isSettingsSender(sender)) return { ok: false, errorCode: "configuration" };
+    return BilayerTranslationCacheStore.stats(message.episodeId, { retentionDays, maxBytes });
+  }
+  if (message.type === "BILAYER_CLEAR_TRANSLATION_CACHE") {
+    if (!isSettingsSender(sender)) return { ok: false, errorCode: "configuration" };
+    const result = await BilayerTranslationCacheStore.clear(message.episodeId);
+    return result;
+  }
+  return { ok: false, errorCode: "configuration" };
+}
+
+function watchIdFromSender(sender) {
+  try { return new URL(sender.tab.url).pathname.split("/")[2] ?? ""; } catch { return ""; }
+}
+function isSettingsSender(sender) {
+  return sender?.id === runtime.runtime.id && sender.url === runtime.runtime.getURL(SETTINGS_PAGE);
+}
+
+async function persistAcceptedTranslation(message, sender, settings, provider, endpoint, items, dispatchedGeneration) {
+  const capture = message.cacheCapture;
+  const episodeId = watchIdFromSender(sender);
+  const prompt = String(settings.aiStyleGuide ?? "").trim();
+  const semanticIntent = !prompt || prompt === DEFAULT_TRANSLATION_PROMPT || prompt === LEGACY_TRANSLATION_PROMPT ? "default-v1" : prompt;
+  const createdAt = Date.now();
+  const provenance = { providerId: provider.id, providerName: provider.name, model: provider.model,
+    endpoint: (() => { try { const url = new URL(endpoint); return `${url.origin}${url.pathname}`; } catch { return ""; } })() };
+  const metadata = { semanticIntent, translationSemantics: "cue-v1", annotationSemantics: null, provenance, createdAt };
+  const sourceById = new Map(message.items.map((item) => [item.id, item.text]));
+  const annotationSide = isJapanese(message.targetLanguage) ? "target" : isJapanese(message.sourceLanguage) ? "source" : null;
+  const hasValidReadings = annotationSide && items.every((item) => {
+    const anchor = annotationSide === "target" ? item.text : sourceById.get(item.id);
+    return typeof anchor === "string" && item.readings &&
+      Object.entries(item.readings).every(([surface]) => anchor.includes(surface)) &&
+      (isKanaOnly(anchor) || Object.keys(item.readings).length > 0);
+  });
+  if (hasValidReadings) { metadata.annotationSemantics = "reading-v1"; metadata.annotationSide = annotationSide; }
+  if (settings.aiCacheMode === "local" && capture && typeof capture.sourceId === "string" && episodeId) {
+    let source = null;
+    try { source = await BilayerTranslationCacheStore.source(capture.sourceId); }
+    catch { metadata.storageError = "storage_unavailable"; }
+    if (source && source.episodeId === episodeId && source.sourceLanguage === message.sourceLanguage &&
+        Array.isArray(capture.itemIndices) && Array.isArray(capture.beforeIndices) && Array.isArray(capture.afterIndices)) {
+      const requestItemsById = new Map(message.items.map((item, index) => [item.id, { item, index }]));
+      const sourceTexts = items.map((item) => source.texts[capture.itemIndices[requestItemsById.get(item.id)?.index]]);
+      const beforeTexts = capture.beforeIndices.map((index) => source.texts[index]);
+      const afterTexts = capture.afterIndices.map((index) => source.texts[index]);
+      const exact = (indices, texts) => indices.length === texts.length && indices.every((index, offset) =>
+        Number.isInteger(index) && index >= 0 && index < source.texts.length && source.texts[index] === texts[offset]);
+      const responseIdsMatch = items.every((item) => requestItemsById.has(item.id));
+      if (responseIdsMatch && sourceTexts.length === items.length && sourceTexts.every((text, index) => text === requestItemsById.get(items[index].id).item.text) &&
+          beforeTexts.length === message.contextBefore.length && beforeTexts.every((text, index) => text === message.contextBefore[index]) &&
+          afterTexts.length === message.contextAfter.length && afterTexts.every((text, index) => text === message.contextAfter[index]) &&
+          exact(capture.itemIndices, capture.itemIndices.map((index) => source.texts[index])) && exact(capture.beforeIndices, beforeTexts) && exact(capture.afterIndices, afterTexts)) {
+        if (settings.aiCacheMode === "local") {
+          try {
+            if (!dispatchedGeneration) throw new Error("storage_unavailable");
+            const generation = dispatchedGeneration;
+            const committed = await BilayerTranslationCacheStore.commitBatch({ sourceId: capture.sourceId, episodeId,
+              sourceLanguage: message.sourceLanguage, trackKind: source.trackKind, targetLanguage: message.targetLanguage,
+              semanticIntent, itemIndices: items.map((item) => capture.itemIndices[requestItemsById.get(item.id).index]),
+              beforeIndices: capture.beforeIndices, afterIndices: capture.afterIndices,
+              sourceTexts, beforeTexts, afterTexts,
+              items: items.map((item, index) => ({ ...item, sourceText: sourceTexts[index], translatedText: item.text })),
+              provenance, generation, annotationSemantics: metadata.annotationSemantics, annotationSide: metadata.annotationSide, createdAt },
+            { maxBytes: settings.aiCacheMaxMiB * 1048576 });
+            if (!committed.ok) metadata.storageError = committed.errorCode;
+            else metadata.id = committed.id;
+          } catch { metadata.storageError = "storage_unavailable"; }
+        }
+      }
     }
-    // 与 GET 一致先读回开关，避免清理缓冲时把未知的 fail-closed 值当成用户偏好落盘。
-    void loadRawDiagnosticsIfNeeded().then(() => {
-      rawDiagnostics.length = 0;
-      rawDiagnosticsVersion++;
-      persistRawDiagnostics();
-      sendResponse({ ok: true });
-    });
-    return true;
   }
-  if (message?.type !== "BILAYER_FETCH_SUBTITLE") return false;
-
-  void fetchSubtitle(message.url)
-    .then((result) => sendResponse(result))
-    .catch((error) => {
-      sendResponse({
-        ok: false,
-        status: 0,
-        error: error?.message ?? String(error)
-      });
-    });
-
-  return true;
-});
+  return metadata;
+}
 
 async function translateBatch(message, sender, testProviderId = "") {
   if ((!testProviderId && !isAllowedSender(sender)) || !isValidBatch(message)) {
+    return { ok: false, errorCode: "configuration" };
+  }
+  const annotationCapture = message.annotationOnly === true ? message.annotationCapture : null;
+  const annotationSide = isJapanese(message.targetLanguage) ? "target" : isJapanese(message.sourceLanguage) ? "source" : null;
+  if (message.annotationOnly === true && (!annotationSide || !annotationCapture ||
+      annotationCapture.episodeId !== watchIdFromSender(sender) || annotationCapture.sourceLanguage !== message.sourceLanguage ||
+      annotationCapture.targetLanguage !== message.targetLanguage || annotationCapture.translationSemantics !== "cue-v1" ||
+      typeof annotationCapture.sourceId !== "string" || typeof annotationCapture.trackKind !== "string" ||
+      !Array.isArray(annotationCapture.items) || annotationCapture.items.length !== message.items.length ||
+      annotationCapture.items.some((item, index) => item?.id !== message.items[index].id || !Number.isInteger(item.sourceIndex) ||
+        item.sourceIndex < 0 || !isSubtitleText(item.acceptedText) || item.annotationText !== message.items[index].text ||
+        item.annotationSide !== annotationSide || (annotationSide === "target" && item.annotationText !== item.acceptedText)))) {
     return { ok: false, errorCode: "configuration" };
   }
   const trace = message.diagnostic === true && !testProviderId ? [] : null;
@@ -299,10 +364,8 @@ async function translateBatch(message, sender, testProviderId = "") {
   try {
     settings = await new Promise((resolve, reject) => {
       runtime.storage.local.get({
-        aiRole: "off",
-        aiProviderId: DEFAULT_PROVIDER_ID,
-        aiStyleGuide: DEFAULT_TRANSLATION_PROMPT,
-        providers: []
+        aiRole: "off", aiProviderId: DEFAULT_PROVIDER_ID, aiStyleGuide: DEFAULT_TRANSLATION_PROMPT,
+        providers: [], aiCacheMode: "session", aiCachePolicy: "prefer", aiCacheRetentionDays: 30, aiCacheMaxMiB: 256
       }, (stored) => {
         if (runtime.runtime.lastError) reject(new Error("storage unavailable"));
         else resolve(stored);
@@ -311,6 +374,11 @@ async function translateBatch(message, sender, testProviderId = "") {
   } catch {
     return reject("configuration", "rejected", { reason: "storage_unavailable" });
   }
+  settings.aiCacheMode = settings.aiCacheMode === "local" ? "local" : "session";
+  settings.aiCachePolicy = settings.aiCachePolicy === "only" ? "only" : "prefer";
+  settings.aiCacheRetentionDays = Number.isInteger(settings.aiCacheRetentionDays) && settings.aiCacheRetentionDays >= 0 && settings.aiCacheRetentionDays <= 3650 ? settings.aiCacheRetentionDays : 30;
+  settings.aiCacheMaxMiB = Number.isInteger(settings.aiCacheMaxMiB) && settings.aiCacheMaxMiB >= 0 && settings.aiCacheMaxMiB <= 65536 ? settings.aiCacheMaxMiB : 256;
+  if (!testProviderId && settings.aiCachePolicy === "only") return reject("cache_miss", "rejected", { reason: "cache_miss" });
 
   if (!testProviderId && settings.aiRole !== "primary" && settings.aiRole !== "secondary") {
     return reject("configuration", "rejected", { reason: "ai_disabled" });
@@ -424,7 +492,7 @@ async function translateBatch(message, sender, testProviderId = "") {
             content: "你是一位专业的影视字幕翻译员，也是目标语言的母语使用者。" +
               "text 字段只放译文；若要求日语注音，readings 是独立于译文的必填结果，不得省略。contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。" +
               "保持每个 id、数量和顺序完全一致，不合并、不拆分、不遗漏字幕。" +
-              buildRubyPromptSection(message, settings) +
+              (annotationCapture ? "【补注音契约】items[].text 是已接受的日文注音锚点。逐字回显 text，只生成该 text 的 readings，不翻译、不改写正文。readings 使用 [{\"surface\":\"汉字词\",\"reading\":\"平假名\"}] 数组；纯假名允许空数组。" : buildRubyPromptSection(message, settings)) +
               "保留人名、专有名词和既有译名；结合上下文处理代词、时态、人物关系和语气。" +
               (isJapanese(message.sourceLanguage) ? buildKatakanaGuide() : "") +
               "使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、时间戳或契约之外的字段。" +
@@ -444,18 +512,21 @@ async function translateBatch(message, sender, testProviderId = "") {
         ]
       })
     };
-    await loadRawDiagnosticsIfNeeded();
-    if (rawCaptureEnabled) {
-      rawRecord = {
-        id: ++rawDiagnosticSequence,
-        at: startedAt,
-        request: { url: endpoint, method: requestOptions.method, headers: { "Content-Type": "application/json" }, body: requestOptions.body },
-        response: null
-      };
-      rawDiagnostics.push(rawRecord);
-      if (rawDiagnostics.length > MAX_RAW_DIAGNOSTICS) rawDiagnostics.shift();
-      rawDiagnosticsVersion++;
-      persistRawDiagnostics();
+    const diagnosticsLoaded = await loadRawDiagnosticsIfNeeded();
+    if (diagnosticsLoaded && rawCaptureEnabled && !testProviderId) {
+      const capture = { at: startedAt, model: provider.model,
+        request: { url: endpoint, method: requestOptions.method, headers: { "Content-Type": "application/json" }, body: requestOptions.body }, response: null };
+      try { rawRecord = await BilayerDiagnosticsStore.captureStart(capture, true); }
+      catch (error) { diagnosticsStorageError = error?.message ?? "storage_unavailable"; }
+    }
+    let dispatchedCacheGeneration = null;
+    if (!testProviderId) {
+      try { dispatchedCacheGeneration = await BilayerTranslationCacheStore.generation(watchIdFromSender(sender)); }
+      catch { diagnosticsStorageError = "storage_unavailable"; }
+    }
+    if (!testProviderId && settings.aiCacheMode === "local" && message.cacheCapture?.sourceId) {
+      try { await BilayerTranslationCacheStore.touchSource(message.cacheCapture.sourceId); }
+      catch { diagnosticsStorageError = "storage_unavailable"; }
     }
     const response = await fetch(endpoint, requestOptions);
 
@@ -501,7 +572,37 @@ async function translateBatch(message, sender, testProviderId = "") {
     }
     record("validated", { itemCount: data.items.length });
     if (rawRecord) rawRecord.validated = true;
-    return result({ ok: true, items: data.items });
+    let acceptedItems = data.items;
+    if (annotationCapture) {
+      const requested = new Map(annotationCapture.items.map((item) => [item.id, item]));
+      acceptedItems = data.items.map((item) => {
+        const anchor = requested.get(item.id);
+        const valid = (annotationSide !== "target" || item.text === anchor.acceptedText) && item.readings &&
+          Object.entries(item.readings).every(([surface, reading]) => surface && typeof reading === "string" && reading.length > 0 && anchor.annotationText.includes(surface)) &&
+          (isKanaOnly(anchor.annotationText) || Object.keys(item.readings).length > 0);
+        return { id: item.id, text: anchor.acceptedText, ...(valid ? { readings: item.readings } : {}) };
+      });
+      if (acceptedItems.some((item) => item.readings === undefined)) return reject("invalid_response", "rejected", { reason: "annotation_anchor_mismatch" });
+    }
+    const translated = { ok: true, items: acceptedItems };
+    if (!testProviderId) {
+      const cacheMetadata = await persistAcceptedTranslation(annotationCapture ? { ...message, cacheCapture: undefined } : message,
+        sender, { ...settings, aiStyleGuide: styleGuide }, provider, endpoint, acceptedItems, dispatchedCacheGeneration);
+      if (annotationCapture && settings.aiCacheMode === "local") {
+        const accepted = new Map(acceptedItems.map((item) => [item.id, item]));
+        const annotations = annotationCapture.items.filter((item) => accepted.get(item.id).readings !== undefined)
+          .map((item) => ({ ...item, readings: accepted.get(item.id).readings }));
+        if (annotations.length) {
+          try {
+            const committed = await BilayerTranslationCacheStore.commitAnnotations({ ...annotationCapture, annotationSide,
+              semanticIntent: cacheMetadata.semanticIntent, generation: dispatchedCacheGeneration, items: annotations }, { maxBytes: settings.aiCacheMaxMiB * 1048576 });
+            if (!committed.ok) cacheMetadata.storageError = committed.errorCode;
+          } catch { cacheMetadata.storageError = "storage_unavailable"; }
+        }
+      }
+      translated.cacheMetadata = cacheMetadata;
+    }
+    return result(translated);
   } catch {
     if (rawRecord) rawRecord.error = controller.signal.aborted ? "timeout" : "network_error";
     return reject("unavailable", "rejected", { reason: controller.signal.aborted ? "timeout" : "network_error",
@@ -510,8 +611,8 @@ async function translateBatch(message, sender, testProviderId = "") {
     clearTimeout(timeout);
     if (rawRecord) {
       rawRecord.completedAt = Date.now();
-      rawDiagnosticsVersion++;
-      persistRawDiagnostics();
+      try { await BilayerDiagnosticsStore.captureFinish(rawRecord); diagnosticsStorageError = null; }
+      catch (error) { diagnosticsStorageError = error?.message ?? "storage_unavailable"; }
     }
   }
 }
@@ -950,25 +1051,18 @@ async function openSettingsWindow() {
   }
 }
 
-// 就绪度查询的授权边界：观剧页内容脚本（isAllowedSender）与扩展自有页面（settings/onboarding/diagnostics）。
+// AI 就绪度只对 Netflix 内容脚本、设置页与新手引导开放；诊断历史只对设置页开放。
 function isReadinessSender(sender) {
-  return isAllowedSender(sender) || isAllowedTestSender(sender) || isDiagnosticsSender(sender);
+  return isAllowedSender(sender) || isAllowedTestSender(sender);
 }
-// 设置页搬进独立窗口后，其文档与标签页文档一样带 sender.tab，故授权只按 URL 判定，
-// 但身份仍是必过项：只放行扩展自己的设置页与向导页，绝不放宽到任意扩展页面或网页。
 function isAllowedTestSender(sender) {
   if (sender?.id !== runtime.runtime.id) return false;
-  const settingsUrl = runtime.runtime.getURL(SETTINGS_PAGE);
-  const onboardingUrl = runtime.runtime.getURL(ONBOARDING_PAGE);
-  return sender.url === settingsUrl || sender.url === onboardingUrl;
+  return sender.url === runtime.runtime.getURL(SETTINGS_PAGE) || sender.url === runtime.runtime.getURL(ONBOARDING_PAGE);
 }
 
-function isDiagnosticsSender(sender) {
-  return sender?.id === runtime.runtime.id && sender.url === runtime.runtime.getURL(DIAGNOSTICS_PAGE);
-}
 
 function isAllowedSender(sender) {
-  if (sender?.id != null && sender.id !== runtime.runtime.id) return false;
+  if (sender?.id !== runtime.runtime.id) return false;
   if (typeof sender?.tab?.url !== "string") return false;
   try {
     const url = new URL(sender.tab.url);
@@ -1042,6 +1136,10 @@ function isValidTranslation(data, sourceItems) {
 
 function isJapanese(lang) {
   return /^(ja|jp)($|[-_])/i.test(String(lang ?? "").trim());
+}
+
+function isKanaOnly(text) {
+  return /^[\u3040-\u309f\u30a0-\u30ff\u30fc\s。、，．！？・「」『』（）()［］【】]+$/.test(text);
 }
 
 function buildRubyPromptSection(message, settings) {

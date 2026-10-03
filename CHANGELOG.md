@@ -7,6 +7,43 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-03
+
+### Added
+
+- Translation cache controls in the AI settings: current-page session or device-local
+  storage, cache-first or cache-only policy, usage, retranslation, and scoped clearing.
+  Local storage defaults to 30 days from creation and 256 MiB, with independently
+  disableable limits and eviction of least recently used entries.
+- Exact occurrence-based cache reuse across reloads and provider changes. Edited source
+  tracks reuse only unambiguous exact alignments with unchanged request dependencies;
+  Japanese annotations are checked separately from translation text. Cache hits spend
+  no request or character allowance, and cache-only misses send no translation requests.
+- Persistent raw diagnostics in IndexedDB, with legacy-history migration, summary
+  pagination, detail lookup, coherent full-history export, and visible storage errors.
+
+### Changed
+
+- Move diagnostics into the settings window's fifth tab. A compact request table,
+  metadata search, All/Normal/Abnormal filters, and response/request/subtitle/info views
+  replace the separate diagnostics page; capture, download-all, and clear live in the
+  more menu. Polling runs only while that tab is active and the window is visible.
+- Remove the diagnostic history's 20-record application limit. Pending records appear
+  only in All; completed records count as normal only after successful validation.
+  Browser storage quotas still apply, and clearing history preserves capture preference.
+- Document persistent subtitle data and the existing default-on capture preference in
+  both READMEs and the security policy.
+
+### Fixed
+
+- Fence cleared cache and diagnostic entries against late in-flight writes. Interrupted
+  diagnostic requests remain abnormal after background restart instead of pending forever.
+- Keep accepted translation text visible when cache registration or persistence fails,
+  show the storage error, and allow annotation requests anchored to that accepted text.
+  Empty readings remain missing for subtitles containing kanji; target readings never
+  decorate the source line when both languages are Japanese.
+
+
 ## [0.4.1] - 2026-10-03
 
 ### Fixed
@@ -507,7 +544,8 @@ guidelines 5.2.1 and 2.3.x.
 
 - Initial Safari extension: dual native subtitles on Netflix with per-episode settings.
 
-[Unreleased]: https://github.com/Senn-s-Team/bilayer/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Senn-s-Team/bilayer/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Senn-s-Team/bilayer/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Senn-s-Team/bilayer/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Senn-s-Team/bilayer/compare/v0.3.5...v0.4.0
 [0.3.5]: https://github.com/Senn-s-Team/bilayer/compare/v0.3.0...v0.3.5

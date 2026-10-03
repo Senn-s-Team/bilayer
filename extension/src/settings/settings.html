@@ -1,7 +1,7 @@
 <!--
-  [INPUT]: 依赖 ../styles/tokens.css 与 ../styles/controls.css 的令牌层/控件基线、settings.css 与 settings-ai.css 的 macOS 设置面板样式，及 settings.js 的模式、provider、翻译参数、会话额度与日志交互
-  [OUTPUT]: 提供四个设置页签、会话翻译额度字段及其用量读数、AI 页顶部「翻译服务」卡片中的当前翻译服务选择器（#aiProviderSelect，选项由 settings.js 依 currentProviders 写入）、字幕页模式卡片下与 AI 页共用的 AI 不可用提示块（#modeAvailability/#aiAvailability，覆盖无轨道/读不到轨道/未配置服务）、侧栏界面语言切换与直达报文面板的侧栏操作及独立工作区、新增服务草案内部的就地状态行（#newDraftStatus，承载端点校验/模型目录拉取的失败说明）
-  [POS]: settings 模块的 DOM 壳；翻译提示词、前瞻参数与会话额度位于 provider 表单之外，由 background.openSettingsWindow() 以 windows.create({type:'popup'}) 独立窗口加载，windows API 不可用时回落标签页
+  [INPUT]: 依赖共享 styles、diagnostics.js 控制器与 settings.js 的字幕、AI 缓存、provider、外观和诊断交互
+  [OUTPUT]: 提供五个设置页签、单张 AI 缓存管理卡片及懒挂载诊断面板；诊断 styles 与控制器先于 settings.js 加载
+  [POS]: settings 模块 DOM 壳；缓存偏好与 episode 操作共用唯一控件节点，诊断驻留第五页签且仅在选中/可见时挂载
   [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 -->
 <!doctype html>
@@ -12,6 +12,8 @@
     <title>Bilayer</title>
     <link rel="stylesheet" href="../styles/tokens.css">
     <link rel="stylesheet" href="../styles/controls.css">
+    <link rel="stylesheet" href="../diagnostics/diagnostics.css">
+    <link rel="stylesheet" href="../diagnostics/diagnostics-payload.css">
     <link rel="stylesheet" href="./settings.css">
     <link rel="stylesheet" href="./settings-ai.css">
   </head>
@@ -30,12 +32,13 @@
           <button class="tab-button" id="aiTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="aiPanel" data-tab="ai" data-i18n="tabAi">AI 翻译</button>
           <button class="tab-button" id="providerTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="providerPanel" data-tab="provider" data-i18n="tabProviders">翻译服务</button>
           <button class="tab-button" id="stylesTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="stylesPanel" data-tab="styles" data-i18n="tabStyles">外观</button>
+          <button class="tab-button" id="diagnosticsTab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="diagnosticsPanel" data-tab="diagnostics" data-i18n="settingsDiagnosticsTab">诊断</button>
         </nav>
         <div class="sidebar-tools">
           <label class="field-label sidebar-language-label" for="uiLanguage" data-i18n="uiLanguageLabel">界面语言</label>
           <select class="sidebar-language-select" id="uiLanguage" data-i18n-language aria-label="界面语言" data-i18n-aria-label="uiLanguageAria"></select>
           <button class="sidebar-action" id="openOnboarding" type="button" aria-label="打开新手向导" data-i18n-aria-label="settingsOnboardingAria"><span data-i18n="settingsOnboardingLabel">向导</span> <span aria-hidden="true">↗</span></button>
-          <button class="sidebar-action" id="openRawDiagnostics" type="button" aria-label="打开诊断报文面板" data-i18n-aria-label="settingsDiagnosticsAria"><span data-i18n="settingsDiagnosticsLabel">诊断</span> <span aria-hidden="true">↗</span></button>
+          <!-- 诊断已作为第五页签，避免重复入口与独立窗口 -->
         </div>
       </aside>
 
@@ -225,6 +228,48 @@
           <p class="ai-consent" data-i18n="aiScheduleHelp">预翻译默认最多 10 组、限播放前方 60 秒；0 只翻译当前句。前后文默认每侧 2 条，仅用于语境消歧。</p>
           <p class="ai-consent" data-i18n="aiBudgetHelp">两项上限互不影响，任一项设为 0 即表示该项不限。计数包含前后文。</p>
           <p class="ai-consent" data-i18n="aiBudgetWindowHelp">统计窗口是两项上限共用的计量周期，且跨重新加载保留：本次观看在刷新同一剧集页面后继续累计，本小时与本日按本机时间分桶。用量会持久化保存，关闭设置窗口不会重置。</p>
+        </section>
+        <section class="ai-section ai-cache-section" aria-labelledby="aiCacheTitle">
+          <h2 id="aiCacheTitle" data-i18n="aiCacheSection">翻译缓存</h2>
+          <div class="ai-fields">
+            <label class="field" for="aiCacheMode"><span class="field-label" data-i18n="aiCacheMode">保存方式</span>
+              <select id="aiCacheMode"><option value="session" data-i18n="aiCacheModeSession">当前页面会话</option><option value="local" data-i18n="aiCacheModeLocal">保存在本机</option></select>
+            </label>
+            <label class="field" for="aiCachePolicy"><span class="field-label" data-i18n="aiCachePolicy">使用策略</span>
+              <select id="aiCachePolicy"><option value="prefer" data-i18n="aiCachePrefer">缓存优先</option><option value="only" data-i18n="aiCacheOnly">仅使用缓存</option></select>
+            </label>
+            <details id="aiCacheLocalControls" class="ai-cache-retention" hidden>
+              <summary id="aiCacheRetentionSummary"><span data-i18n="aiCacheRetention">保留与上限</span><span id="aiCacheRetentionValue">30 天 · 256 MiB</span></summary>
+              <div class="ai-cache-local-fields">
+                <label class="field" for="aiCacheRetentionDays"><span class="field-label" data-i18n="aiCacheRetention">缓存保留时间</span>
+                  <input id="aiCacheRetentionDays" type="number" min="0" max="3650" step="1" value="30">
+                </label>
+                <label class="field" for="aiCacheMaxMiB"><span class="field-label" data-i18n="aiCacheMaxMiB">本机空间上限</span>
+                  <input id="aiCacheMaxMiB" type="number" min="0" max="65536" step="1" value="256">
+                </label>
+              </div>
+            </details>
+            <p class="ai-consent" data-i18n="aiCacheModeHelp">当前页面会话仅在此页面生命周期内保留；保存在本机的缓存可跨刷新使用。</p>
+            <p class="ai-consent" data-i18n="aiCachePolicyHelp">缓存优先只在未命中时发送翻译请求；仅使用缓存不会发送请求。</p>
+          </div>
+          <div class="ai-cache-readout" aria-live="polite">
+            <p id="aiCacheUsage">—</p><p id="aiCacheCurrentUsage">—</p>
+            <p id="aiCacheHits">—</p><p id="aiCacheAnnotations">—</p>
+          </div>
+          <p id="aiCacheNoEpisode" class="ai-consent" data-i18n="aiCacheNoEpisode" hidden>打开播放页面后才能管理当前剧集缓存。</p>
+          <p id="aiCacheStorageError" class="ai-credential-status" data-state="error" role="status" aria-live="polite" hidden></p>
+          <div class="ai-cache-actions">
+            <button id="aiCacheRetranslate" class="ai-button" type="button" data-i18n="aiCacheRetranslate">重新翻译当前剧集</button>
+            <button id="aiCacheClearCurrent" class="ai-button" type="button" data-i18n="aiCacheClearCurrent">清除此剧集缓存</button>
+            <button id="aiCacheClearAll" class="ai-button" type="button" data-i18n="aiCacheClearAll">清除全部缓存</button>
+          </div>
+          <div id="aiCacheConfirm" class="ai-cache-confirm" role="group" aria-labelledby="aiCacheConfirmGroup" hidden>
+            <p id="aiCacheConfirmGroup" data-i18n="aiCacheConfirmGroup">确认清理缓存</p>
+            <p id="aiCacheConfirmText"></p>
+            <button id="aiCacheConfirmYes" class="ai-button" type="button" data-i18n="aiCacheConfirm">确认</button>
+            <button id="aiCacheConfirmNo" class="ai-button-quiet" type="button" data-i18n="aiCacheCancel">取消</button>
+          </div>
+          <p id="aiCacheStatus" class="ai-credential-status" role="status" aria-live="polite"></p>
         </section>
 
         <!-- 卡片 3: 全局提示词 -->
@@ -507,9 +552,11 @@
           </section>
         </div>
       </section>
+      <section id="diagnosticsPanel" class="tab-panel diagnostics-panel" role="tabpanel" aria-labelledby="diagnosticsTab" data-panel="diagnostics" hidden></section>
       </div>
     </main>
     <script src="../i18n.js"></script>
+    <script src="../diagnostics/diagnostics.js"></script>
     <script src="./settings.js"></script>
   </body>
 </html>

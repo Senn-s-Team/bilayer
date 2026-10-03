@@ -247,7 +247,7 @@ test("auto hands substitutions to getMessage so real keys keep every placeholder
   assert.equal(usage, "This watch session: 0 / 80 requests · 0 / 40000 characters");
   assert.equal(/\$\d/.test(usage), false, "no placeholder survives on the auto path");
 
-  assert.equal(auto.i18n.t("diagTreeItems", [7]), "7 items");
+  assert.equal(auto.i18n.t("diagnosticsRequestNumber", [7]), "Request #7");
   assert.equal(auto.i18n.t("providerEndpointGranted", ["a.example", "/v1"]), "Authorized a.example; using /v1");
   // auto 的语义不变：带 substitutions 也绝不因此去加载包内文件
   assert.deepEqual(auto.xhrUrls, []);

@@ -2,13 +2,12 @@
 > L2 | 父级: ../CLAUDE.md
 
 成员清单
-content.js: 内容脚本入口，连接 page bridge、已知设置白名单和三轨加载；aiRole 互斥控制双原生/AI，支持日文源字幕 ruby 振假名跨行回填，预取数量调整不清除译文、上下文调整触发重译；aiRequestBudget/aiCharacterBudget（0 为不限）经 setBudget 注入调度器，aiBudgetWindow 决定计量窗口键并把用量持久化到 runtime.storage.local 的 __ai_budget_usage__（派发前经 syncUsage 与其它标签页对齐），BILAYER_GET_STATE 附带含 window/windowKey/resetAt 的 translationBudget、subtitleAvailability（unknown|unread|none|available：unread 由 TRACK_REPORT_TIMEOUT_MS=20000 的兜底计时器在 watch 页且有 video 时推进）与 providerReadiness（{configured, notice}），并把 AI 行的 waiting 角色经 render({pending}) 交给 overlay；AI 模式按与设置窗口同序的「轨道无可用 > provider 未配置 > 轨道读取超时」把后台本地化好的 notice 交给 render({notice})
+content.js: 内容脚本入口，连接 page bridge、三轨加载及 occurrence cache/scheduler；local 模式经 background 注册/读取持久化快照，session 模式仅保留当前内容脚本生命周期内的接受结果；成功翻译按后台返回的实际 cacheMetadata 提交 session snapshot，source id、字幕世代与缓存 generation 阻止迟到 completion 写入；BILAYER_GET_STATE 暴露 cache 状态，BILAYER_CACHE_ACTION 只接受扩展自身 settings.html
 netflixAdapter.js: Netflix 字幕轨道归一化器，把私有响应折叠成稳定 Track
 overlay.js: Shadow DOM 字幕层，负责布局与独立样式；支持基于权威原文字幕与 readings 读音字典精准渲染 <ruby>/<rt> 振假名，兼任兼容模式解析，并在节点未变化时逐帧复用以维持视觉稳定；render({primaryCues, secondaryCues, pending, notice}) 的 pending 按角色标记等待翻译，无文本的角色连续 pending ≥200ms 后渲染无文字占位，收到文本或结束 pending 立即消失；notice 为可选的本地化提示行（{text, kind?}），缺省/null/空文本与旧行为一致，非空时在字幕栈最下方渲染唯一复用的提示条（节点复用，无重建）；通过 mount() 接入 fullscreenMount
-fullscreenMount.js: 全屏挂载管理，在 document capture 阶段同步 reparent host 到 fullscreen element，仅监听标准 fullscreenchange（SPA 切换剧集通过 clearSubtitleState 复位 host 标记，syncWatchState 调 overlay.mount() 重新挂载）
-subtitleParser.js: 字幕格式解析层，把文本解析为带原始时间轴的 cue，按语言感知规则折叠单句硬换行为单行（保留对话破折号），导出 collapseSubtitleLines
-subtitleStore.js: 字幕轨道与 cue 缓存，合并同轨并发加载并隔离切集后的过期下载
-translationScheduler.js: 当前句优先、可调未来句组数量（默认 10）与 60-120 秒时窗双上限、前后文每侧 0-4 条；setBudget 注入请求/字符上限（null 为不限，默认 80/40000），status().budget 按请求与实发字符上报用量及 exhausted 原因，降额立即断流、提额恢复派发；用量以 content 传入的 budgetKey（计量窗口键）为边界，setUsage 让外部持久化视图与本地视图逐项取较大值合并（窗口变化则按该视图重新起算），可选 syncUsage 在每次派发前回调以便扣费前对齐另一标签页或新窗口；pendingRoles(activeCues) 报告仍在等译文的 AI 行角色（已译出、已永久失败或未被派出都为 false）；clear() 与同窗口设置变更不清零，并保持链路日志、多行译文单行化折叠及通过 readingsMap 提供高保真日文源字幕 ruby 注音回填
+translationCache.js: 以 source family 与 occurrence 为锚的接受结果缓存；完整 cue 向量位置匹配，编辑后仅复用所有最优 LCS 中强制配对且原请求与局部依赖窗口连续的 occurrence；语义目标匹配，provider/context 参数只作 provenance，注音独立锚定实际 source/target 文本；session 快照留在当前内容脚本，local 快照由 background IDB 恢复，证明不足或工作上限不足时 miss
+translationScheduler.js: cue grouping、预算同步与异步批次派发；恢复完成前阻止 miss 选择，cache hit 不消耗请求/字符预算；prefer 只派发连续 miss，并可为已接受正文补请求注音，only 的任何缺失都不调用 provider；成功回包经 onAccepted 按实际 cacheMetadata 提交，invalid_response 对相同源保持失败直到源、语义、注音或策略显式改变；source 与 cache generation 阻止迟到恢复及清理后 completion 复活
+管理动作：重新翻译以稳定 cacheRevision 切换调度源并跳过一次恢复，后续轨道报告不得把它切回旧缓存；清理先由设置完成本机事务再广播，播放页同步清空内存与调度状态。汉字的空 readings 仍为注音缺失；源和目标同为日语时仅目标行消费目标读音。cacheMetadata.storageError 不改变成功正文，但进入页面 translationCache 状态；local 源注册失败时保留内存来源身份，后续补读音仍按已接受正文锚定并报告存储失败。
 
 设计边界:
 Netflix 私有变化只进入 adapter；字幕格式变化只进入 parser；AI 翻译的纯时间轴调度留在 scheduler，网络凭证只在 background 读取；DOM 视觉变化只进入 overlay。content 只向 settings 返回已知设置字段，不泄露 storage 的其他键。预算边界：一次请求 = 一次批量翻译调用，字符数按实际发出的正文加已配置前后文累计；上限与用量的唯一真相在 scheduler，content 只把设置换算成上限（0→不限）并转述状态，因此 AI 设置变更触发的 clear() 不会重新武装已经消耗掉的额度。

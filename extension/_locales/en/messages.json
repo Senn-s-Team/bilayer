@@ -245,6 +245,9 @@
   "statusAiCheckSettings": {
     "message": "Check your key and settings"
   },
+  "cacheMiss": {
+    "message": "No cached translation for this line. Switch to Cache first to allow a request, or use Retranslate this episode."
+  },
   "errorNoSubtitleText": {
     "message": "Track has no text subtitles"
   },
@@ -884,258 +887,6 @@
   "onboardingSkipped": {
     "message": "Skipped..."
   },
-  "diagTitle": {
-    "message": "Raw translation payloads · Bilayer"
-  },
-  "diagHeading": {
-    "message": "Raw translation payloads"
-  },
-  "diagSubtitle": {
-    "message": "Last 20 requests · extension memory only · payloads contain subtitle text"
-  },
-  "diagLiveConnecting": {
-    "message": "Connecting to background"
-  },
-  "diagLiveFailed": {
-    "message": "Background connection failed"
-  },
-  "diagLiveCapturing": {
-    "message": "Capturing raw payloads"
-  },
-  "diagLiveOff": {
-    "message": "Capture off"
-  },
-  "diagCaptureStop": {
-    "message": "Stop capture"
-  },
-  "diagCaptureStart": {
-    "message": "Start capture"
-  },
-  "diagRefresh": {
-    "message": "Refresh"
-  },
-  "diagExport": {
-    "message": "Export cases to disk ↓"
-  },
-  "diagExportTitle": {
-    "message": "Export all captured payloads to disk as cases"
-  },
-  "diagClear": {
-    "message": "Clear records"
-  },
-  "diagGridAria": {
-    "message": "Raw translation payloads"
-  },
-  "diagRequests": {
-    "message": "Requests"
-  },
-  "diagRecordListAria": {
-    "message": "Translation request records"
-  },
-  "diagEmpty": {
-    "message": "Waiting for translation requests. Keep this page open and play subtitles; records appear here automatically."
-  },
-  "diagDetailEmptyTitle": {
-    "message": "Waiting for the first translation request"
-  },
-  "diagDetailEmptyDesc": {
-    "message": "Keep this page open; enable AI translation on the Netflix page and play subtitles."
-  },
-  "diagTransport": {
-    "message": "Connection info"
-  },
-  "diagHeaders": {
-    "message": "Request / response headers (Authorization removed)"
-  },
-  "diagTabResponse": {
-    "message": "Response"
-  },
-  "diagTabRequest": {
-    "message": "Request"
-  },
-  "diagTabUi": {
-    "message": "Render as UI"
-  },
-  "diagCopy": {
-    "message": "Copy payload"
-  },
-  "diagCopied": {
-    "message": "Copied ✓"
-  },
-  "diagCopyFailed": {
-    "message": "Copy failed"
-  },
-  "diagToggleRaw": {
-    "message": "Toggle tree view"
-  },
-  "diagFormattedText": {
-    "message": "Formatted text"
-  },
-  "diagSearchPlaceholder": {
-    "message": "Search keys, values, or paths"
-  },
-  "diagSearchAria": {
-    "message": "Search JSON keys, values, or paths"
-  },
-  "diagSearchStatus": {
-    "message": "Search JSON"
-  },
-  "diagSearchNoMatch": {
-    "message": "No matches"
-  },
-  "diagPrevMatch": {
-    "message": "Previous match"
-  },
-  "diagNextMatch": {
-    "message": "Next match"
-  },
-  "diagExpandAll": {
-    "message": "Expand all"
-  },
-  "diagCollapse": {
-    "message": "Collapse levels"
-  },
-  "diagShortcuts": {
-    "message": "↑↓ navigate · ←→ collapse/expand"
-  },
-  "diagPayloadAria": {
-    "message": "Payload content"
-  },
-  "diagRequestNumber": {
-    "message": "Request $1"
-  },
-  "diagInProgress": {
-    "message": "In progress"
-  },
-  "diagModelUnspecified": {
-    "message": "No model specified"
-  },
-  "diagRequestGeneric": {
-    "message": "Request"
-  },
-  "diagAwaitingResponse": {
-    "message": "Awaiting response"
-  },
-  "diagMethod": {
-    "message": "Method"
-  },
-  "diagReqBodyBytes": {
-    "message": "Request body bytes"
-  },
-  "diagResStatus": {
-    "message": "Response status"
-  },
-  "diagResBodyBytes": {
-    "message": "Response body bytes"
-  },
-  "diagTotalDuration": {
-    "message": "Total duration"
-  },
-  "diagNoResponse": {
-    "message": "Response not returned yet"
-  },
-  "diagRequestFailed": {
-    "message": "No response received: $1"
-  },
-  "diagUiShape": {
-    "message": "Subtitle UI preview"
-  },
-  "diagFormattedJson": {
-    "message": "Formatted JSON · $1"
-  },
-  "diagRawText": {
-    "message": "Raw text"
-  },
-  "diagJsonArray": {
-    "message": "JSON array · $1 items"
-  },
-  "diagJsonObject": {
-    "message": "JSON object · $1 fields"
-  },
-  "diagUiBannerTitle": {
-    "message": "Bilingual subtitle UI preview"
-  },
-  "diagUiValid": {
-    "message": "Validated ✓"
-  },
-  "diagUiFailed": {
-    "message": "Validation failed ($1)"
-  },
-  "diagUiBannerMeta": {
-    "message": "Model: $1 · Duration: $2 · $3 subtitle lines"
-  },
-  "diagUiEmpty": {
-    "message": "No structured subtitle items could be parsed. Switch to “Response” to view the raw payload text."
-  },
-  "diagUiMissingTranslation": {
-    "message": "No translation returned"
-  },
-  "diagUiSourceRef": {
-    "message": "Source: $1"
-  },
-  "diagTreeArray": {
-    "message": "array"
-  },
-  "diagTreeObject": {
-    "message": "object"
-  },
-  "diagTreeItems": {
-    "message": "$1 items"
-  },
-  "diagTreeFields": {
-    "message": "$1 fields"
-  },
-  "diagExpandString": {
-    "message": "Expand the full string at $1"
-  },
-  "diagCollapseString": {
-    "message": "Collapse the full string at $1"
-  },
-  "diagStatusSuccess": {
-    "message": "Success"
-  },
-  "diagStatusFailed": {
-    "message": "Failed"
-  },
-  "diagStatusCountMismatch": {
-    "message": "$1 (count mismatch: expected $2, received $3)"
-  },
-  "diagStatusValidationFailed": {
-    "message": "$1 (translation validation failed)"
-  },
-  "diagStatusReason": {
-    "message": "$1 ($2)"
-  },
-  "diagStatusError": {
-    "message": "Failed: $1"
-  },
-  "diagStatusReturnedUnvalidated": {
-    "message": "Returned, not validated"
-  },
-  "diagStatusRequesting": {
-    "message": "Requesting"
-  },
-  "diagLocalPreview": {
-    "message": "UI preview · sample data"
-  },
-  "diagExportEmpty": {
-    "message": "There are no payload records to export. Play subtitles on Netflix for a moment, then export."
-  },
-  "diagExportFailed": {
-    "message": "Export failed: check the browser download permission."
-  },
-  "diagExportNotReady": {
-    "message": "The export component is not ready yet; try again shortly."
-  },
-  "diagSampleSystemPrompt": {
-    "message": "Keep subtitles natural and concise."
-  },
-  "diagCopySourceLabel": {
-    "message": "Source: $1"
-  },
-  "diagCopyTargetLabel": {
-    "message": "Translation: $1"
-  },
   "noticeProviderMissing": {
     "message": "No translation service is configured yet — open the Translation Services tab in the settings window to add an endpoint and API key."
   },
@@ -1162,5 +913,296 @@
   },
   "aiUnavailableNoProviderHint": {
     "message": "Add an endpoint and API key under Translation Services before AI translation can run. The source track you already chose is kept while you configure it."
+  },
+  "aiCacheSection": {
+    "message": "Translation cache"
+  },
+  "aiCacheMode": {
+    "message": "Cache storage"
+  },
+  "aiCacheModeSession": {
+    "message": "This page session"
+  },
+  "aiCacheModeLocal": {
+    "message": "On this device"
+  },
+  "aiCachePolicy": {
+    "message": "Cache policy"
+  },
+  "aiCachePrefer": {
+    "message": "Cache first"
+  },
+  "aiCacheOnly": {
+    "message": "Cache only"
+  },
+  "aiCachePolicyHelp": {
+    "message": "Cache first sends a request when a compatible translation is missing. Cache only reports a miss without sending a request."
+  },
+  "aiCacheRetention": {
+    "message": "Keep cached translations"
+  },
+  "aiCacheRetentionDays": {
+    "message": "$1 days"
+  },
+  "aiCacheUnlimited": {
+    "message": "Unlimited"
+  },
+  "aiCacheMaxMiB": {
+    "message": "Local storage limit"
+  },
+  "aiCacheUnlimitedMiB": {
+    "message": "Unlimited"
+  },
+  "aiCacheUsage": {
+    "message": "$1 · $2 subtitles · $3 episodes"
+  },
+  "aiCacheCurrentUsage": {
+    "message": "Current episode: $1 · $2 subtitles"
+  },
+  "aiCacheHits": {
+    "message": "$1 cache hits"
+  },
+  "aiCacheAnnotations": {
+    "message": "$1 annotations missing"
+  },
+  "aiCacheNoEpisode": {
+    "message": "Open a playback page to manage its episode cache."
+  },
+  "aiCacheStorageError": {
+    "message": "Cache storage is unavailable: $1"
+  },
+  "aiCachePageUnavailable": {
+    "message": "The playback page is not responding."
+  },
+  "aiCacheOperationError": {
+    "message": "The cache operation could not be completed: $1"
+  },
+  "aiCacheRetranslate": {
+    "message": "Retranslate this episode"
+  },
+  "aiCacheClearCurrent": {
+    "message": "Clear this episode"
+  },
+  "aiCacheClearAll": {
+    "message": "Clear all cache"
+  },
+  "aiCacheConfirmCurrent": {
+    "message": "Clear this episode's local and reachable page-session caches?"
+  },
+  "aiCacheConfirmAll": {
+    "message": "Clear local and reachable session caches?"
+  },
+  "aiCacheConfirm": {
+    "message": "Confirm"
+  },
+  "aiCacheCancel": {
+    "message": "Cancel"
+  },
+  "aiCacheDone": {
+    "message": "Cache updated."
+  },
+  "settingsDiagnosticsTab": {
+    "message": "Diagnostics"
+  },
+  "diagnosticsHeading": {
+    "message": "Translation diagnostics"
+  },
+  "diagnosticsFilters": {
+    "message": "Request result filter"
+  },
+  "diagnosticsAll": {
+    "message": "All"
+  },
+  "diagnosticsNormal": {
+    "message": "Normal"
+  },
+  "diagnosticsAbnormal": {
+    "message": "Abnormal"
+  },
+  "diagnosticsSearch": {
+    "message": "Search request metadata"
+  },
+  "diagnosticsRefresh": {
+    "message": "Refresh"
+  },
+  "diagnosticsMore": {
+    "message": "More"
+  },
+  "diagnosticsCaptureStart": {
+    "message": "Start capture"
+  },
+  "diagnosticsCaptureStop": {
+    "message": "Stop capture"
+  },
+  "diagnosticsCaptureOn": {
+    "message": "Capture on"
+  },
+  "diagnosticsCaptureOff": {
+    "message": "Capture off"
+  },
+  "diagnosticsPreferenceUnknown": {
+    "message": "Capture preference unavailable"
+  },
+  "diagnosticsStorageError": {
+    "message": "Storage error: $1"
+  },
+  "diagnosticsExportAll": {
+    "message": "Download all"
+  },
+  "diagnosticsClear": {
+    "message": "Clear all records"
+  },
+  "diagnosticsConfirmClear": {
+    "message": "Permanently clear diagnostic records?"
+  },
+  "diagnosticsConfirm": {
+    "message": "Clear records"
+  },
+  "diagnosticsCancel": {
+    "message": "Cancel"
+  },
+  "diagnosticsRequests": {
+    "message": "Requests"
+  },
+  "diagnosticsRequest": {
+    "message": "Request"
+  },
+  "diagnosticsModel": {
+    "message": "Model"
+  },
+  "diagnosticsResult": {
+    "message": "Result"
+  },
+  "diagnosticsHttp": {
+    "message": "HTTP"
+  },
+  "diagnosticsDuration": {
+    "message": "Duration"
+  },
+  "diagnosticsPending": {
+    "message": "Pending"
+  },
+  "diagnosticsModelUnknown": {
+    "message": "Unknown model"
+  },
+  "diagnosticsEmpty": {
+    "message": "No requests match this view."
+  },
+  "diagnosticsLoadMore": {
+    "message": "Load more"
+  },
+  "diagnosticsSelectRequest": {
+    "message": "Select a request to inspect its response, request, subtitles, or metadata."
+  },
+  "diagnosticsInspector": {
+    "message": "Request inspector"
+  },
+  "diagnosticsResponse": {
+    "message": "Response"
+  },
+  "diagnosticsSubtitles": {
+    "message": "Subtitles"
+  },
+  "diagnosticsInfo": {
+    "message": "Info"
+  },
+  "diagnosticsTree": {
+    "message": "JSON tree"
+  },
+  "diagnosticsCopy": {
+    "message": "Copy"
+  },
+  "diagnosticsCopied": {
+    "message": "Copied"
+  },
+  "diagnosticsCopyFailed": {
+    "message": "Copy failed"
+  },
+  "diagnosticsSearchJson": {
+    "message": "Search keys, values, or paths"
+  },
+  "diagnosticsPreviousMatch": {
+    "message": "Previous match"
+  },
+  "diagnosticsNextMatch": {
+    "message": "Next match"
+  },
+  "diagnosticsExpand": {
+    "message": "Expand all"
+  },
+  "diagnosticsCollapse": {
+    "message": "Collapse"
+  },
+  "diagnosticsQueryFailed": {
+    "message": "Could not load diagnostic records."
+  },
+  "diagnosticsDetailFailed": {
+    "message": "This request is no longer available."
+  },
+  "diagnosticsExportFailed": {
+    "message": "Could not export all diagnostic records."
+  },
+  "diagnosticsDownloadNotReady": {
+    "message": "Download frame is not ready."
+  },
+  "diagnosticsPreferenceSaveFailed": {
+    "message": "Could not save capture preference."
+  },
+  "diagnosticsClearFailed": {
+    "message": "Could not clear diagnostic records."
+  },
+  "diagnosticsNoPayload": {
+    "message": "No payload available."
+  },
+  "diagnosticsSourceLabel": {
+    "message": "Source: $1"
+  },
+  "diagnosticsTargetLabel": {
+    "message": "Translation: $1"
+  },
+  "diagnosticsRequestNumber": {
+    "message": "Request #$1"
+  },
+  "diagnosticsDownloadFrame": {
+    "message": "Diagnostic export download frame"
+  },
+  "diagnosticsCloseMenuHint": {
+    "message": "Press Escape to close this menu"
+  },
+  "cacheMiss": {
+    "message": "No compatible translation is cached. Select Cache first to allow translation requests."
+  },
+  "aiCacheModeHelp": {
+    "message": "This page session is lost on reload. On this device keeps compatible translations across reloads."
+  },
+  "aiCacheOnlyRetranslateHelp": {
+    "message": "Select Cache first before retranslation. Cache only sends no translation requests."
+  },
+  "aiCacheConfirmGroup": {
+    "message": "Confirm cache clearing"
+  },
+  "diagFormatted": {
+    "message": "Formatted"
+  },
+  "diagRaw": {
+    "message": "Raw"
+  },
+  "diagnosticsNoSearchMatches": {
+    "message": "No matches"
+  },
+  "diagnosticsExpandValue": {
+    "message": "Expand"
+  },
+  "diagnosticsCollapseValue": {
+    "message": "Collapse"
+  },
+  "aiCacheConfirmRetranslate": {
+    "message": "Retranslate this episode using the current source and settings?"
+  },
+  "aiCacheCleared": {
+    "message": "Cache cleared."
+  },
+  "aiCacheRetranslateStarted": {
+    "message": "Retranslation requested for this episode."
   }
 }

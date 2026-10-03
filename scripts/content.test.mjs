@@ -1,6 +1,6 @@
 /**
- * [INPUT]: 依赖 Node.js test/vm 与扩展 content.js 源码，使用可控浏览器消息、共享 runtime.storage.local 与虚拟时钟（推进一次定时器/间隔并暴露仍在悬挂的定时器延时）
- * [OUTPUT]: 验证凭证隔离、独立 AI 源、日文源/目标字幕 readings 注音与 ruby 回填、provider 重译、预取变更不丢译文、上下文变更重译、脱敏日志、可配置预算的实时用量上报、计量窗口（session 跨刷新续计、换剧集重锚、hour/day 翻桶）、多标签页合并与等待占位角色，以及字幕可用性四态（播放器清单报告/换集换片重载复位/available 不回退/20s 兜底计时器推进 unread 且不越权、不泄漏）与 AI 提示行优先级（轨道无可用 > provider 未配置 > 轨道读取超时，与 popup 同序）与就绪度重取
+ * [INPUT]: 依赖 Node.js test/vm 与扩展 content.js、translationCache.js、translationScheduler.js，使用可控浏览器消息、共享 runtime.storage.local 与虚拟时钟
+ * [OUTPUT]: 验证字幕加载、缓存注册/读取 scope、命中与策略、注音、预算、跨标签页状态、可用性与设置 sender 授权
  * [POS]: scripts 的内容脚本行为回归检查，不进入扩展运行时
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 
 const source = readFileSync(new URL("../extension/src/content/content.js", import.meta.url), "utf8");
 const schedulerSource = readFileSync(new URL("../extension/src/content/translationScheduler.js", import.meta.url), "utf8");
+const cacheSource = readFileSync(new URL("../extension/src/content/translationCache.js", import.meta.url), "utf8");
 
 function deferred() {
   let resolve;
@@ -64,8 +65,8 @@ async function createPage(stored = {}, { storage = null, pathname = "/watch/42",
   const frames = [];
   const loads = new Map();
   const translationMessages = [];
-  // 就绪度请求单独记账：它由 boot/换集/设置变更/每次状态轮询触发，混进 translationMessages 会打乱既有断言。
   const readinessMessages = [];
+  const backgroundMessages = [];
   const shared = storage ?? createStorage();
   // 页面读取的设置来自存储：新建存储时写入，共享存储时并入（模拟同一份 runtime.storage.local）。
   Object.assign(shared.data, stored);
@@ -104,11 +105,7 @@ async function createPage(stored = {}, { storage = null, pathname = "/watch/42",
     Bilayer: {
       normalizeTracks: (payload) => payload.tracks,
       createSubtitleStore: () => ({ load: (track) => loads.get(track.key).promise, clear() {} }),
-      createSubtitleOverlay: () => ({
-        applySettings() {},
-        render(frame = {}) { frames.push(frame); },
-        mount() {}
-      })
+      createSubtitleOverlay: () => ({ applySettings() {}, render(frame = {}) { frames.push(frame); }, mount() {} })
     },
     addEventListener(type, handler) { listeners[type] = handler; },
     postMessage() {}
@@ -128,10 +125,19 @@ async function createPage(stored = {}, { storage = null, pathname = "/watch/42",
   const runtime = {
     storage: storageFacade,
     runtime: {
-      getURL: (path) => path,
+      getURL: (path) => `extension://${path}`,
+      id: "extension-id",
+      lastError: null,
       sendMessage(message, callback) {
         if (message?.type === "BILAYER_AI_READINESS") {
           readinessMessages.push({ message, callback });
+          return;
+        }
+        if (message?.type?.startsWith("BILAYER_") && message.type !== "BILAYER_AI_READINESS" && message.type !== "BILAYER_TRANSLATE_BATCH") {
+          backgroundMessages.push(message);
+          if (message.type === "BILAYER_REGISTER_TRANSLATION_CACHE_SOURCE") callback({ ok: true, sourceId: "source-42" });
+          else if (message.type === "BILAYER_READ_TRANSLATION_CACHE") callback({ ok: true, snapshots: [] });
+          else callback?.({ ok: true });
           return;
         }
         translationMessages.push({ message, callback });
@@ -147,9 +153,14 @@ async function createPage(stored = {}, { storage = null, pathname = "/watch/42",
     querySelector(selector) { return selector === "video" ? video : null; },
     getElementById() { return null; }
   };
+  runInNewContext(cacheSource, { window }, { filename: "translationCache.js" });
+  const createTranslationCache = window.Bilayer.createTranslationCache;
   runInNewContext(schedulerSource, { window, Date: timer.Date }, { filename: "translationScheduler.js" });
+  const createTranslationScheduler = window.Bilayer.createTranslationScheduler;
+  window.Bilayer.createTranslationCache = createTranslationCache;
+  window.Bilayer.createTranslationScheduler = createTranslationScheduler;
   runInNewContext(source, {
-    window, document, location, browser: runtime, Date: timer.Date,
+    window, document, location, browser: runtime, Date: timer.Date, URL,
     MutationObserver: class { observe() {} },
     setInterval(callback, delay) { const id = nextIntervalId++; intervals.set(id, { callback, delay, nextAt: now + delay }); return id; },
     clearInterval(id) { intervals.delete(id); }, queueMicrotask,
@@ -160,7 +171,8 @@ async function createPage(stored = {}, { storage = null, pathname = "/watch/42",
   await new Promise((resolve) => setImmediate(resolve));
 
   return {
-    listeners, frames, loads, window, video, translationMessages, readinessMessages, storage: shared, clock: timer,
+    listeners, frames, loads, window, video, translationMessages, readinessMessages, backgroundMessages,
+    settingsSender: { id: "extension-id", url: "extension://src/settings/settings.html" }, storage: shared, clock: timer,
     advance(ms) {
       const until = now + ms;
       // 按时间顺序追平到期的一次性定时器与周期间隔（回调里新排的、以及同一时间窗内再次到期的间隔也会执行）。
@@ -182,6 +194,11 @@ async function createPage(stored = {}, { storage = null, pathname = "/watch/42",
     getState() {
       let result;
       listeners.runtime({ type: "BILAYER_GET_STATE" }, null, (value) => { result = value; });
+      return result;
+    },
+    cacheAction(action, sender = { id: "extension-id", url: "extension://src/settings/settings.html" }, episodeId) {
+      let result;
+      listeners.runtime({ type: "BILAYER_CACHE_ACTION", action, ...(episodeId ? { episodeId } : {}) }, sender, (value) => { result = value; });
       return result;
     },
     announce(tracks) {
@@ -321,7 +338,7 @@ test("changing prefetch count keeps translated lines and schedules only newly el
   assert.equal(page.getState().translationStatus.count, 1);
 });
 
-test("changing context count starts a new translation with the updated neighboring lines", async () => {
+test("context changes keep accepted text and affect only newly requested subtitles", async () => {
   const page = await createPage({ primaryTrackKey: "en", aiSourceTrackKey: "en", aiRole: "secondary", aiPrefetchCount: 0 });
   const sourceTrack = deferred();
   page.loads.set("en", sourceTrack);
@@ -336,9 +353,15 @@ test("changing context count starts a new translation with the updated neighbori
   await new Promise((resolve) => setImmediate(resolve));
   page.listeners.storage({ aiContextCount: { newValue: 0 } }, "local");
   await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(page.translationMessages.length, 1);
+  assert.equal(page.getState().translationStatus.count, 1);
+  assert.equal(page.frames.at(-1).secondaryCues[0].text, "你好。");
+  page.video.currentTime = 5.5;
+  page.video.emit("seeked");
+  await flush();
   assert.equal(page.translationMessages.length, 2);
-  assert.deepEqual(JSON.parse(JSON.stringify(page.translationMessages[1].message.contextAfter)), []);
-  assert.equal(page.translationMessages[1].message.items[0].id, "0");
+  assert.deepEqual(JSON.parse(JSON.stringify(page.translationMessages[1].message.contextBefore)), []);
+  assert.equal(page.translationMessages[1].message.items[0].id, "1");
 });
 
 test("AI translation can occupy the first line with original subtitles second", async () => {
@@ -1552,6 +1575,13 @@ test("no stall timer is armed outside a watch page", async () => {
   // 复位路径把兜底计时器彻底清干净：此时页面上不应再有任何悬挂定时器
   assert.deepEqual(page.pendingTimerDelays(), []);
 });
+test("cache preferences normalize to safe documented defaults and bounds", async () => {
+ const page = await createPage({ aiCacheMode: "remote", aiCachePolicy: "unbounded", aiCacheRetentionDays: 4000, aiCacheMaxMiB: -1 });
+ assert.equal(page.getState().settings.aiCacheMode, "session");
+ assert.equal(page.getState().settings.aiCachePolicy, "prefer");
+ assert.equal(page.getState().settings.aiCacheRetentionDays, 30);
+ assert.equal(page.getState().settings.aiCacheMaxMiB, 256);
+});
 
 test("an unread page without a loadable unread notice shows no empty pill", async () => {
   const page = await createPage({ primaryTrackKey: "en", aiSourceTrackKey: "en", aiRole: "secondary" });
@@ -1571,4 +1601,16 @@ test("an unread page without a loadable unread notice shows no empty pill", asyn
   page.answerReadiness({ configured: false, notice: "[provider-missing]", unreadNotice: "[tracks-unread]" });
   await flush();
   assert.deepEqual(JSON.parse(JSON.stringify(page.frames.at(-1)?.notice)), { text: "[provider-missing]", kind: "warning" });
+});
+test("cache management actions accept only the settings page and report the active episode", async () => {
+  const page = await createPage({ aiRole: "secondary" });
+  const state = page.getState();
+  assert.equal(state.episodeId, "42");
+  assert.equal(state.translationCache.mode, "session");
+  assert.equal(state.translationCache.policy, "prefer");
+
+  assert.equal(page.cacheAction("clear-current", { id: "untrusted", url: "src/settings/settings.html" }), undefined);
+  assert.equal(page.cacheAction("clear-all", { id: "extension-id", url: "https://example.test/src/settings/settings.html" }), undefined);
+  assert.deepEqual(JSON.parse(JSON.stringify(page.cacheAction("clear-current"))), { ok: true, episodeId: "42" });
+  assert.deepEqual(JSON.parse(JSON.stringify(page.cacheAction("retranslate", page.settingsSender, "another-episode"))), { ok: true, episodeId: "42" });
 });

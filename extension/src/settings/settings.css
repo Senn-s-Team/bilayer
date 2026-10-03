@@ -1,7 +1,7 @@
 /*
- * [INPUT]: 依赖 tokens.css 的语义令牌（扁平契约的 --radius-tag/-control/-surface、--groove、--border、--shadow-popover，以及 --bl-ease-* 缓动）与 controls.css 的控件基线，以及 settings.html 的状态、四页签、字幕轨道与样式控件结构
- * [OUTPUT]: 提供整窗可缩放的四页签侧栏（≤820px 退化为顶部 tab bar）、界面语言切换、诊断快捷入口、单一滚动源工作区（滚动只发生在 .tab-panel）、页签换页的错峰入场动画，以及扁平卡片（一层不透明 --surface + 1px --border 发丝外框 + --radius-surface(6px)）、内凹槽次级分组、排版阶梯、状态标记与宽视口多列铺开。字幕页在宽视口下保持**单列主轴**（启用字幕 → 字幕来源 → 播放显示各占整行），宽度由区内两级网格用满：轨道两张 .track-card 并排（1px 分隔线随之从横向改纵向）、播放显示的两条 .setting-row 并排；标题右侧的两个 .icon-button 落进 .action-group 的内凹工具簇。控件外观一律留给 controls.css，本表只写布局、组件变体、扁平表面与排版收尾（标题 text-wrap: balance、成段文字/状态行 text-wrap: pretty，旧浏览器自动降级为普通断行）
- * [POS]: settings 基础视觉层，由 settings.html 在 tokens.css/controls.css 之后加载；整窗设置界面（默认窗口 1240×940（窗口外高，内高约 852），非固定弹窗）。卡片不再用双层壳：无透明边框、无 background-clip 分层、无顶部高光，卡片只靠 1px 发丝边与表面色分层，面板/卡片一律不投阴影
+ * [INPUT]: 依赖 tokens.css、controls.css 与 settings.html 的五页签导航、AI 缓存卡及字幕/样式组件结构
+ * [OUTPUT]: 提供五页签工作区单一滚动源、侧栏断点与 AI 缓存跨列卡片的整体布局，并定义扁平表面、内凹次级分组、排版和状态样式
+ * [POS]: settings 的基础视觉层；共享变量和控件基线先加载，本表只负责页面布局与组件变体，AI 缓存字段和确认组细节交由 settings-ai.css
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
@@ -61,6 +61,10 @@ p, small { text-wrap: pretty; }
 .ai-section:hover {
   border-color: var(--border-strong);
 }
+.cache-section { display: grid; gap: var(--bl-space-5); }
+.cache-actions, .cache-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--bl-space-3); }
+.cache-local-control[hidden], .cache-confirm[hidden] { display: none; }
+.cache-section .ai-consent:empty { display: none; }
 
 /* 内凹槽：嵌在表面里的次级分组（嵌套开关组、服务表单块、分段控件底槽）——只刻进去，不再加壳 */
 .ai-toggle-list,
@@ -651,9 +655,10 @@ h2 {
 
   .playback-section .setting-row + .setting-row { border-left: 1px solid var(--border); }
 
-  /* AI 页：四张设置卡片两列排布，顶部提示块整行横跨 */
+  /* AI 页卡片保持两列、按内容收口；缓存卡跨两列，诊断页按面板原有滚动加载 */
   .tab-panel[data-panel="ai"] { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-  .tab-panel[data-panel="ai"] > .availability { grid-column: 1 / -1; }
+  .tab-panel[data-panel="ai"] > .availability,
+  .tab-panel[data-panel="ai"] > .ai-cache-section { grid-column: 1 / -1; }
 }
 
 /* 翻译服务页（主/详分栏加宽与详情两列）的组件级覆盖写在 settings-ai.css，因为它后于本表加载 */

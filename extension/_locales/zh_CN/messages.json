@@ -245,6 +245,9 @@
   "statusAiCheckSettings": {
     "message": "请检查密钥及设置"
   },
+  "cacheMiss": {
+    "message": "当前字幕句没有缓存译文。切换到“缓存优先”以允许发起翻译请求，或点击“重新翻译当前剧集”。"
+  },
   "errorNoSubtitleText": {
     "message": "轨道没有文本字幕"
   },
@@ -884,258 +887,6 @@
   "onboardingSkipped": {
     "message": "已跳过..."
   },
-  "diagTitle": {
-    "message": "原始翻译报文 · Bilayer"
-  },
-  "diagHeading": {
-    "message": "原始翻译报文"
-  },
-  "diagSubtitle": {
-    "message": "最近 20 次请求 · 仅存扩展内存 · 报文含字幕原文"
-  },
-  "diagLiveConnecting": {
-    "message": "正在连接后台"
-  },
-  "diagLiveFailed": {
-    "message": "后台连接失败"
-  },
-  "diagLiveCapturing": {
-    "message": "原始采集中"
-  },
-  "diagLiveOff": {
-    "message": "未开启采集"
-  },
-  "diagCaptureStop": {
-    "message": "停止采集"
-  },
-  "diagCaptureStart": {
-    "message": "开始采集"
-  },
-  "diagRefresh": {
-    "message": "刷新"
-  },
-  "diagExport": {
-    "message": "导出案例到硬盘 ↓"
-  },
-  "diagExportTitle": {
-    "message": "导出当前捕获的全部报文到本地磁盘作为案例"
-  },
-  "diagClear": {
-    "message": "清空记录"
-  },
-  "diagGridAria": {
-    "message": "原始翻译报文"
-  },
-  "diagRequests": {
-    "message": "请求"
-  },
-  "diagRecordListAria": {
-    "message": "翻译请求记录"
-  },
-  "diagEmpty": {
-    "message": "等待翻译请求。保持此页打开并播放字幕，记录会自动出现在这里。"
-  },
-  "diagDetailEmptyTitle": {
-    "message": "等待第一条翻译请求"
-  },
-  "diagDetailEmptyDesc": {
-    "message": "保持此页打开，在 Netflix 播放页启用 AI 翻译并播放字幕。"
-  },
-  "diagTransport": {
-    "message": "连接信息"
-  },
-  "diagHeaders": {
-    "message": "请求头 / 响应头（Authorization 已移除）"
-  },
-  "diagTabResponse": {
-    "message": "响应体"
-  },
-  "diagTabRequest": {
-    "message": "请求体"
-  },
-  "diagTabUi": {
-    "message": "渲染为 UI"
-  },
-  "diagCopy": {
-    "message": "复制报文"
-  },
-  "diagCopied": {
-    "message": "已复制 ✓"
-  },
-  "diagCopyFailed": {
-    "message": "复制失败"
-  },
-  "diagToggleRaw": {
-    "message": "切换折叠树"
-  },
-  "diagFormattedText": {
-    "message": "格式化文本"
-  },
-  "diagSearchPlaceholder": {
-    "message": "搜索键、值或路径"
-  },
-  "diagSearchAria": {
-    "message": "搜索 JSON 键、值或路径"
-  },
-  "diagSearchStatus": {
-    "message": "搜索 JSON"
-  },
-  "diagSearchNoMatch": {
-    "message": "无匹配"
-  },
-  "diagPrevMatch": {
-    "message": "上一个匹配"
-  },
-  "diagNextMatch": {
-    "message": "下一个匹配"
-  },
-  "diagExpandAll": {
-    "message": "全部展开"
-  },
-  "diagCollapse": {
-    "message": "收起层级"
-  },
-  "diagShortcuts": {
-    "message": "↑↓ 导航 · ←→ 折叠/展开"
-  },
-  "diagPayloadAria": {
-    "message": "报文内容"
-  },
-  "diagRequestNumber": {
-    "message": "请求 $1"
-  },
-  "diagInProgress": {
-    "message": "进行中"
-  },
-  "diagModelUnspecified": {
-    "message": "未指定模型"
-  },
-  "diagRequestGeneric": {
-    "message": "请求"
-  },
-  "diagAwaitingResponse": {
-    "message": "等待响应"
-  },
-  "diagMethod": {
-    "message": "方法"
-  },
-  "diagReqBodyBytes": {
-    "message": "请求体字节"
-  },
-  "diagResStatus": {
-    "message": "响应状态"
-  },
-  "diagResBodyBytes": {
-    "message": "响应体字节"
-  },
-  "diagTotalDuration": {
-    "message": "完整耗时"
-  },
-  "diagNoResponse": {
-    "message": "响应尚未返回"
-  },
-  "diagRequestFailed": {
-    "message": "请求未收到响应：$1"
-  },
-  "diagUiShape": {
-    "message": "字幕视效 UI"
-  },
-  "diagFormattedJson": {
-    "message": "格式化 JSON · $1"
-  },
-  "diagRawText": {
-    "message": "原始文本"
-  },
-  "diagJsonArray": {
-    "message": "JSON 数组 · $1 项"
-  },
-  "diagJsonObject": {
-    "message": "JSON 对象 · $1 个字段"
-  },
-  "diagUiBannerTitle": {
-    "message": "双语字幕视效预览"
-  },
-  "diagUiValid": {
-    "message": "校验通过 ✓"
-  },
-  "diagUiFailed": {
-    "message": "校验失败 ($1)"
-  },
-  "diagUiBannerMeta": {
-    "message": "模型: $1 · 耗时: $2 · 共 $3 句字幕"
-  },
-  "diagUiEmpty": {
-    "message": "未能解析出结构化字幕条目。请切换至「响应体」查看报文文本。"
-  },
-  "diagUiMissingTranslation": {
-    "message": "未返回译文"
-  },
-  "diagUiSourceRef": {
-    "message": "原文参照: $1"
-  },
-  "diagTreeArray": {
-    "message": "数组"
-  },
-  "diagTreeObject": {
-    "message": "对象"
-  },
-  "diagTreeItems": {
-    "message": "$1 项"
-  },
-  "diagTreeFields": {
-    "message": "$1 字段"
-  },
-  "diagExpandString": {
-    "message": "展开 $1 的完整字符串"
-  },
-  "diagCollapseString": {
-    "message": "收起 $1 的完整字符串"
-  },
-  "diagStatusSuccess": {
-    "message": "成功"
-  },
-  "diagStatusFailed": {
-    "message": "失败"
-  },
-  "diagStatusCountMismatch": {
-    "message": "$1 (条数不符: 期望$2条/实收$3条)"
-  },
-  "diagStatusValidationFailed": {
-    "message": "$1（翻译结果校验失败）"
-  },
-  "diagStatusReason": {
-    "message": "$1 ($2)"
-  },
-  "diagStatusError": {
-    "message": "失败: $1"
-  },
-  "diagStatusReturnedUnvalidated": {
-    "message": "已返回，未完成校验"
-  },
-  "diagStatusRequesting": {
-    "message": "请求中"
-  },
-  "diagLocalPreview": {
-    "message": "界面预览 · 示例数据"
-  },
-  "diagExportEmpty": {
-    "message": "当前没有可导出的报文记录。请在 Netflix 播放片刻生成字幕翻译后再导出。"
-  },
-  "diagExportFailed": {
-    "message": "导出失败：请检查浏览器下载权限。"
-  },
-  "diagExportNotReady": {
-    "message": "导出组件尚未就绪，请稍后重试。"
-  },
-  "diagSampleSystemPrompt": {
-    "message": "请保持字幕自然、简洁。"
-  },
-  "diagCopySourceLabel": {
-    "message": "原文: $1"
-  },
-  "diagCopyTargetLabel": {
-    "message": "译文: $1"
-  },
   "noticeProviderMissing": {
     "message": "尚未配置翻译服务：请在设置窗口的「翻译服务」中填写端点与密钥。"
   },
@@ -1162,5 +913,296 @@
   },
   "aiUnavailableNoProviderHint": {
     "message": "请在「翻译服务」中填写端点与 API 密钥后再使用 AI 翻译；配置期间已选好的源轨道会保留。"
+  },
+  "aiCacheSection": {
+    "message": "翻译缓存"
+  },
+  "aiCacheMode": {
+    "message": "保存方式"
+  },
+  "aiCacheModeSession": {
+    "message": "当前页面会话"
+  },
+  "aiCacheModeLocal": {
+    "message": "保存在本机"
+  },
+  "aiCachePolicy": {
+    "message": "使用策略"
+  },
+  "aiCachePrefer": {
+    "message": "缓存优先"
+  },
+  "aiCacheOnly": {
+    "message": "仅使用缓存"
+  },
+  "aiCachePolicyHelp": {
+    "message": "缓存优先在找不到兼容译文时发送翻译请求；仅使用缓存遇到未命中时只提示，不会发送请求。"
+  },
+  "aiCacheRetention": {
+    "message": "缓存保留时间"
+  },
+  "aiCacheRetentionDays": {
+    "message": "$1 天"
+  },
+  "aiCacheUnlimited": {
+    "message": "不限"
+  },
+  "aiCacheMaxMiB": {
+    "message": "本机空间上限"
+  },
+  "aiCacheUnlimitedMiB": {
+    "message": "不限"
+  },
+  "aiCacheUsage": {
+    "message": "$1 · $2 条字幕 · $3 部剧集"
+  },
+  "aiCacheCurrentUsage": {
+    "message": "当前剧集：$1 · $2 条字幕"
+  },
+  "aiCacheHits": {
+    "message": "命中缓存 $1 次"
+  },
+  "aiCacheAnnotations": {
+    "message": "$1 条缺少注音"
+  },
+  "aiCacheNoEpisode": {
+    "message": "打开播放页面后才能管理当前剧集缓存。"
+  },
+  "aiCacheStorageError": {
+    "message": "缓存存储不可用：$1"
+  },
+  "aiCachePageUnavailable": {
+    "message": "播放页面暂时无响应。"
+  },
+  "aiCacheOperationError": {
+    "message": "无法完成缓存操作：$1"
+  },
+  "aiCacheRetranslate": {
+    "message": "重新翻译当前剧集"
+  },
+  "aiCacheClearCurrent": {
+    "message": "清除此剧集缓存"
+  },
+  "aiCacheClearAll": {
+    "message": "清除全部缓存"
+  },
+  "aiCacheConfirmCurrent": {
+    "message": "确定清除此剧集的本机及可达页面会话缓存？"
+  },
+  "aiCacheConfirmAll": {
+    "message": "确定清除本机及可达页面会话中的全部缓存？"
+  },
+  "aiCacheConfirm": {
+    "message": "确认"
+  },
+  "aiCacheCancel": {
+    "message": "取消"
+  },
+  "aiCacheDone": {
+    "message": "缓存已更新。"
+  },
+  "settingsDiagnosticsTab": {
+    "message": "诊断"
+  },
+  "diagnosticsHeading": {
+    "message": "翻译诊断"
+  },
+  "diagnosticsFilters": {
+    "message": "请求结果筛选"
+  },
+  "diagnosticsAll": {
+    "message": "全部"
+  },
+  "diagnosticsNormal": {
+    "message": "正常"
+  },
+  "diagnosticsAbnormal": {
+    "message": "异常"
+  },
+  "diagnosticsSearch": {
+    "message": "搜索请求元数据"
+  },
+  "diagnosticsRefresh": {
+    "message": "刷新"
+  },
+  "diagnosticsMore": {
+    "message": "更多"
+  },
+  "diagnosticsCaptureStart": {
+    "message": "开始采集"
+  },
+  "diagnosticsCaptureStop": {
+    "message": "停止采集"
+  },
+  "diagnosticsCaptureOn": {
+    "message": "采集中"
+  },
+  "diagnosticsCaptureOff": {
+    "message": "已停止采集"
+  },
+  "diagnosticsPreferenceUnknown": {
+    "message": "无法读取采集偏好"
+  },
+  "diagnosticsStorageError": {
+    "message": "存储错误：$1"
+  },
+  "diagnosticsExportAll": {
+    "message": "下载全部"
+  },
+  "diagnosticsClear": {
+    "message": "清空全部记录"
+  },
+  "diagnosticsConfirmClear": {
+    "message": "确定永久清空诊断记录？"
+  },
+  "diagnosticsConfirm": {
+    "message": "确认清空"
+  },
+  "diagnosticsCancel": {
+    "message": "取消"
+  },
+  "diagnosticsRequests": {
+    "message": "请求记录"
+  },
+  "diagnosticsRequest": {
+    "message": "请求"
+  },
+  "diagnosticsModel": {
+    "message": "模型"
+  },
+  "diagnosticsResult": {
+    "message": "结果"
+  },
+  "diagnosticsHttp": {
+    "message": "HTTP"
+  },
+  "diagnosticsDuration": {
+    "message": "耗时"
+  },
+  "diagnosticsPending": {
+    "message": "进行中"
+  },
+  "diagnosticsModelUnknown": {
+    "message": "未知模型"
+  },
+  "diagnosticsEmpty": {
+    "message": "当前视图没有匹配的请求。"
+  },
+  "diagnosticsLoadMore": {
+    "message": "加载更多"
+  },
+  "diagnosticsSelectRequest": {
+    "message": "选择请求以查看响应、请求、字幕或元数据。"
+  },
+  "diagnosticsInspector": {
+    "message": "请求检查器"
+  },
+  "diagnosticsResponse": {
+    "message": "响应"
+  },
+  "diagnosticsSubtitles": {
+    "message": "字幕"
+  },
+  "diagnosticsInfo": {
+    "message": "信息"
+  },
+  "diagnosticsTree": {
+    "message": "JSON 树"
+  },
+  "diagnosticsCopy": {
+    "message": "复制"
+  },
+  "diagnosticsCopied": {
+    "message": "已复制"
+  },
+  "diagnosticsCopyFailed": {
+    "message": "复制失败"
+  },
+  "diagnosticsSearchJson": {
+    "message": "搜索键、值或路径"
+  },
+  "diagnosticsPreviousMatch": {
+    "message": "上一个匹配"
+  },
+  "diagnosticsNextMatch": {
+    "message": "下一个匹配"
+  },
+  "diagnosticsExpand": {
+    "message": "全部展开"
+  },
+  "diagnosticsCollapse": {
+    "message": "收起"
+  },
+  "diagnosticsQueryFailed": {
+    "message": "无法读取诊断记录。"
+  },
+  "diagnosticsDetailFailed": {
+    "message": "此请求已不可用。"
+  },
+  "diagnosticsExportFailed": {
+    "message": "无法导出全部诊断记录。"
+  },
+  "diagnosticsDownloadNotReady": {
+    "message": "下载框架尚未就绪。"
+  },
+  "diagnosticsPreferenceSaveFailed": {
+    "message": "无法保存采集偏好。"
+  },
+  "diagnosticsClearFailed": {
+    "message": "无法清空诊断记录。"
+  },
+  "diagnosticsNoPayload": {
+    "message": "没有可显示的报文。"
+  },
+  "diagnosticsSourceLabel": {
+    "message": "原文：$1"
+  },
+  "diagnosticsTargetLabel": {
+    "message": "译文：$1"
+  },
+  "diagnosticsRequestNumber": {
+    "message": "请求 #$1"
+  },
+  "diagnosticsDownloadFrame": {
+    "message": "诊断导出下载框架"
+  },
+  "diagnosticsCloseMenuHint": {
+    "message": "按 Escape 关闭此菜单"
+  },
+  "cacheMiss": {
+    "message": "没有兼容的缓存译文。选择“缓存优先”以允许发送翻译请求。"
+  },
+  "aiCacheModeHelp": {
+    "message": "当前页面会话在刷新后清空；保存在本机可跨刷新复用兼容译文。"
+  },
+  "aiCacheOnlyRetranslateHelp": {
+    "message": "重新翻译前请选择“缓存优先”；仅使用缓存不会发送翻译请求。"
+  },
+  "aiCacheConfirmGroup": {
+    "message": "确认清除缓存"
+  },
+  "diagFormatted": {
+    "message": "格式化"
+  },
+  "diagRaw": {
+    "message": "原文"
+  },
+  "diagnosticsNoSearchMatches": {
+    "message": "无匹配项"
+  },
+  "diagnosticsExpandValue": {
+    "message": "展开"
+  },
+  "diagnosticsCollapseValue": {
+    "message": "收起"
+  },
+  "aiCacheConfirmRetranslate": {
+    "message": "按当前字幕来源与设置重新翻译此剧集？"
+  },
+  "aiCacheCleared": {
+    "message": "缓存已清除。"
+  },
+  "aiCacheRetranslateStarted": {
+    "message": "已请求重新翻译当前剧集。"
   }
 }

@@ -21,14 +21,24 @@ The extension runs in Safari and talks to two kinds of endpoints:
 
 ### Credential handling
 
-API keys are stored in `browser.storage.local`, which is **not encrypted**. Keys are read
-only inside the background service worker and are never returned to the popup, the
-diagnostics page, or the Netflix page. Do not send a key anywhere else, and do not log
-request headers that contain one.
+API keys are stored in `browser.storage.local`, which is **not encrypted**. Translation
+requests read them only inside the background service worker; page-state queries,
+diagnostic records, and translation-cache provenance never include credentials. Do not
+send a key anywhere else or log request headers that contain one.
 
-The raw request/response diagnostics panel is opt-in and keeps the most recent 20 exchanges
-in extension memory. It deliberately includes subtitle text and excludes `Authorization`,
-but it does exist. If you change what it captures, keep the credential boundary intact.
+Raw request/response capture defaults to enabled when a successful preference read finds
+no saved value. Before that read succeeds, capture stays off; failed reads are retried.
+The **Diagnostics** tab in the settings window can disable capture or clear history.
+Summaries and full payloads persist in IndexedDB across background restarts. They include
+subtitle text and exclude `Authorization`; there is no application-level count or age
+limit, although browser quotas apply. Only the extension's settings page may query or
+export this history. Clearing history does not change the capture preference.
+
+Translation caching defaults to the current playback page's memory. Choosing device-local
+caching stores source subtitles, accepted translations, annotations, and non-secret
+provider provenance in IndexedDB across reloads. Local retention defaults to 30 days from
+creation and 256 MiB; either limit can be disabled, subject to browser quotas. These stores
+are **not encrypted**. Cache clearing and diagnostic-history clearing are separate actions.
 
 ### What is worth reporting
 

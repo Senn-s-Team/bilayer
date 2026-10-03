@@ -1,13 +1,14 @@
 /**
- * [INPUT]: 依赖轨道归一化、subtitleStore 与 translationScheduler（含 ruby 标注与等待占位角色查询）、overlay、fullscreenMount 及 page bridge 播放器查询，额度用量读写 runtime.storage.local
- * [OUTPUT]: 提供互斥双原生/AI 翻译、独立 AI 源轨道（支持日文源字幕 ruby 振假名回填展示）、默认 10 组预取和可调上下文、首句等待、切集隔离及脱敏页面状态；设置 aiRequestBudget/aiCharacterBudget（0 为不限，缺省/非法回落 80/40000）经 setBudget 注入调度器，aiBudgetWindow（session|hour|day，缺省/非法回落 session）决定计量窗口键，用量按 __ai_budget_usage__ 的多窗口台账持久化（每个窗口一项、上限 4 项，旧单记录形状读到时迁移）并在派发前与其它标签页对齐；BILAYER_GET_STATE 附带含 window/windowKey/resetAt 的实时 translationBudget、subtitleAvailability（unknown|unread|none|available，见文件内「字幕可用性与 AI 就绪度」状态机与 bridge 证据；unread 由 TRACK_REPORT_TIMEOUT_MS=20000 的兜底计时器在 watch 页且 video 已就绪时推进）以及 providerReadiness（{configured, notice}，来自 background 的 BILAYER_AI_READINESS，本页加载/AI provider 设置变更/settings 轮询时重取）；AI 字幕行等待译文时把 pending 角色交给 overlay，AI 模式下同时按与设置窗口同序的「轨道无可用 → provider 未配置 → 轨道读取超时 → 无提示」优先级把 notice 交给 overlay.render()，三条提示文案均由 background 本地化，content 不自带 UI 字符串
- * [POS]: content 入口；只协调播放与视图，AI provider 配置和密钥由 background 从扩展存储读取，就绪度判定与 UI 文案都留在 background，计量的持久化边界在本文件
+ * [INPUT]: 依赖轨道归一化、subtitleStore、translationCache/scheduler、overlay 与 page bridge；缓存持久化经 background 消息完成
+ * [OUTPUT]: 提供互斥双原生/AI 翻译、逐 cue 缓存恢复与动作消费、预算与脱敏页面状态
+ * [POS]: content 协调播放视图；不读取凭证，缓存身份使用精确轨道/目标/语义范围并由 background 校验成功回包
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 
 const runtime = globalThis.browser ?? globalThis.chrome;
 const modules = window.Bilayer;
 const DEFAULT_TRANSLATION_PROMPT = "你是一位专业的影视字幕翻译员，也是目标语言的母语使用者。只翻译 items[].text；contextBefore 和 contextAfter 仅用于理解语境，不要翻译或输出。保持每个 id、数量和顺序完全一致，不合并、不拆分、不遗漏字幕。保留人名、专有名词和既有译名；结合上下文处理代词、时态、人物关系和语气。使用自然、简洁、适合屏幕阅读的字幕表达，不添加解释、注释、时间戳或额外字段。";
+const LEGACY_TRANSLATION_PROMPT = "请将字幕准确翻译成目标语言。保持原意、人物语气和上下文，使用自然口语；保留人名、专有名词与格式；不要添加解释或额外内容。";
 const TARGET_LANGUAGES = new Set(["zh-Hans", "zh-Hant", "ja", "ko", "en", "es", "fr", "de", "it", "pt-BR", "ru", "ar", "hi"]);
 const SUBTITLE_TRACK_SETTING_KEYS = new Set([
   "primaryTrackKey",
@@ -20,7 +21,8 @@ const SUBTITLE_TRACK_SETTING_KEYS = new Set([
   "aiSourceTrackPreference",
   "aiSourceLanguage"
 ]);
-const AI_SETTING_KEYS = new Set(["aiRole", "aiTargetLanguage", "aiProviderId", "aiStyleGuide", "aiContextCount", "aiSourceTrackKey", "aiSourceTrackPreference", "aiSourceLanguage", "aiJapaneseRuby"]);
+const AI_SETTING_KEYS = new Set(["aiRole", "aiTargetLanguage", "aiProviderId", "aiStyleGuide", "aiSourceTrackKey", "aiSourceTrackPreference", "aiSourceLanguage"]);
+const CACHE_SETTING_KEYS = new Set(["aiCacheMode", "aiCachePolicy", "aiCacheRetentionDays", "aiCacheMaxMiB"]);
 // 预算键不进入 AI_SETTING_KEYS：改预算只重新判定上限，不能清空已有译文与已用额度（同 aiPrefetchCount 的处理方式）。
 const BUDGET_SETTING_KEYS = new Set(["aiRequestBudget", "aiCharacterBudget"]);
 const BUDGET_SETTING_MAX = { aiRequestBudget: 1000, aiCharacterBudget: 1000000 };
@@ -53,6 +55,10 @@ const DEFAULT_SETTINGS = {
   aiRequestBudget: 80,
   aiCharacterBudget: 40000,
   aiBudgetWindow: "session",
+  aiCacheMode: "session",
+  aiCachePolicy: "prefer",
+  aiCacheRetentionDays: 30,
+  aiCacheMaxMiB: 256,
   aiStyleGuide: DEFAULT_TRANSLATION_PROMPT,
   aiJapaneseRuby: true,
   primaryFontSize: 26,
@@ -118,16 +124,16 @@ const state = {
   movieId: "",
   settingsWatchId: "",
   settingsToken: 0,
-  unbindVideoFullscreen: null
+  cacheRevision: 0,
+  unbindVideoFullscreen: null,
 };
 
+const translationCache = modules.createTranslationCache();
 const overlay = modules.createSubtitleOverlay();
 const store = modules.createSubtitleStore();
-const translator = modules.createTranslationScheduler({
-  translate: translateBatch,
-  onUpdate: onTranslationUpdate,
-  syncUsage: syncBudgetUsage
-});
+const translator = modules.createTranslationScheduler({ translate: translateBatch, onUpdate: onTranslationUpdate,
+  syncUsage: syncBudgetUsage, registerCacheSource, restoreCache: restoreTranslationCache, translationCache,
+  onAccepted: rememberAcceptedBatch });
 
 boot();
 
@@ -186,8 +192,8 @@ function bindRuntimeMessages() {
     let shouldRefreshTranslation = Boolean(changes.providers);
     let shouldUpdatePrefetch = false;
     let shouldUpdateBudget = false;
+    let shouldRefreshCache = false;
     let settingsChanged = false;
-    // 就绪度只依赖 provider 条目与当前选中项：凭证/端点一改就重问后台（文案与判定都在后台）。
     let shouldRefreshReadiness = Boolean(changes.providers);
 
     for (const [key, change] of Object.entries(changes)) {
@@ -204,28 +210,52 @@ function bindRuntimeMessages() {
       shouldUpdatePrefetch ||= key === "aiPrefetchCount";
       // 换计量窗口只换计数锚点，不属于 AI 设置变更：不许清空已有译文与已用额度。
       shouldUpdateBudget ||= BUDGET_SETTING_KEYS.has(key) || key === "aiBudgetWindow";
-      shouldRefreshTranslation ||= AI_SETTING_KEYS.has(key) || key === "enabled";
+      shouldRefreshCache ||= CACHE_SETTING_KEYS.has(key) || key === "aiJapaneseRuby" || key === "aiContextCount";
+      shouldRefreshTranslation ||= (AI_SETTING_KEYS.has(key) && !CACHE_SETTING_KEYS.has(key)) || key === "enabled";
       shouldRefreshReadiness ||= key === "aiProviderId";
     }
 
+    state.settings = normalizeSettings(state.settings);
     if (shouldRefreshReadiness) void refreshProviderReadiness();
 
-    if (!settingsChanged && !shouldRefreshTranslation) return;
+    if (!settingsChanged && !shouldRefreshTranslation && !shouldRefreshCache) return;
     if (settingsChanged) overlay.applySettings(state.settings);
     if (shouldRefreshTranslation) {
       releaseInitialWait(true);
       translator.clear();
     }
     if (shouldRefreshTracks) refreshSelectedSubtitles();
-    else if (shouldRefreshTranslation || shouldUpdatePrefetch || shouldUpdateBudget) syncTranslator();
+    else if (shouldRefreshTranslation || shouldUpdatePrefetch || shouldUpdateBudget || shouldRefreshCache) syncTranslator();
     budgetWindowMayRoll();
     updateNativeSubtitleVisibility();
     renderForCurrentTime();
   });
 }
-
+async function registerCacheSource(source) {
+  const timeline = source.cues;
+  if (source.cacheMode !== "local") return { sourceId: translationCache.sourceId(source) };
+  const result = await sendBackgroundMessage({ type: "BILAYER_REGISTER_TRANSLATION_CACHE_SOURCE", episodeId: source.episodeId,
+    sourceLanguage: source.sourceLanguage, trackKind: source.trackKind, texts: timeline.map((cue) => cue.text) });
+  if (!result?.ok) throw new Error(result?.errorCode ?? "storage_unavailable");
+  return result;
+}
+async function restoreTranslationCache(source) {
+  const scope = { episodeId: source.episodeId, sourceLanguage: source.sourceLanguage, trackKind: source.trackKind,
+    targetLanguage: source.targetLanguage, semanticIntent: source.semanticIntent, translationSemantics: "cue-v1" };
+  const local = source.cacheMode === "local"
+    ? await sendBackgroundMessage({ type: "BILAYER_READ_TRANSLATION_CACHE", ...scope }) : { ok: true, snapshots: [] };
+  if (!local?.ok) throw new Error(local?.errorCode ?? "storage_unavailable");
+  return translationCache.read(scope, source.cues.map((cue) => cue.text), local.snapshots ?? [],
+    { annotationRequired: source.annotationRequired, annotationSide: source.annotationSide });
+}
+function sendBackgroundMessage(message) {
+  return new Promise((resolve, reject) => runtime.runtime.sendMessage(message, (response) => {
+    if (runtime.runtime.lastError) reject(new Error(runtime.runtime.lastError.message));
+    else resolve(response);
+  }));
+}
 function bindSettingsMessages() {
-  runtime.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  runtime.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type === "BILAYER_RELOAD") {
       if (!isWatchPage()) {
         sendResponse({ ok: false });
@@ -238,6 +268,31 @@ function bindSettingsMessages() {
       return true;
     }
 
+    if (message?.type === "BILAYER_CACHE_ACTION") {
+      if (sender?.id !== runtime.runtime.id) return false;
+      try {
+        const senderUrl = new URL(sender?.url ?? sender?.tab?.url ?? "", location.href);
+        const settingsUrl = new URL(runtime.runtime.getURL("src/settings/settings.html"));
+        if (senderUrl.origin !== settingsUrl.origin || senderUrl.pathname !== settingsUrl.pathname) return false;
+      } catch { return false; }
+      const episodeId = state.watchId;
+      if (message.action !== "retranslate" && message.action !== "clear-current" && message.action !== "clear-all") {
+        sendResponse({ ok: false, error: "invalid_action" }); return true;
+      }
+      if (message.action === "retranslate") {
+        translationCache.clear(episodeId);
+        state.cacheRevision++;
+        translator.bypassCacheRestoreOnce();
+        if (state.aiSourceCues.length) syncTranslator();
+      } else {
+        if (message.action === "clear-all") translationCache.clear();
+        else translationCache.clear(episodeId);
+        translator.clear();
+        syncTranslator();
+      }
+      sendResponse({ ok: true, episodeId: state.watchId });
+      return true;
+    }
     if (message?.type !== "BILAYER_GET_STATE") return false;
 
     // 时间窗口可能在本页空闲时已翻页（轮询才唤醒我们）：先异步重锚，本次响应最多滞后一轮。
@@ -251,12 +306,12 @@ function bindSettingsMessages() {
       translationStatus: state.translationStatus,
       translationBudget: translationBudgetState(),
       subtitleAvailability: state.subtitleAvailability,
-      // 只投射页面需要的两项：轨道提示（tracksNotice）属于 overlay 位置，不进 page state。
       providerReadiness: { configured: state.aiReadiness.configured, notice: state.aiReadiness.notice },
+      translationCache: state.translationStatus.translationCache ?? { mode: state.settings.aiCacheMode, policy: state.settings.aiCachePolicy, hits: 0, subtitleCount: state.aiSourceCues.length, annotationMissing: 0, storageError: null },
+      episodeId: state.watchId,
       watchId: state.watchId,
       url: location.href
     });
-
     if (isWatchPage()) requestPlayerTracks();
     return true;
   });
@@ -603,7 +658,7 @@ function renderForCurrentTime() {
     // 当前 AI 行仍在等译文时把角色交给 overlay：它只在该行确实没有文本时显示等待占位。
     const pending = translator.pendingRoles(source);
     // 只在 AI 模式挂提示行：原生模式没有任何 AI 前置条件，字幕位置保持干净。
-    const notice = readinessNotice();
+    const notice = translated.length ? null : readinessNotice();
     const nativeFallback = state.selectedTrackKeys[role] !== state.selectedTrackKeys.aiSource;
     if (translated.length === 0 && !nativeFallback) {
       if (role === "primary") primaryCues.length = 0;
@@ -637,68 +692,63 @@ function syncTranslator() {
     if (state.translationStatus.phase !== "off") translator.clear();
     return;
   }
-
   const sourceTrack = state.tracks.find((track) => track.key === state.selectedTrackKeys.aiSource);
   const cues = state.aiSourceCues;
   if (!sourceTrack || cues.length === 0) {
     if (state.translationStatus.phase !== "off") translator.clear();
-    state.translationStatus = {
-      phase: state.tracks.length && !sourceTrack ? "error" : "waiting",
-      count: 0,
-      error: state.tracks.length && !sourceTrack ? "source_unavailable" : ""
-    };
+    state.translationStatus = { phase: state.tracks.length && !sourceTrack ? "error" : "waiting", count: 0,
+      error: state.tracks.length && !sourceTrack ? "source_unavailable" : "" };
     return;
   }
-
-  const isSourceJp = isJapanese(sourceTrack.language);
-  const isTargetJp = isJapanese(state.settings.aiTargetLanguage);
-  const hasJp = isSourceJp || isTargetJp;
-  const rubyEnabled = hasJp && (state.settings.aiJapaneseRuby !== false);
-
-  const identity = JSON.stringify([
-    state.watchId, state.subtitleEpoch, sourceTrack.key, role,
-    state.settings.aiTargetLanguage, state.settings.aiProviderId, state.settings.aiStyleGuide,
-    state.settings.aiContextCount, rubyEnabled
-  ]);
-  translator.setSource({
-    identity,
-    budgetKey: state.budgetWindowKey,
-    role,
-    cues,
-    sourceLanguage: sourceTrack.language,
-    targetLanguage: state.settings.aiTargetLanguage,
-    prefetchCount: state.settings.aiPrefetchCount,
-    contextCount: state.settings.aiContextCount,
-    japaneseRuby: rubyEnabled
-  });
+  const isSourceJp = isJapanese(sourceTrack.language), isTargetJp = isJapanese(state.settings.aiTargetLanguage);
+  const rubyEnabled = (isSourceJp || isTargetJp) && state.settings.aiJapaneseRuby !== false;
+  const semanticIntent = normalizeSemanticIntent(state.settings.aiStyleGuide);
+  const identity = JSON.stringify([state.watchId, state.subtitleEpoch, sourceTrack.key, role,
+    state.settings.aiTargetLanguage, semanticIntent, state.settings.aiCacheMode, state.cacheRevision]);
+  const cacheSource = { episodeId: state.watchId, sourceLanguage: sourceTrack.language, trackKind: sourceTrack.type ?? sourceTrack.kind ?? "unknown", cues };
+  translator.setSource({ identity, budgetKey: state.budgetWindowKey,
+    role, cues, ...cacheSource, subtitleEpoch: state.subtitleEpoch, targetLanguage: state.settings.aiTargetLanguage, semanticIntent,
+    cacheMode: state.settings.aiCacheMode, cachePolicy: state.settings.aiCachePolicy,
+    prefetchCount: state.settings.aiPrefetchCount, contextCount: state.settings.aiContextCount, japaneseRuby: rubyEnabled });
   if (state.video) {
     translator.observe(currentTimeMs(), state.video.playbackRate || 1);
     maybeWaitForFirstTranslation();
   }
 }
-
 function translateBatch(batch) {
   return new Promise((resolve) => {
     let settled = false;
-    const timeoutId = setTimeout(() => finish({ ok: false, errorCode: "unavailable", trace: [
-      { stage: "rejected", reason: "message_timeout" }
-    ] }), 22000);
-    function finish(result) {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutId);
-      resolve(result);
-    }
+    const timeoutId = setTimeout(() => finish({ ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "message_timeout" }] }), 22000);
+    function finish(result) { if (settled) return; settled = true; clearTimeout(timeoutId); resolve(result); }
     try {
       runtime.runtime.sendMessage({ type: "BILAYER_TRANSLATE_BATCH", diagnostic: true, ...batch }, (response) => {
-        finish(runtime.runtime.lastError
-          ? { ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "runtime_error" }] }
-          : response ?? { ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "empty_reply" }] });
+        const result = runtime.runtime.lastError ? { ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "runtime_error" }] }
+          : response ?? { ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "empty_reply" }] };
+        finish(result);
       });
-    } catch {
-      finish({ ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "send_failed" }] });
-    }
+    } catch { finish({ ok: false, errorCode: "unavailable", trace: [{ stage: "rejected", reason: "send_failed" }] }); }
   });
+}
+
+function rememberAcceptedBatch(batch, result) {
+  const capture = batch.cacheCapture;
+  if (!result?.ok || !Array.isArray(result.items) || !result.cacheMetadata || !capture
+      || capture.episodeId !== state.watchId || capture.sourceId !== translator.status().translationCache?.sourceId
+      || capture.subtitleEpoch !== state.subtitleEpoch) return;
+  const texts = state.aiSourceCues.map((cue) => cue.text);
+  const byId = new Map(result.items.map((item) => [String(item.id), item]));
+  const items = batch.items.map(({ id }, index) => {
+    const item = byId.get(String(id));
+    const sourceText = texts[capture.itemIndices[index]];
+    const annotationText = item?.readings && isJapanese(batch.targetLanguage) ? item.text : sourceText;
+    return item ? { ...item, sourceText, translatedText: item.text, ...(item.readings ? { annotationText } : {}) } : null;
+  });
+  if (items.some((item) => !item)) return;
+  translationCache.remember({ episodeId: capture.episodeId, sourceLanguage: batch.sourceLanguage, trackKind: capture.trackKind,
+    targetLanguage: batch.targetLanguage, semanticIntent: result.cacheMetadata.semanticIntent,
+    translationSemantics: result.cacheMetadata.translationSemantics }, { sourceId: capture.sourceId, texts,
+    batches: [{ ...capture, targetLanguage: batch.targetLanguage, ...result.cacheMetadata,
+      ...(result.cacheMetadata.annotationSemantics === "reading-v1" ? { annotationSide: isJapanese(batch.targetLanguage) ? "target" : "source" } : {}), items }] });
 }
 
 function onTranslationUpdate(status) {
@@ -708,7 +758,7 @@ function onTranslationUpdate(status) {
   if (!budgetRefresh && status.budgetKey && status.budgetKey === state.budgetWindowKey) {
     persistBudgetUsage(status.budgetKey, status.budget);
   }
-  if (state.initialWait && (status.phase === "error" || translator.readyAt(currentTimeMs()) || hasNativeFallback())) {
+  if (state.initialWait && (status.phase === "error" || status.error === "cache_miss" || translator.readyAt(currentTimeMs()) || hasNativeFallback())) {
     releaseInitialWait(true);
   }
   renderForCurrentTime();
@@ -934,6 +984,10 @@ function normalizeSettings(stored) {
     settings[key] = normalizeBudgetSetting(key, settings[key]);
   }
   settings.aiBudgetWindow = normalizeBudgetWindowSetting(settings.aiBudgetWindow);
+  if (!new Set(["session", "local"]).has(settings.aiCacheMode)) settings.aiCacheMode = DEFAULT_SETTINGS.aiCacheMode;
+  if (!new Set(["prefer", "only"]).has(settings.aiCachePolicy)) settings.aiCachePolicy = DEFAULT_SETTINGS.aiCachePolicy;
+  settings.aiCacheRetentionDays = normalizeBoundedInteger(settings.aiCacheRetentionDays, 0, 3650, DEFAULT_SETTINGS.aiCacheRetentionDays);
+  settings.aiCacheMaxMiB = normalizeBoundedInteger(settings.aiCacheMaxMiB, 0, 65536, DEFAULT_SETTINGS.aiCacheMaxMiB);
   if (typeof settings.aiStyleGuide !== "string" || !settings.aiStyleGuide.trim()) settings.aiStyleGuide = DEFAULT_TRANSLATION_PROMPT;
   if (stored.fontSize !== undefined && stored.secondaryFontSize === undefined) {
     settings.secondaryFontSize = stored.fontSize;
@@ -950,6 +1004,10 @@ function isJapanese(lang) {
   return /^(ja|jp)($|[-_])/i.test(String(lang ?? "").trim());
 }
 
+function normalizeSemanticIntent(value) {
+  const prompt = typeof value === "string" ? value.trim() : "";
+  return !prompt || prompt === DEFAULT_TRANSLATION_PROMPT || prompt === LEGACY_TRANSLATION_PROMPT ? "default-v1" : prompt;
+}
 // 预算设置只接受 0..上限 的整数：0 表示不限，缺省、非整数、越界一律回落默认值。
 function normalizeBudgetSetting(key, value) {
   if (!Number.isInteger(value) || value < 0 || value > BUDGET_SETTING_MAX[key]) return DEFAULT_SETTINGS[key];
@@ -959,6 +1017,9 @@ function normalizeBudgetSetting(key, value) {
 // 计量窗口只接受三个固定取值，缺省或非法一律回落 session（与预算数值同一套降级风格）。
 function normalizeBudgetWindowSetting(value) {
   return BUDGET_WINDOWS.has(value) ? value : DEFAULT_SETTINGS.aiBudgetWindow;
+}
+function normalizeBoundedInteger(value, minimum, maximum, fallback) {
+  return Number.isInteger(value) && value >= minimum && value <= maximum ? value : fallback;
 }
 
 function budgetLimits(settings) {
